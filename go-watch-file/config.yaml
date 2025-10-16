@@ -1,0 +1,36 @@
+# 文件监控配置
+# 监控目录路径
+watch_dir: "/data/logs"
+
+# 监控的文件后缀
+file_ext: ".hprof"
+
+# 企业微信机器人 webhook key
+robot_key: "your_robot_key_here"
+
+# S3兼容对象存储配置
+bucket: "xxxx"
+ak: ""
+sk: ""
+endpoint: "obs.cn-south-1.myhuaweicloud.com"
+region: "cn-south-1"
+force_path_style: false
+disable_ssl: false
+
+# Jenkins 配置
+jenkins_host: "http://172.16.11.105:8080/"
+jenkins_user: "xxx"
+jenkins_password: "xxx"
+jenkins_job: "dump"
+
+# 日志配置
+# 日志级别: info, warn, error, debug (debug级别会输出更详细的日志)
+log_level: "info"
+# 日志文件路径 (留空则只输出到控制台)
+log_file: "logs/file-monitor.log"
+
+# 上传工作池配置
+## 上传工作线程数
+upload_workers: 3
+## 上传队列大小
+upload_queue_size: 100

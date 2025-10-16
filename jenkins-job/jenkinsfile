@@ -1,0 +1,33 @@
+pipeline {
+    agent any
+    
+    parameters {
+        string(name: 'DOWNLOAD_FILE', defaultValue: '', description: '下载文件的URL地址')
+        string(name: 'APP', defaultValue: '', description: '应用名称')
+        string(name: 'FILE_NAME', defaultValue: '', description: '文件名称')
+    }
+
+    stages {
+        stage('dump') {
+            steps {
+                sh """
+                
+                rm -rf /opt/nginx/${params.APP}/*
+                
+                docker run --rm -e DOWNLOAD_FILE=${params.DOWNLOAD_FILE} -e FILE_NAME=${params.FILE_NAME} -v /opt/nginx/${params.APP}:/opt/nginx/ memory-dump:v1
+                
+                cp -f /opt/dump-index/index.html /opt/nginx/${params.APP}/
+                
+                echo "http://172.16.11.105:8835/${params.APP}"
+                """
+                }
+            }
+        stage('ai-analysis') {
+            steps {
+                sh """
+                docker run --rm -e HTML_DIR="/opt/nginx/Leak_Suspects/pages/" -e OUTPUT_FILE=/opt/nginx/analysis.html --env-file=/opt/openai-auth/openai.env -v /opt/nginx/${params.APP}:/opt/nginx/ ai-analysis:v1
+                """
+                }
+            }
+        }
+    }

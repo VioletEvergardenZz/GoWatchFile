@@ -1,0 +1,9 @@
+FROM openjdk:17-bullseye
+WORKDIR /app
+RUN mkdir -p /opt/nginx/Leak_Suspects /opt/nginx/System_Overview /opt/nginx/Top_Components
+
+# mat 下载 https://mirrors.aliyun.com/eclipse//mat/1.14.0/rcp/MemoryAnalyzer-1.14.0.20230315-linux.gtk.x86_64.zip
+COPY mat /opt/
+COPY entrypoint.sh .
+RUN chmod +x entrypoint.sh
+ENTRYPOINT ["/app/entrypoint.sh"]
