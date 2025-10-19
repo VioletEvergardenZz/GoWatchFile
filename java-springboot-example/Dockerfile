@@ -46,4 +46,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=60s --retries=3 \
 
 # 使用 tini 作为 init 进程，使用 shell 形式的 CMD 支持变量替换
 ENTRYPOINT ["/usr/bin/tini", "-s", "--"]
-CMD java -Xms1g -Xmx2g -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath="/app/dumps/oom-test-app-$(hostname)-$(date '+%s').hprof" -Xlog:gc*:file=/app/logs/gc.log:time,uptime:filecount=5,filesize=20M -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication -XX:+UseCompressedClassPointers -XX:+UseCompressedOops -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=docker -Duser.timezone=Asia/Shanghai -jar app.jar
+CMD java -Xms64m -Xmx128m -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath="/app/dumps/oom-test-app-$(hostname)-$(date '+%s').hprof" -Xlog:gc*:file=/app/logs/gc.log:time,uptime:filecount=5,filesize=20M -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+UseStringDeduplication -XX:+UseCompressedClassPointers -XX:+UseCompressedOops -Djava.security.egd=file:/dev/./urandom -Dspring.profiles.active=docker -Duser.timezone=Asia/Shanghai -jar app.jar

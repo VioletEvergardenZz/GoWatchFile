@@ -19,7 +19,6 @@ func main() {
 	// 定义命令行参数
 	flag.StringVar(&configFile, "config", "config.yaml", "配置文件路径")
 	flag.Parse()
-
 	log.Printf("程序启动，配置文件: %s", configFile)
 
 	// 加载配置文件

@@ -86,13 +86,13 @@ docker-compose logs -f grafana
 ### 5. 监控系统
 
 #### Prometheus 指标
-- **JVM 内存指标**: `http://localhost:8080/actuator/prometheus`
-- **Prometheus UI**: `http://localhost:9090`
-- **Grafana 仪表板**: `http://localhost:3000` (admin/admin)
+- **JVM 内存指标**: `http://192.168.77.128:8085/actuator/prometheus`
+- **Prometheus UI**: `http://192.168.77.128:9090/query`
+- **Grafana 仪表板**: `http://192.168.77.128:3000/login` (admin/admin)
 
 #### API 文档
-- **Swagger UI**: `http://localhost:8080/swagger-ui.html`
-- **OpenAPI JSON**: `http://localhost:8080/api-docs`
+- **Swagger UI**: `http://192.168.77.128:8085/swagger-ui/index.html`
+- **OpenAPI JSON**: `http://192.168.77.128:8085/api-docs`
 - **API 规范**: 完整的 REST API 文档和测试界面
 
 #### 关键 JVM 指标
