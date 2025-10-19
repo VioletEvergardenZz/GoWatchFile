@@ -9,18 +9,18 @@ file_ext: ".hprof"
 robot_key: "your_robot_key_here"
 
 # S3兼容对象存储配置
-bucket: "xxxx"
-ak: ""
-sk: ""
-endpoint: "obs.cn-south-1.myhuaweicloud.com"
-region: "cn-south-1"
+bucket: "go-watch-file"
+ak: "LTAI5tQstJDyziXToSV8J7rJ"
+sk: "DzTgJVI8kljsh2hPh5e8OSQw2RNBnC"
+endpoint: "oss-cn-hangzhou.aliyuncs.com"
+region: "cn-hangzhou"
 force_path_style: false
 disable_ssl: false
 
 # Jenkins 配置
-jenkins_host: "http://172.16.11.105:8080/"
-jenkins_user: "xxx"
-jenkins_password: "xxx"
+jenkins_host: "http://192.168.77.129:32000/"
+jenkins_user: "admin"
+jenkins_password: "123456"
 jenkins_job: "dump"
 
 # 日志配置
