@@ -10,6 +10,8 @@ import (
 )
 
 // LoadConfig 加载配置文件
+// 参数：configFile string — 配置文件路径（可以是相对路径或绝对路径），通常来自命令行 -config 参数
+// 返回值：(*models.Config, error) — 成功时返回指向 models.Config 的指针和 nil 错误；失败时返回 nil 和非空 error（包含失败原因）。
 func LoadConfig(configFile string) (*models.Config, error) {
 	data, err := os.ReadFile(configFile)
 	if err != nil {
@@ -17,12 +19,14 @@ func LoadConfig(configFile string) (*models.Config, error) {
 	}
 
 	var config models.Config
+	//使用 YAML 解码器把字节流解析到 models.Config（字段通过 yaml:"..." 标签映射）
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %v", err)
 	}
 
 	// 设置默认值
+	//如果某些值在 YAML 中没有设置，结构体字段保留 Go 的“零值”，代码在这里把一些零值换成合理默认值（上传 worker、队列大小、日志级别）。
 	if config.UploadWorkers <= 0 {
 		config.UploadWorkers = 3
 	}
@@ -37,6 +41,8 @@ func LoadConfig(configFile string) (*models.Config, error) {
 }
 
 // ValidateConfig 验证配置
+// 参数：config *models.Config — LoadConfig 解出的配置结构体指针
+// 返回值：error — 如果配置合法返回 nil；否则返回一个描述问题的 error（例如某些必填项为空）
 func ValidateConfig(config *models.Config) error {
 	if config.WatchDir == "" {
 		return fmt.Errorf("监控目录不能为空")
