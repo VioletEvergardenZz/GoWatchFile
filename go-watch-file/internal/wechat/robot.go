@@ -25,9 +25,16 @@ func NewRobot(robotKey string) *Robot {
 }
 
 // SendMessage 发送消息到企业微信机器人
+/**
+参数：
+downloadUrl：S3 上传后得到的文件下载链接（用于在消息中提供下载）
+filepath：本地/对象路径字符串，代码里用它来解析 app 名
+返回值：
+若发送成功返回 nil，否则返回带有错误信息的 error。
+*/
 func (r *Robot) SendMessage(downloadUrl, filepath string) error {
 	logger.Info("开始发送企业微信机器人消息")
-
+	//构建 webhook URL
 	url := fmt.Sprintf("%s%s", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=", r.robotKey)
 	method := "POST"
 
@@ -48,11 +55,12 @@ func (r *Robot) SendMessage(downloadUrl, filepath string) error {
 		return fmt.Errorf("序列化消息失败: %v", err)
 	}
 
+	//使用 http.NewRequest 构建 POST 请求，body 是 JSON bytes。
+	//设置 Content-Type 为 application/json，企业微信 webhook 要求如此。
 	req, err := http.NewRequest(method, url, bytes.NewBuffer(jsonReq))
 	if err != nil {
 		return fmt.Errorf("创建HTTP请求失败: %v", err)
 	}
-
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
