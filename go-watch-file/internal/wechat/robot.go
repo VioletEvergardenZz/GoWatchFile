@@ -35,6 +35,7 @@ filepath：本地/对象路径字符串，代码里用它来解析 app 名
 func (r *Robot) SendMessage(downloadUrl, filepath string) error {
 	logger.Info("开始发送企业微信机器人消息")
 	//构建 webhook URL
+	// Go 的字符串格式化函数，用于拼接字符串,第一个 %s  URL 第二个 %s - 机器人密钥（r.robotKey）
 	url := fmt.Sprintf("%s%s", "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=", r.robotKey)
 	method := "POST"
 
