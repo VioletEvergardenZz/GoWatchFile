@@ -1,12 +1,17 @@
 # 文件监控配置
 # 监控目录路径
-watch_dir: "/data/logs"
+watch_dir: 'C:\Users\admin\Downloads'
 
 # 监控的文件后缀
 file_ext: ".hprof"
 
 # 企业微信机器人 webhook key
 robot_key: "your_robot_key_here"
+
+# DingTalk robot webhook
+dingtalk_webhook: "https://oapi.dingtalk.com/robot/send?access_token=e9623c99edbef40739a4c750e9526923d07d318b0abd1b9c2800e582dc6b934c"
+# DingTalk secret (optional)
+dingtalk_secret: ""
 
 # S3兼容对象存储配置
 bucket: "go-watch-file"
@@ -18,7 +23,7 @@ force_path_style: false
 disable_ssl: false
 
 # Jenkins 配置
-jenkins_host: "http://192.168.77.129:32000/"
+jenkins_host: "http://192.168.127.128:32000"
 jenkins_user: "admin"
 jenkins_password: "123456"
 jenkins_job: "dump"

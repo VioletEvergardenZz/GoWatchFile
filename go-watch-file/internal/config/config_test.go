@@ -13,6 +13,8 @@ func TestLoadConfig(t *testing.T) {
 watch_dir: "/test/dir"
 file_ext: ".hprof"
 robot_key: "test-key"
+dingtalk_webhook: "https://oapi.dingtalk.com/robot/send?access_token=test-token"
+dingtalk_secret: "test-secret"
 bucket: "test-bucket"
 ak: "test-ak"
 sk: "test-sk"
@@ -54,6 +56,12 @@ upload_queue_size: 200
 	}
 	if config.FileExt != ".hprof" {
 		t.Errorf("FileExt 期望 .hprof, 实际 %s", config.FileExt)
+	}
+	if config.DingTalkWebhook != "https://oapi.dingtalk.com/robot/send?access_token=test-token" {
+		t.Errorf("DingTalkWebhook 期望 test-token url, 实际 %s", config.DingTalkWebhook)
+	}
+	if config.DingTalkSecret != "test-secret" {
+		t.Errorf("DingTalkSecret 期望 test-secret, 实际 %s", config.DingTalkSecret)
 	}
 	if config.LogLevel != "debug" {
 		t.Errorf("LogLevel 期望 debug, 实际 %s", config.LogLevel)

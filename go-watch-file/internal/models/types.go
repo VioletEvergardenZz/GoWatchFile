@@ -9,6 +9,8 @@ type Config struct {
 	WatchDir        string `yaml:"watch_dir"`
 	FileExt         string `yaml:"file_ext"`
 	RobotKey        string `yaml:"robot_key"`
+	DingTalkWebhook string `yaml:"dingtalk_webhook"`
+	DingTalkSecret  string `yaml:"dingtalk_secret"`
 	Bucket          string `yaml:"bucket"`
 	AK              string `yaml:"ak"`
 	SK              string `yaml:"sk"`
@@ -24,17 +26,6 @@ type Config struct {
 	LogFile         string `yaml:"log_file"`
 	UploadWorkers   int    `yaml:"upload_workers"`    // 上传工作池大小
 	UploadQueueSize int    `yaml:"upload_queue_size"` // 上传队列大小
-}
-
-// WxRotMessage 企业微信机器人消息结构体
-type WxRotMessage struct {
-	MsgType  string   `json:"msgtype"`
-	MarkDown Markdown `json:"markdown"`
-}
-
-// Markdown 企业微信机器人Markdown消息结构体
-type Markdown struct {
-	Content string `json:"content"`
 }
 
 // FileEvent 文件事件结构体

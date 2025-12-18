@@ -77,7 +77,11 @@ func (p *WorkerPool) worker(id int) {
 	logger.Info("上传工作协程 %d 已启动", id)
 	for {
 		select {
-		case filePath := <-p.uploadQueue:
+		case filePath, ok := <-p.uploadQueue:
+			if !ok {
+				logger.Info("上传工作协程 %d 已停止", id)
+				return
+			}
 			logger.Info("工作协程 %d 开始处理文件: %s", id, filePath)
 			startTime := time.Now()
 			// 执行文件上传
