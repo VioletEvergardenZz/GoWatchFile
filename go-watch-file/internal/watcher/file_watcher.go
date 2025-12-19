@@ -1,6 +1,8 @@
 package watcher
 
 import (
+	"context"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -23,11 +25,12 @@ type FileWatcher struct {
 	watcher        *fsnotify.Watcher //实际的文件监听器对象
 	config         *models.Config
 	uploadPool     UploadPool
+	ctx            context.Context
+	cancel         context.CancelFunc
 	stateMutex     sync.Mutex
 	lastLogged     map[string]time.Time
 	lastWriteTime  map[string]time.Time
 	writeTimers    map[string]*time.Timer
-	activeMonitors map[string]bool // 防止重复的 monitorFileSize 协程
 }
 
 // UploadPool 上传池接口
@@ -41,15 +44,17 @@ func NewFileWatcher(config *models.Config, uploadPool UploadPool) (*FileWatcher,
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 
 	return &FileWatcher{
 		watcher:        watcher,
 		config:         config,
 		uploadPool:     uploadPool,
+		ctx:            ctx,
+		cancel:         cancel,
 		lastLogged:     make(map[string]time.Time),
 		lastWriteTime:  make(map[string]time.Time),
 		writeTimers:    make(map[string]*time.Timer),
-		activeMonitors: make(map[string]bool),
 	}, nil
 }
 
@@ -74,6 +79,8 @@ func (fw *FileWatcher) Start() error {
 
 // Close 关闭文件监控器
 func (fw *FileWatcher) Close() error {
+	fw.cancel()
+
 	// 停止并清理所有写入完成检测定时器
 	fw.stateMutex.Lock()
 	for _, t := range fw.writeTimers {
@@ -91,9 +98,17 @@ func (fw *FileWatcher) Close() error {
 func (fw *FileWatcher) handleEvents() {
 	for {
 		select {
-		case event := <-fw.watcher.Events:
+		case <-fw.ctx.Done():
+			return
+		case event, ok := <-fw.watcher.Events:
+			if !ok {
+				return
+			}
 			fw.handleEvent(event)
-		case err := <-fw.watcher.Errors:
+		case err, ok := <-fw.watcher.Errors:
+			if !ok {
+				return
+			}
 			logger.Error("文件监控错误: %v", err)
 		}
 	}
@@ -105,9 +120,13 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 	if fw.isTargetFileEvent(event) {
 		fw.handleTargetFileEvent(event)
 	}
-
+	// 处理“运行时新创建的目录”
 	if event.Op&fsnotify.Create == fsnotify.Create {
 		fw.handleCreatedPath(event.Name)
+	}
+	//文件被删除/改名时，清理 lastWriteTime/lastLogged/writeTimers，避免 map 堆积
+	if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
+		fw.cleanupFileState(event.Name)
 	}
 }
 
@@ -115,6 +134,7 @@ func (fw *FileWatcher) isTargetFileEvent(event fsnotify.Event) bool {
 	if filepath.Ext(event.Name) != fw.config.FileExt {
 		return false
 	}
+	//把 event.Op 当成一个装了很多开关的面板，fsnotify.Write 是其中一个开关。event.Op & fsnotify.Write 就是在检查“Write 这个开关是不是开着”
 	return event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create
 }
 
@@ -122,7 +142,7 @@ func (fw *FileWatcher) handleTargetFileEvent(event fsnotify.Event) {
 	if fw.shouldLogFileEvent(event.Name) {
 		logger.Info("检测到目标文件变化: %s, 操作: %s", event.Name, event.Op.String())
 	}
-	go fw.handleFileEvent(event.Name, event.Op)
+	fw.handleFileEvent(event.Name, event.Op)
 }
 
 func (fw *FileWatcher) handleCreatedPath(path string) {
@@ -131,26 +151,23 @@ func (fw *FileWatcher) handleCreatedPath(path string) {
 		return
 	}
 
-	if err := fw.watcher.Add(path); err != nil {
-		logger.Warn("添加目录监控失败: %s, 错误: %v", path, err)
-	} else {
-		logger.Info("添加目录监控: %s", path)
-	}
 	if err := fw.addWatchRecursively(path); err != nil {
 		logger.Warn("递归添加新目录监控失败: %s, 错误: %v", path, err)
+		return
 	}
+	logger.Info("添加目录监控: %s", path)
 }
 
 // addWatchRecursively 递归监控指定目录及子目录的文件变化
 func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 	logger.Debug("递归添加目录监控: %s", dirPath)
 
-	return filepath.Walk(dirPath, func(path string, info os.FileInfo, err error) error {
+	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			logger.Warn("遍历目录失败: %s, 错误: %v", path, err)
 			return err
 		}
-		if !info.IsDir() {
+		if !d.IsDir() {
 			return nil
 		}
 		if err := fw.watcher.Add(path); err != nil {
@@ -158,22 +175,8 @@ func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 			return err
 		}
 		logger.Debug("添加目录监控: %s", path)
-		return fw.addSubDirectories(path)
+		return nil
 	})
-}
-
-func (fw *FileWatcher) addSubDirectories(dirPath string) error {
-	files, err := os.ReadDir(dirPath)
-	if err != nil {
-		logger.Warn("读取目录内容失败: %s, 错误: %v", dirPath, err)
-		return err
-	}
-	for _, file := range files {
-		if file.IsDir() {
-			_ = fw.addWatchRecursively(filepath.Join(dirPath, file.Name()))
-		}
-	}
-	return nil
 }
 
 // handleFileEvent 处理文件事件
@@ -182,18 +185,6 @@ func (fw *FileWatcher) handleFileEvent(filePath string, op fsnotify.Op) {
 
 	// 更新文件写入时间并设置写入完成检测
 	fw.updateFileWriteTime(filePath)
-
-	// 如果是创建事件，启动文件大小监控协程（避免重复启动）
-	if op&fsnotify.Create == fsnotify.Create {
-		fw.stateMutex.Lock()
-		if fw.activeMonitors[filePath] {
-			fw.stateMutex.Unlock()
-			return
-		}
-		fw.activeMonitors[filePath] = true
-		fw.stateMutex.Unlock()
-		go fw.monitorFileSize(filePath)
-	}
 }
 
 // updateFileWriteTime 更新文件写入时间并设置写入完成检测
@@ -216,23 +207,36 @@ func (fw *FileWatcher) updateFileWriteTime(filePath string) {
 
 func (fw *FileWatcher) handleWriteComplete(filePath string) {
 	fw.stateMutex.Lock()
-	defer fw.stateMutex.Unlock()
-
 	lastWrite, ok := fw.lastWriteTime[filePath]
 	if !ok {
+		fw.stateMutex.Unlock()
 		return
 	}
 	if time.Since(lastWrite) < writeCompleteTimeout {
+		fw.stateMutex.Unlock()
 		return
 	}
 
-	logger.Info("文件写入完成: %s (超过 %v 无新写入)", filePath, writeCompleteTimeout)
 	delete(fw.lastWriteTime, filePath)
 	delete(fw.writeTimers, filePath)
 	delete(fw.lastLogged, filePath)
+	fw.stateMutex.Unlock()
+
+	logger.Info("文件写入完成: %s (超过 %v 无新写入)", filePath, writeCompleteTimeout)
 	if !fw.uploadPool.AddFile(filePath) {
 		logger.Error("无法将文件添加到上传队列: %s", filePath)
 	}
+}
+
+func (fw *FileWatcher) cleanupFileState(filePath string) {
+	fw.stateMutex.Lock()
+	if timer, exists := fw.writeTimers[filePath]; exists {
+		timer.Stop()
+		delete(fw.writeTimers, filePath)
+	}
+	delete(fw.lastWriteTime, filePath)
+	delete(fw.lastLogged, filePath)
+	fw.stateMutex.Unlock()
 }
 
 // shouldLogFileEvent 检查是否应该记录文件事件日志
@@ -245,58 +249,4 @@ func (fw *FileWatcher) shouldLogFileEvent(filePath string) bool {
 		return true
 	}
 	return false
-}
-
-// monitorFileSize 监控文件大小变化
-func (fw *FileWatcher) monitorFileSize(filePath string) {
-	logger.Debug("开始监控文件大小: %s", filePath)
-
-	// 结束时清理 activeMonitors 标志
-	defer func() {
-		fw.stateMutex.Lock()
-		delete(fw.activeMonitors, filePath)
-		fw.stateMutex.Unlock()
-	}()
-
-	// 创建一个定时器，定期检查文件大小
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-
-	var lastSize int64 = 0
-	stableCount := 0
-	maxStableCount := 5 // 连续5次大小不变认为文件稳定
-
-	for {
-		select {
-		case <-ticker.C:
-			// 检查文件是否存在
-			if _, err := os.Stat(filePath); os.IsNotExist(err) {
-				logger.Debug("文件不存在，停止监控: %s", filePath)
-				return
-			}
-
-			// 获取文件大小
-			fileInfo, err := os.Stat(filePath)
-			if err != nil {
-				logger.Warn("获取文件信息失败: %s, 错误: %v", filePath, err)
-				continue
-			}
-
-			currentSize := fileInfo.Size()
-
-			// 如果文件大小没有变化
-			if currentSize == lastSize {
-				stableCount++
-				if stableCount >= maxStableCount {
-					logger.Info("文件大小稳定，停止监控: %s, 最终大小: %d bytes", filePath, currentSize)
-					return
-				}
-			} else {
-				// 文件大小有变化，重置计数器
-				stableCount = 0
-				lastSize = currentSize
-				logger.Debug("文件大小变化: %s, 当前大小: %d bytes", filePath, currentSize)
-			}
-		}
-	}
 }
