@@ -16,21 +16,21 @@ import (
 
 const (
 	// throttleDuration     = 120 * time.Second
-	logThrottleDuration  = 5 * time.Second  // 日志节流时间间隔
+	logThrottleDuration  = 5 * time.Second  // 日志节流时间间隔（控制台或者程序日志文件输出频率）
 	writeCompleteTimeout = 10 * time.Second // 文件写入完成检测超时时间
 )
 
 // FileWatcher 文件监控器
 type FileWatcher struct {
-	watcher        *fsnotify.Watcher //实际的文件监听器对象
-	config         *models.Config
-	uploadPool     UploadPool
-	ctx            context.Context
-	cancel         context.CancelFunc
-	stateMutex     sync.Mutex
-	lastLogged     map[string]time.Time
-	lastWriteTime  map[string]time.Time
-	writeTimers    map[string]*time.Timer
+	watcher       *fsnotify.Watcher //实际的文件监听器对象
+	config        *models.Config
+	uploadPool    UploadPool
+	ctx           context.Context
+	cancel        context.CancelFunc
+	stateMutex    sync.Mutex
+	lastLogged    map[string]time.Time
+	lastWriteTime map[string]time.Time
+	writeTimers   map[string]*time.Timer
 }
 
 // UploadPool 上传池接口
@@ -47,14 +47,14 @@ func NewFileWatcher(config *models.Config, uploadPool UploadPool) (*FileWatcher,
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &FileWatcher{
-		watcher:        watcher,
-		config:         config,
-		uploadPool:     uploadPool,
-		ctx:            ctx,
-		cancel:         cancel,
-		lastLogged:     make(map[string]time.Time),
-		lastWriteTime:  make(map[string]time.Time),
-		writeTimers:    make(map[string]*time.Timer),
+		watcher:       watcher,
+		config:        config,
+		uploadPool:    uploadPool,
+		ctx:           ctx,
+		cancel:        cancel,
+		lastLogged:    make(map[string]time.Time),
+		lastWriteTime: make(map[string]time.Time),
+		writeTimers:   make(map[string]*time.Timer),
 	}, nil
 }
 
@@ -120,7 +120,7 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 	if fw.isTargetFileEvent(event) {
 		fw.handleTargetFileEvent(event)
 	}
-	// 处理“运行时新创建的目录”
+	// 为了在运行中发现新建的子目录并继续递归监听，需要捕获所有 Create（目录和文件）
 	if event.Op&fsnotify.Create == fsnotify.Create {
 		fw.handleCreatedPath(event.Name)
 	}
@@ -187,7 +187,7 @@ func (fw *FileWatcher) handleFileEvent(filePath string, op fsnotify.Op) {
 	fw.updateFileWriteTime(filePath)
 }
 
-// updateFileWriteTime 更新文件写入时间并设置写入完成检测
+// updateFileWriteTime 更新文件写入时间并设置写入完成检测，避免边写边传导致传到半截文件
 func (fw *FileWatcher) updateFileWriteTime(filePath string) {
 	fw.stateMutex.Lock()
 	defer fw.stateMutex.Unlock()
@@ -199,7 +199,7 @@ func (fw *FileWatcher) updateFileWriteTime(filePath string) {
 	if timer, exists := fw.writeTimers[filePath]; exists {
 		timer.Stop()
 	}
-
+	//如果 10 秒内没有再收到这个文件的写事件，新定时器会触发 handleWriteComplete(filePath)
 	fw.writeTimers[filePath] = time.AfterFunc(writeCompleteTimeout, func() {
 		fw.handleWriteComplete(filePath)
 	})
@@ -217,6 +217,7 @@ func (fw *FileWatcher) handleWriteComplete(filePath string) {
 		return
 	}
 
+	//防止旧状态占内存或干扰后续同名文件的监控
 	delete(fw.lastWriteTime, filePath)
 	delete(fw.writeTimers, filePath)
 	delete(fw.lastLogged, filePath)
@@ -228,6 +229,7 @@ func (fw *FileWatcher) handleWriteComplete(filePath string) {
 	}
 }
 
+//避免删除/改名后的文件还占着内存或触发误操作
 func (fw *FileWatcher) cleanupFileState(filePath string) {
 	fw.stateMutex.Lock()
 	if timer, exists := fw.writeTimers[filePath]; exists {
@@ -243,7 +245,7 @@ func (fw *FileWatcher) cleanupFileState(filePath string) {
 func (fw *FileWatcher) shouldLogFileEvent(filePath string) bool {
 	fw.stateMutex.Lock()
 	defer fw.stateMutex.Unlock()
-
+	// ok 为 true 表示这个 key 存在，false 表示不存在（第一次见这个文件）
 	if lastTime, ok := fw.lastLogged[filePath]; !ok || time.Since(lastTime) > logThrottleDuration {
 		fw.lastLogged[filePath] = time.Now()
 		return true

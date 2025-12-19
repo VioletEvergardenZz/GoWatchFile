@@ -35,7 +35,7 @@ log_level: "info"
 log_file: "logs/file-monitor.log"
 
 # 上传工作池配置
-## 上传工作线程数
+## 上传工作线程数（并发从队列取文件）
 upload_workers: 3
-## 上传队列大小
+## 上传队列大小（存放待上传的文件路径）
 upload_queue_size: 100
