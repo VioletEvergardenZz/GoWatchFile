@@ -229,7 +229,7 @@ func (fw *FileWatcher) handleWriteComplete(filePath string) {
 	}
 }
 
-//避免删除/改名后的文件还占着内存或触发误操作
+// 避免删除/改名后的文件还占着内存或触发误操作
 func (fw *FileWatcher) cleanupFileState(filePath string) {
 	fw.stateMutex.Lock()
 	if timer, exists := fw.writeTimers[filePath]; exists {
