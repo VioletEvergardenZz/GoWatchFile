@@ -57,7 +57,10 @@ func (c *Client) UploadFile(filePath string) (string, error) {
 		return "", fmt.Errorf("获取文件信息失败: %w", err)
 	}
 
-	objectKey := c.buildObjectKey(filePath)
+	objectKey, err := c.buildObjectKey(filePath)
+	if err != nil {
+		return "", fmt.Errorf("构建对象Key失败: %w", err)
+	}
 
 	input := &s3.PutObjectInput{
 		Bucket:        aws.String(c.config.Bucket),
@@ -83,8 +86,8 @@ func (c *Client) UploadFile(filePath string) (string, error) {
 	return downloadURL, nil
 }
 
-func (c *Client) buildObjectKey(filePath string) string {
-	return pathutil.BuildObjectKey(c.config.WatchDir, filePath)
+func (c *Client) buildObjectKey(filePath string) (string, error) {
+	return pathutil.BuildObjectKeyStrict(c.config.WatchDir, filePath)
 }
 
 func (c *Client) buildDownloadURL(objectKey string) string {
