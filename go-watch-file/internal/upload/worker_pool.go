@@ -1,17 +1,18 @@
 // Package upload
 /**
 实现了一个简单的上传工作池（worker pool）
-	内部维护一个带缓冲的 channel 作为任务队列（uploadQueue chan string），存放待处理的文件路径。
-	启动固定数量的 worker goroutine（workers），每个 worker 从队列取文件并调用 uploadFunc(filePath) 处理（这里上传逻辑由外部传入）。
-	支持添加任务（AddFile），优先非阻塞入队，队满则返回失败。
-	支持优雅关闭（Shutdown）：取消 context、关闭队列、等待 worker 退出。
-	提供统计（GetStats）供监控/接口查询。
-	设计目标：实现一个并发上传框架，避免在主线程阻塞，控制并发量与队列深度，容错处理上游和下游的差异。
+		内部维护一个带缓冲的 channel 作为任务队列（uploadQueue chan string），存放待处理的文件路径。
+		启动固定数量的 worker goroutine（workers），每个 worker 从队列取文件并调用 uploadFunc(filePath) 处理（这里上传逻辑由外部传入）。
+		支持添加任务（AddFile），优先非阻塞入队，队满或关闭时返回错误。
+		支持优雅关闭（Shutdown）：关闭队列，等待 worker 退出，可选超时兜底。
+		提供统计（GetStats）供监控/接口查询。
+		设计目标：实现一个并发上传框架，避免在主线程阻塞，控制并发量与队列深度，容错处理上游和下游的差异。
 */
 package upload
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -37,16 +38,29 @@ type WorkerPool struct {
 	wg          sync.WaitGroup
 	ctx         context.Context
 	cancel      context.CancelFunc
-	uploadFunc  func(string) error // 上传函数
+	uploadFunc  func(context.Context, string) error // 上传函数
+
+	mu     sync.Mutex
+	closed bool
 }
 
+var (
+	ErrQueueFull     = errors.New("upload queue full")
+	ErrPoolClosed    = errors.New("worker pool closed")
+	ErrShutdownTimed = errors.New("worker pool shutdown timed out")
+	ErrUploadFuncNil = errors.New("upload func is nil")
+)
+
 // NewWorkerPool 构造函数，创建并启动 worker goroutine
-func NewWorkerPool(workers, queueSize int, uploadFunc func(string) error) *WorkerPool {
+func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, string) error) (*WorkerPool, error) {
 	if workers <= 0 {
 		workers = 3
 	}
 	if queueSize <= 0 {
 		queueSize = 100
+	}
+	if uploadFunc == nil {
+		return nil, ErrUploadFuncNil
 	}
 	ctx, cancel := context.WithCancel(context.Background()) //context.WithCancel 提供取消上下文以及 cancel() 函数
 	pool := &WorkerPool{
@@ -67,7 +81,7 @@ func NewWorkerPool(workers, queueSize int, uploadFunc func(string) error) *Worke
 		go pool.worker(i)
 	}
 	logger.Info("上传工作池已启动，工作协程数: %d, 队列大小: %d", workers, queueSize)
-	return pool
+	return pool, nil
 }
 
 // worker 工作协程函数
@@ -85,7 +99,7 @@ func (p *WorkerPool) worker(id int) {
 			logger.Info("工作协程 %d 开始处理文件: %s", id, filePath)
 			startTime := time.Now()
 			// 执行文件上传
-			if err := p.uploadFunc(filePath); err != nil {
+			if err := p.uploadFunc(p.ctx, filePath); err != nil {
 				logger.Error("工作协程 %d 处理文件失败: %s, 错误: %v", id, filePath, err)
 			} else {
 				elapsed := time.Since(startTime)
@@ -98,25 +112,82 @@ func (p *WorkerPool) worker(id int) {
 	}
 }
 
-// AddFile 添加文件到上传队列
-func (p *WorkerPool) AddFile(filePath string) bool {
+// AddFile 添加文件到上传队列（非阻塞）。队列已满或已关闭时返回错误。
+func (p *WorkerPool) AddFile(filePath string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed {
+		return ErrPoolClosed
+	}
+
 	select {
 	case p.uploadQueue <- filePath:
 		logger.Debug("文件已添加到上传队列: %s", filePath)
-		return true
+		return nil
 	default:
 		logger.Warn("上传队列已满，无法添加文件: %s", filePath)
-		return false
+		return ErrQueueFull
 	}
 }
 
-// Shutdown 关闭上传工作池
-func (p *WorkerPool) Shutdown() {
+// Shutdown 关闭上传工作池，默认采用“先 drain 队列，再超时兜底”语义。
+func (p *WorkerPool) Shutdown() error {
+	return p.ShutdownGraceful(0)
+}
+
+// ShutdownGraceful 关闭上传工作池：先关闭队列并等待 worker 处理完已有任务。
+// timeout > 0 时，超过超时时间会触发 cancel 以尽快退出。
+func (p *WorkerPool) ShutdownGraceful(timeout time.Duration) error {
 	logger.Info("正在关闭上传工作池...")
-	p.cancel() //关闭 context，通知各 worker 的 ctx.Done() 分支准备就绪
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil
+	}
+	p.closed = true
 	close(p.uploadQueue)
-	p.wg.Wait() //等待所有 worker 的 wg.Done() 调用结束
+	p.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		p.wg.Wait()
+		close(done)
+	}()
+
+	var timedOut bool
+	if timeout > 0 {
+		select {
+		case <-done:
+		case <-time.After(timeout):
+			timedOut = true
+			p.cancel()
+			<-done
+		}
+	} else {
+		<-done
+	}
+	p.cancel()
 	logger.Info("上传工作池已关闭")
+	if timedOut {
+		return ErrShutdownTimed
+	}
+	return nil
+}
+
+// ShutdownNow 立即关闭上传工作池：取消上下文并关闭队列，不保证 drain。
+func (p *WorkerPool) ShutdownNow() {
+	logger.Warn("立即关闭上传工作池（可能丢弃队列中任务）")
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return
+	}
+	p.closed = true
+	close(p.uploadQueue)
+	p.mu.Unlock()
+	p.cancel()
+	p.wg.Wait()
+	logger.Info("上传工作池已关闭（立即模式）")
 }
 
 // GetStats 获取队列状态

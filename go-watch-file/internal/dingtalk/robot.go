@@ -2,6 +2,7 @@ package dingtalk
 
 import (
 	"bytes"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -45,7 +46,7 @@ func NewRobot(webhook, secret string) *Robot {
 }
 
 // SendMessage 发送钉钉机器人消息。
-func (r *Robot) SendMessage(downloadURL, appName, fileName string) error {
+func (r *Robot) SendMessage(ctx context.Context, downloadURL, appName, fileName string) error {
 	if r.webhook == "" {
 		return fmt.Errorf("钉钉 webhook 为空")
 	}
@@ -65,7 +66,7 @@ func (r *Robot) SendMessage(downloadURL, appName, fileName string) error {
 		return fmt.Errorf("构建钉钉 webhook URL 失败: %w", err)
 	}
 
-	if err := r.postMessage(webhookURL, jsonReq); err != nil {
+	if err := r.postMessage(ctx, webhookURL, jsonReq); err != nil {
 		return err
 	}
 
@@ -91,12 +92,15 @@ func buildMarkdownMessage(downloadURL, appName, fileName string) message {
 	}
 }
 
-func (r *Robot) postMessage(webhookURL string, payload []byte) error {
+func (r *Robot) postMessage(ctx context.Context, webhookURL string, payload []byte) error {
 	req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Errorf("创建 HTTP 请求失败: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
 
 	logger.Info("开始发送钉钉机器人消息")
 	client := &http.Client{Timeout: 10 * time.Second}
@@ -120,9 +124,8 @@ func (r *Robot) postMessage(webhookURL string, payload []byte) error {
 	return nil
 }
 
-
-//如果配置了 secret，钉钉要求在请求时把 timestamp 和 sign 作为 query 参数拼上去，
-//所以 buildWebhookURL() 会基于配置里的 webhook 解析并追加这两个参数再返回
+// 如果配置了 secret，钉钉要求在请求时把 timestamp 和 sign 作为 query 参数拼上去，
+// 所以 buildWebhookURL() 会基于配置里的 webhook 解析并追加这两个参数再返回
 func (r *Robot) buildWebhookURL() (string, error) {
 	if r.secret == "" {
 		return r.webhook, nil

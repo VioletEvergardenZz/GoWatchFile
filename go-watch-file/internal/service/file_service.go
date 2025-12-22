@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"path/filepath"
+	"time"
 
 	"file-watch/internal/dingtalk"
 	"file-watch/internal/jenkins"
@@ -26,6 +28,8 @@ type FileService struct {
 	watcher       *watcher.FileWatcher
 }
 
+const shutdownTimeout = 30 * time.Second
+
 // NewFileService 构造并初始化 FileService 的依赖。
 func NewFileService(config *models.Config) (*FileService, error) {
 	s3Client, err := newS3Client(config)
@@ -46,7 +50,11 @@ func NewFileService(config *models.Config) (*FileService, error) {
 		dingtalkRobot: newDingTalkRobot(config),
 	}
 
-	fileService.uploadPool = newUploadPool(config, fileService.processFile)
+	uploadPool, err := newUploadPool(config, fileService.processFile)
+	if err != nil {
+		return nil, err
+	}
+	fileService.uploadPool = uploadPool
 
 	fileWatcher, err := newFileWatcher(config, fileService.uploadPool)
 	if err != nil {
@@ -87,7 +95,7 @@ func newDingTalkRobot(config *models.Config) *dingtalk.Robot {
 	return dingtalk.NewRobot(config.DingTalkWebhook, config.DingTalkSecret)
 }
 
-func newUploadPool(config *models.Config, handler func(string) error) *upload.WorkerPool {
+func newUploadPool(config *models.Config, handler func(context.Context, string) error) (*upload.WorkerPool, error) {
 	return upload.NewWorkerPool(config.UploadWorkers, config.UploadQueueSize, handler)
 }
 
@@ -113,7 +121,9 @@ func (fs *FileService) Start() error {
 func (fs *FileService) Stop() error {
 	logger.Info("停止文件服务...")
 	if fs.uploadPool != nil {
-		fs.uploadPool.Shutdown()
+		if err := fs.uploadPool.ShutdownGraceful(shutdownTimeout); err != nil {
+			logger.Warn("关闭上传工作池超时，已发出取消信号: %v", err)
+		}
 	}
 	if fs.watcher != nil {
 		if err := fs.watcher.Close(); err != nil {
@@ -125,9 +135,9 @@ func (fs *FileService) Stop() error {
 }
 
 // processFile 处理单个文件：上传、触发构建、发送通知。
-func (fs *FileService) processFile(filePath string) error {
+func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	logger.Info("开始处理文件: %s", filePath)
-	downloadURL, err := fs.s3Client.UploadFile(filePath)
+	downloadURL, err := fs.s3Client.UploadFile(ctx, filePath)
 	if err != nil {
 		return fmt.Errorf("上传文件到S3失败: %w", err)
 	}
@@ -135,8 +145,8 @@ func (fs *FileService) processFile(filePath string) error {
 	appName, fileName := fs.parseFileInfo(filePath)
 	logger.Info("文件信息 - 应用名: %s, 文件名: %s", appName, fileName)
 
-	fs.triggerJenkinsBuild(downloadURL, appName, fileName)
-	fs.sendWeChat(downloadURL, appName)
+	fs.triggerJenkinsBuild(ctx, downloadURL, appName, fileName)
+	fs.sendWeChat(ctx, downloadURL, appName)
 	dingAppName := appName
 	dingFileName := fileName
 	if filePath != "" {
@@ -147,7 +157,7 @@ func (fs *FileService) processFile(filePath string) error {
 			dingFileName = baseName
 		}
 	}
-	fs.sendDingTalk(downloadURL, dingAppName, dingFileName)
+	fs.sendDingTalk(ctx, downloadURL, dingAppName, dingFileName)
 
 	logger.Info("文件处理完成: %s", filePath)
 	return nil
@@ -163,26 +173,26 @@ func (fs *FileService) parseFileInfo(filePath string) (string, string) {
 	return appName, fileName
 }
 
-func (fs *FileService) triggerJenkinsBuild(downloadURL, appName, fileName string) {
-	if err := fs.jenkinsClient.BuildJob(downloadURL, appName, fileName); err != nil {
+func (fs *FileService) triggerJenkinsBuild(ctx context.Context, downloadURL, appName, fileName string) {
+	if err := fs.jenkinsClient.BuildJob(ctx, downloadURL, appName, fileName); err != nil {
 		logger.Error("触发Jenkins构建失败: %v", err)
 	}
 }
 
-func (fs *FileService) sendWeChat(downloadURL, appName string) {
+func (fs *FileService) sendWeChat(ctx context.Context, downloadURL, appName string) {
 	if fs.wechatRobot == nil {
 		return
 	}
-	if err := fs.wechatRobot.SendMessage(downloadURL, appName); err != nil {
+	if err := fs.wechatRobot.SendMessage(ctx, downloadURL, appName); err != nil {
 		logger.Error("发送企业微信消息失败: %v", err)
 	}
 }
 
-func (fs *FileService) sendDingTalk(downloadURL, appName, fileName string) {
+func (fs *FileService) sendDingTalk(ctx context.Context, downloadURL, appName, fileName string) {
 	if fs.dingtalkRobot == nil {
 		return
 	}
-	if err := fs.dingtalkRobot.SendMessage(downloadURL, appName, fileName); err != nil {
+	if err := fs.dingtalkRobot.SendMessage(ctx, downloadURL, appName, fileName); err != nil {
 		logger.Error("发送钉钉消息失败: %v", err)
 	}
 }

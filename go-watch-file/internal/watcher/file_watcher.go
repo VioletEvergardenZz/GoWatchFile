@@ -35,7 +35,7 @@ type FileWatcher struct {
 
 // UploadPool 上传池接口
 type UploadPool interface {
-	AddFile(filePath string) bool
+	AddFile(filePath string) error
 }
 
 // NewFileWatcher 创建新的文件监控器
@@ -224,8 +224,8 @@ func (fw *FileWatcher) handleWriteComplete(filePath string) {
 	fw.stateMutex.Unlock()
 
 	logger.Info("文件写入完成: %s (超过 %v 无新写入)", filePath, writeCompleteTimeout)
-	if !fw.uploadPool.AddFile(filePath) {
-		logger.Error("无法将文件添加到上传队列: %s", filePath)
+	if err := fw.uploadPool.AddFile(filePath); err != nil {
+		logger.Error("无法将文件添加到上传队列: %s, 错误: %v", filePath, err)
 	}
 }
 

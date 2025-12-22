@@ -2,6 +2,7 @@
 package s3
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -44,7 +45,7 @@ func NewClient(config *models.Config) (*Client, error) {
 }
 
 // UploadFile 上传文件到 S3 并返回下载链接。
-func (c *Client) UploadFile(filePath string) (string, error) {
+func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error) {
 	logger.Info("开始上传文件到S3: %s", filePath)
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -70,7 +71,11 @@ func (c *Client) UploadFile(filePath string) (string, error) {
 		ContentType:   aws.String("application/octet-stream"),
 	}
 
-	output, err := c.s3Client.PutObject(input)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	output, err := c.s3Client.PutObjectWithContext(ctx, input)
 	if err != nil {
 		return "", fmt.Errorf("S3上传失败: %w", err)
 	}

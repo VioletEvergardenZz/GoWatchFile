@@ -33,10 +33,9 @@ func NewClient(config *models.Config) (*Client, error) {
 }
 
 // BuildJob 触发 Jenkins 构建任务。
-func (c *Client) BuildJob(downloadFile, appName, fileName string) error {
+func (c *Client) BuildJob(ctx context.Context, downloadFile, appName, fileName string) error {
 	logger.Info("开始触发Jenkins构建任务 - 应用: %s, 文件名: %s", appName, fileName)
 
-	ctx := context.Background()
 	buildParameter := buildParameters(downloadFile, appName, fileName)
 	logger.Info("Jenkins构建参数: %+v", buildParameter)
 

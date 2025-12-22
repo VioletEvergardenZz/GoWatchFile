@@ -2,6 +2,7 @@ package wechat
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -38,7 +39,7 @@ func NewRobot(robotKey string) *Robot {
 }
 
 // SendMessage 发送消息到企业微信机器人，appName 为监控目录下的应用名。
-func (r *Robot) SendMessage(downloadURL, appName string) error {
+func (r *Robot) SendMessage(ctx context.Context, downloadURL, appName string) error {
 	logger.Info("开始发送企业微信机器人消息")
 	if appName == "" {
 		return fmt.Errorf("应用名称不能为空")
@@ -51,7 +52,7 @@ func (r *Robot) SendMessage(downloadURL, appName string) error {
 		return fmt.Errorf("序列化消息失败: %w", err)
 	}
 
-	if err := sendRequest(buildWebhookURL(r.robotKey), jsonReq); err != nil {
+	if err := sendRequest(ctx, buildWebhookURL(r.robotKey), jsonReq); err != nil {
 		return err
 	}
 
@@ -74,12 +75,15 @@ func buildMarkdownMessage(appName, downloadURL string, now time.Time) message {
 	}
 }
 
-func sendRequest(url string, payload []byte) error {
+func sendRequest(ctx context.Context, url string, payload []byte) error {
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewBuffer(payload))
 	if err != nil {
 		return fmt.Errorf("创建HTTP请求失败: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if ctx != nil {
+		req = req.WithContext(ctx)
+	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
