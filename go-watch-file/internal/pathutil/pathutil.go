@@ -13,7 +13,6 @@ import (
 var ErrOutsideBaseDir = errors.New("文件路径不在监控目录下")
 
 // RelativePath 返回从 baseDir 到 fullPath 的相对路径，使用 / 分隔。
-// 如果 fullPath 不在 baseDir 下则报错。
 func RelativePath(baseDir, fullPath string) (string, error) {
 	base, err := resolvePath(baseDir)
 	if err != nil {
@@ -28,6 +27,7 @@ func RelativePath(baseDir, fullPath string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("计算相对路径失败: %w", err)
 	}
+	// 如果 fullPath 不在 baseDir 下则报错
 	if rel == "." || strings.HasPrefix(rel, "..") {
 		return "", fmt.Errorf("%w: %s", ErrOutsideBaseDir, fullPath)
 	}
@@ -36,7 +36,6 @@ func RelativePath(baseDir, fullPath string) (string, error) {
 }
 
 // BuildObjectKeyStrict 基于 watchDir 与 filePath 构造稳定的 S3 对象 key。
-// 要求 filePath 必须在 watchDir 下，否则返回错误。
 func BuildObjectKeyStrict(watchDir, filePath string) (string, error) {
 	rel, err := RelativePath(watchDir, filePath)
 	if err != nil {
@@ -55,10 +54,10 @@ func BuildObjectKeyStrict(watchDir, filePath string) (string, error) {
 // 仅在需要兼容遗留逻辑时使用，安全场景请使用 BuildObjectKeyStrict。
 func BuildObjectKeyPermissive(watchDir, filePath string) string {
 	key, err := BuildObjectKeyStrict(watchDir, filePath)
-	if err == nil {
-		return key
+	if err != nil {
+		return trimLeadingSlash(toSlashPath(filePath))
 	}
-	return trimLeadingSlash(toSlashPath(filePath))
+	return key
 }
 
 // BuildObjectKey 为兼容旧逻辑的宽松版本，等同于 BuildObjectKeyPermissive。
@@ -75,21 +74,19 @@ func ParseAppAndFileName(watchDir, filePath string) (string, string, error) {
 		return "", "", fmt.Errorf("invalid file path: %s", filePath)
 	}
 
-	if appName := appNameFromHomePath(filePath); appName != "" {
-		return appName, fileName, nil
-	}
-
-	if rel, err := RelativePath(watchDir, filePath); err == nil {
-		if appName := appNameFromRelative(rel); appName != "" {
-			return appName, fileName, nil
+	appName := appNameFromHomePath(filePath)
+	if appName == "" {
+		if rel, err := RelativePath(watchDir, filePath); err == nil {
+			appName = appNameFromRelative(rel)
 		}
 	}
-
-	if appName := parentDirName(filePath); appName != "" {
-		return appName, fileName, nil
+	if appName == "" {
+		appName = parentDirName(filePath)
 	}
-
-	return "", "", fmt.Errorf("invalid file path: %s", filePath)
+	if appName == "" {
+		return "", "", fmt.Errorf("invalid file path: %s", filePath)
+	}
+	return appName, fileName, nil
 }
 
 // BuildDownloadURL 根据 bucket、endpoint 和对象 key 构造下载 URL。
@@ -104,14 +101,16 @@ func BuildDownloadURL(endpoint, bucket, objectKey string, forcePathStyle, disabl
 		scheme = normalizedScheme
 	}
 
-	rawKey := cleanObjectKey(objectKey)
-	escapedKey := escapeObjectKey(objectKey)
+	rawKey := cleanObjectKey(objectKey)        //未转义的原始 key
+	escapedKey := escapeObjectKey(objectKey)   //转义后的 key 
 
 	u := &url.URL{Scheme: scheme}
 
 	rawParts := []string{basePath}
 	escapedParts := []string{basePath}
 
+	//forcePathStyle=true → https://host/basePath/bucket/objectKey
+	//forcePathStyle=false → https://bucket.host/basePath/objectKey
 	if forcePathStyle {
 		rawParts = append(rawParts, bucket, rawKey)
 		escapedParts = append(escapedParts, bucket, escapedKey)
@@ -145,6 +144,7 @@ func trimLeadingSlash(input string) string {
 }
 
 func joinURLPath(parts ...string) string {
+	//字符串切片
 	cleaned := make([]string, 0, len(parts))
 	for _, part := range parts {
 		part = strings.Trim(part, "/")
@@ -168,6 +168,7 @@ func baseName(path string) string {
 	if len(parts) == 0 {
 		return ""
 	}
+	// 路径的最后一段
 	return parts[len(parts)-1]
 }
 
@@ -211,8 +212,7 @@ func splitPathParts(path string) []string {
 	return filtered
 }
 
-// resolvePath 返回绝对路径，并解析路径中的符号链接。
-// 如果最后一级不存在，允许在解析其父目录后继续拼接最后一级，避免新增文件场景失败。
+// resolvePath 返回绝对路径，并解析路径中的符号链接
 func resolvePath(path string) (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("路径为空")
@@ -222,18 +222,19 @@ func resolvePath(path string) (string, error) {
 		return "", err
 	}
 	resolved, err := filepath.EvalSymlinks(abs)
-	if err == nil {
-		return resolved, nil
-	}
-	if errors.Is(err, fs.ErrNotExist) {
-		parent := filepath.Dir(abs)
-		parentResolved, dirErr := filepath.EvalSymlinks(parent)
-		if dirErr != nil {
-			return "", err
+	if err != nil {
+		// 如果最后一级不存在，允许在解析其父目录后继续拼接最后一级，避免新增文件场景失败
+		if errors.Is(err, fs.ErrNotExist) {
+			parent := filepath.Dir(abs)
+			parentResolved, dirErr := filepath.EvalSymlinks(parent)
+			if dirErr != nil {
+				return "", err
+			}
+			return filepath.Join(parentResolved, filepath.Base(abs)), nil
 		}
-		return filepath.Join(parentResolved, filepath.Base(abs)), nil
+		return "", err
 	}
-	return "", err
+	return resolved, nil
 }
 
 func escapeObjectKey(objectKey string) string {
@@ -252,13 +253,13 @@ func cleanObjectKey(objectKey string) string {
 func normalizeEndpoint(endpoint string) (scheme, host, basePath string) {
 	cleaned := strings.TrimSpace(endpoint)
 	parsed, err := url.Parse(cleaned)
-	if err == nil && parsed.Host != "" {
-		return parsed.Scheme, parsed.Host, strings.TrimSuffix(parsed.Path, "/")
-	}
-
-	parsed, err = url.Parse("//" + cleaned)
-	if err == nil {
+	if err != nil || parsed.Host == "" {
+		// 让不带协议的 endpoint 也能被正确当成主机名解析
+		parsed, err = url.Parse("//" + cleaned)
+		if err != nil {
+			return "", cleaned, ""
+		}
 		return "", parsed.Host, strings.TrimSuffix(parsed.Path, "/")
 	}
-	return "", cleaned, ""
+	return parsed.Scheme, parsed.Host, strings.TrimSuffix(parsed.Path, "/")
 }
