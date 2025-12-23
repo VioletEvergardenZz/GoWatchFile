@@ -31,6 +31,7 @@ func run() error {
 	if err := logger.InitLogger(cfg); err != nil {
 		return err
 	}
+	defer logger.Close()
 
 	logConfig(cfg)
 
@@ -89,10 +90,13 @@ func logConfig(cfg *models.Config) {
 	logger.Info("Jenkins 任务: %s", cfg.JenkinsJob)
 	// logger.Info("Jenkins User: %s", cfg.JenkinsUser)
 	// logger.Info("Jenkins Password: %s", cfg.JenkinsPassword)
+	logToStd := cfg.LogToStd == nil || *cfg.LogToStd
 	logger.Info("日志级别: %s", cfg.LogLevel)
 	if cfg.LogFile != "" {
 		logger.Info("日志文件: %s", cfg.LogFile)
 	}
+	logger.Info("日志输出到标准输出: %v", logToStd)
+	logger.Info("日志显示调用文件: %v", cfg.LogShowCaller)
 	logger.Info("上传工作池大小: %d", cfg.UploadWorkers)
 	logger.Info("上传队列大小: %d", cfg.UploadQueueSize)
 }

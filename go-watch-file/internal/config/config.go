@@ -13,6 +13,7 @@ const (
 	defaultUploadWorkers   = 3
 	defaultUploadQueueSize = 100
 	defaultLogLevel        = "info"
+	defaultLogToStd        = true
 )
 
 // LoadConfig 加载配置文件并应用默认值。
@@ -72,6 +73,13 @@ func applyDefaults(cfg *models.Config) {
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = defaultLogLevel
 	}
+	if cfg.LogToStd == nil {
+		cfg.LogToStd = boolPtr(defaultLogToStd)
+	}
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
 
 func requireValue(value, name string) error {

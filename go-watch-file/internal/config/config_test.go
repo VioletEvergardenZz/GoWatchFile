@@ -28,6 +28,8 @@ jenkins_password: "test-password"
 jenkins_job: "test-job"
 log_level: "debug"
 log_file: "/var/log/test.log"
+log_to_std: false
+log_show_caller: true
 upload_workers: 5
 upload_queue_size: 200
 `
@@ -65,6 +67,12 @@ upload_queue_size: 200
 	}
 	if config.LogLevel != "debug" {
 		t.Errorf("LogLevel 期望 debug, 实际 %s", config.LogLevel)
+	}
+	if config.LogToStd == nil || *config.LogToStd != false {
+		t.Errorf("LogToStd 期望 false, 实际 %v", config.LogToStd)
+	}
+	if config.LogShowCaller != true {
+		t.Errorf("LogShowCaller 期望 true, 实际 %v", config.LogShowCaller)
 	}
 	if config.UploadWorkers != 5 {
 		t.Errorf("UploadWorkers 期望 5, 实际 %d", config.UploadWorkers)
@@ -145,5 +153,11 @@ jenkins_job: "test-job"
 	}
 	if config.LogLevel != "info" {
 		t.Errorf("LogLevel 默认值期望 info, 实际 %s", config.LogLevel)
+	}
+	if config.LogToStd == nil || *config.LogToStd != true {
+		t.Errorf("LogToStd 默认值期望 true, 实际 %v", config.LogToStd)
+	}
+	if config.LogShowCaller != false {
+		t.Errorf("LogShowCaller 默认值期望 false, 实际 %v", config.LogShowCaller)
 	}
 }

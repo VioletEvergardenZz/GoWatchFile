@@ -24,6 +24,8 @@ type Config struct {
 	JenkinsJob      string `yaml:"jenkins_job"`
 	LogLevel        string `yaml:"log_level"`
 	LogFile         string `yaml:"log_file"`
+	LogToStd        *bool  `yaml:"log_to_std"`
+	LogShowCaller   bool   `yaml:"log_show_caller"`
 	UploadWorkers   int    `yaml:"upload_workers"`    // 上传工作池大小
 	UploadQueueSize int    `yaml:"upload_queue_size"` // 上传队列大小
 }
