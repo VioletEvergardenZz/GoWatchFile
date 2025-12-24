@@ -1,8 +1,13 @@
 package config
 
 import (
+	"bufio"
 	"fmt"
+	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 
 	"gopkg.in/yaml.v2"
 
@@ -16,20 +21,41 @@ const (
 	defaultLogToStd        = true
 )
 
+var allowedLogLevels = map[string]struct{}{
+	"debug": {},
+	"info":  {},
+	"warn":  {},
+	"error": {},
+}
+
 // LoadConfig 加载配置文件并应用默认值。
 func LoadConfig(configFile string) (*models.Config, error) {
+	envCandidates := []string{".env"}
+	if dir := filepath.Dir(configFile); dir != "" && dir != "." {
+		envCandidates = append(envCandidates, filepath.Join(dir, ".env"))
+	}
+	if err := loadEnvFiles(envCandidates...); err != nil {
+		return nil, err
+	}
+
 	data, err := os.ReadFile(configFile)
 	if err != nil {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var cfg models.Config
+	var cfg models.Config	//值类型结构体 在栈上分配、读完填数据后再取地址即可
 	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
 
+	if err := applyEnvOverrides(&cfg); err != nil {
+		return nil, err
+	}
 	applyDefaults(&cfg)
+	if err := ValidateConfig(&cfg); err != nil {
+		return nil, fmt.Errorf("config validation failed: %w", err)
+	}
 	return &cfg, nil
 }
 
@@ -38,7 +64,10 @@ func ValidateConfig(config *models.Config) error {
 	if err := requireValue(config.WatchDir, "监控目录"); err != nil {
 		return err
 	}
-	if err := requireValue(config.FileExt, "文件后缀"); err != nil {
+	if err := validateWatchDir(config.WatchDir); err != nil {
+		return err
+	}
+	if err := validateFileExt(config.FileExt); err != nil {
 		return err
 	}
 	if err := requireValue(config.Bucket, "S3 Bucket"); err != nil {
@@ -47,7 +76,7 @@ func ValidateConfig(config *models.Config) error {
 	if config.AK == "" || config.SK == "" {
 		return fmt.Errorf("S3认证信息不能为空")
 	}
-	if err := requireValue(config.Endpoint, "S3 Endpoint"); err != nil {
+	if err := validateEndpoint(config.Endpoint); err != nil {
 		return err
 	}
 	if err := requireValue(config.Region, "S3 Region"); err != nil {
@@ -58,6 +87,68 @@ func ValidateConfig(config *models.Config) error {
 	}
 	if err := requireValue(config.JenkinsJob, "Jenkins Job"); err != nil {
 		return err
+	}
+	if err := validateLogLevel(config.LogLevel); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func applyEnvOverrides(cfg *models.Config) error {
+	cfg.WatchDir = stringFromEnv("WATCH_DIR", cfg.WatchDir)
+	cfg.FileExt = stringFromEnv("FILE_EXT", cfg.FileExt)
+	cfg.RobotKey = stringFromEnv("ROBOT_KEY", cfg.RobotKey)
+	cfg.DingTalkWebhook = stringFromEnv("DINGTALK_WEBHOOK", cfg.DingTalkWebhook)
+	cfg.DingTalkSecret = stringFromEnv("DINGTALK_SECRET", cfg.DingTalkSecret)
+	cfg.Bucket = stringFromEnv("S3_BUCKET", cfg.Bucket)
+	cfg.AK = stringFromEnv("S3_AK", cfg.AK)
+	cfg.SK = stringFromEnv("S3_SK", cfg.SK)
+	cfg.Endpoint = stringFromEnv("S3_ENDPOINT", cfg.Endpoint)
+	cfg.Region = stringFromEnv("S3_REGION", cfg.Region)
+	if parsed, ok, err := boolFromEnv("S3_FORCE_PATH_STYLE"); err != nil {
+		return err
+	} else if ok {
+		cfg.ForcePathStyle = parsed
+	}
+	if parsed, ok, err := boolFromEnv("S3_DISABLE_SSL"); err != nil {
+		return err
+	} else if ok {
+		cfg.DisableSSL = parsed
+	}
+	cfg.JenkinsHost = stringFromEnv("JENKINS_HOST", cfg.JenkinsHost)
+	cfg.JenkinsUser = stringFromEnv("JENKINS_USER", cfg.JenkinsUser)
+	cfg.JenkinsPassword = stringFromEnv("JENKINS_PASSWORD", cfg.JenkinsPassword)
+	cfg.JenkinsJob = stringFromEnv("JENKINS_JOB", cfg.JenkinsJob)
+	cfg.LogLevel = stringFromEnv("LOG_LEVEL", cfg.LogLevel)
+	cfg.LogFile = stringFromEnv("LOG_FILE", cfg.LogFile)
+	if parsed, ok, err := boolFromEnv("LOG_SHOW_CALLER"); err != nil {
+		return err
+	} else if ok {
+		cfg.LogShowCaller = parsed
+	}
+
+	if val, ok := os.LookupEnv("LOG_TO_STD"); ok {
+		parsed, err := strconv.ParseBool(val)
+		if err != nil {
+			return fmt.Errorf("environment variable LOG_TO_STD is not a valid boolean: %w", err)
+		}
+		cfg.LogToStd = boolPtr(parsed)
+	}
+
+	if val, ok := os.LookupEnv("UPLOAD_WORKERS"); ok {
+		parsed, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("environment variable UPLOAD_WORKERS is not a valid integer: %w", err)
+		}
+		cfg.UploadWorkers = parsed
+	}
+	if val, ok := os.LookupEnv("UPLOAD_QUEUE_SIZE"); ok {
+		parsed, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("environment variable UPLOAD_QUEUE_SIZE is not a valid integer: %w", err)
+		}
+		cfg.UploadQueueSize = parsed
 	}
 
 	return nil
@@ -82,9 +173,169 @@ func boolPtr(v bool) *bool {
 	return &v
 }
 
+func stringFromEnv(envKey, current string) string {
+	if val, ok := os.LookupEnv(envKey); ok {
+		return val
+	}
+	return resolveEnvPlaceholder(current)
+}
+
+func boolFromEnv(envKey string) (bool, bool, error) {
+	val, ok := os.LookupEnv(envKey)
+	if !ok {
+		return false, false, nil
+	}
+	parsed, err := strconv.ParseBool(val)
+	if err != nil {
+		return false, false, fmt.Errorf("environment variable %s is not a valid boolean: %w", envKey, err)
+	}
+	return parsed, true, nil
+}
+
 func requireValue(value, name string) error {
 	if value == "" {
 		return fmt.Errorf("%s不能为空", name)
 	}
 	return nil
+}
+
+func validateWatchDir(path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("watch dir invalid: %w", err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("watch dir is not a directory")
+	}
+	return nil
+}
+
+func validateFileExt(ext string) error {
+	if err := requireValue(ext, "文件后缀"); err != nil {
+		return err
+	}
+	trimmed := strings.TrimSpace(ext)
+	if !strings.HasPrefix(trimmed, ".") || trimmed == "." {
+		return fmt.Errorf("file extension must start with '.'")
+	}
+	return nil
+}
+
+func validateEndpoint(endpoint string) error {
+	if err := requireValue(endpoint, "S3 Endpoint"); err != nil {
+		return err
+	}
+	trimmed := strings.TrimSpace(endpoint)
+	if trimmed == "" {
+		return fmt.Errorf("S3 Endpoint不能为空")
+	}
+
+	parsed, err := url.Parse(trimmed)
+	if err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		return nil
+	}
+
+	parsed, err = url.Parse("//" + trimmed)
+	if err != nil || parsed.Host == "" {
+		return fmt.Errorf("invalid S3 endpoint: %s", endpoint)
+	}
+	return nil
+}
+
+func validateLogLevel(level string) error {
+	if err := requireValue(level, "日志级别"); err != nil {
+		return err
+	}
+	level = strings.ToLower(strings.TrimSpace(level))
+	if _, ok := allowedLogLevels[level]; !ok {
+		return fmt.Errorf("unsupported log level: %s", level)
+	}
+	return nil
+}
+
+func resolveEnvPlaceholder(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if strings.HasPrefix(trimmed, "${") && strings.HasSuffix(trimmed, "}") {
+		envKey := strings.TrimSuffix(strings.TrimPrefix(trimmed, "${"), "}")
+		if envVal, ok := os.LookupEnv(envKey); ok {
+			return envVal
+		}
+		return ""
+	}
+	return value
+}
+
+func loadEnvFiles(paths ...string) error {
+	seen := make(map[string]struct{})
+	for _, p := range paths {
+		if p == "" {
+			continue			//跳过当前循环剩余逻辑，直接进入下一次迭代
+		}
+		if _, ok := seen[p]; ok {
+			continue
+		}
+		seen[p] = struct{}{}	 //将路径添加到已处理集合中
+
+		info, err := os.Stat(p)
+		if err != nil || info.IsDir() {
+			continue
+		}
+		if err := loadEnvFile(p); err != nil {
+			return err
+		}
+	}
+	return nil			
+}
+
+func loadEnvFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("failed to open env file %s: %w", path, err)
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)					    //按行读取的扫描器
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())		//在 Scan() 成功返回 true 后，取出刚刚读到的那一行内容（字符串）
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)		    //只按第一个 = 拆成两段：parts[0] 是键，parts[1] 是值（后面允许值里再出现 = 也不会被继续拆）
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid env line in %s: %s", path, line)
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		if key == "" {
+			return fmt.Errorf("invalid env key in %s: %s", path, line)
+		}
+
+		if unquoted, ok := trimQuotes(val); ok {
+			val = unquoted
+		}
+
+		if _, exists := os.LookupEnv(key); exists {	    //检查进程里是否已存在同名环境变量
+			continue
+		}
+		if err := os.Setenv(key, val); err != nil {		//设置进当前进程的环境变量 .env 不会覆盖现有值
+			return fmt.Errorf("failed to set env %s from %s: %w", key, path, err)
+		}
+	}
+
+	// 判断扫描过程中是否发生错误
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("failed to read env file %s: %w", path, err)
+	}
+	return nil
+}
+
+func trimQuotes(val string) (string, bool) {
+	//长度不足 2 时不可能同时有首尾引号
+	if len(val) >= 2 {
+		if (strings.HasPrefix(val, "\"") && strings.HasSuffix(val, "\"")) ||
+			(strings.HasPrefix(val, "'") && strings.HasSuffix(val, "'")) {
+			return val[1 : len(val)-1], true
+		}
+	}
+	return val, false
 }

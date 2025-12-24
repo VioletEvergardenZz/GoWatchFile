@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -13,7 +14,8 @@ func TestRelativePath_PreventsSymlinkEscape(t *testing.T) {
 
 	escapeLink := filepath.Join(baseDir, "escape")
 	if err := os.Symlink(outsideDir, escapeLink); err != nil {
-		t.Fatalf("symlink create failed: %v", err)
+		skipIfSymlinkNotSupported(t, err)
+		return
 	}
 
 	outsideFile := filepath.Join(outsideDir, "out.txt")
@@ -35,7 +37,8 @@ func TestRelativePath_AllowsSymlinkInside(t *testing.T) {
 	}
 	linkDir := filepath.Join(baseDir, "link")
 	if err := os.Symlink(realDir, linkDir); err != nil {
-		t.Fatalf("symlink create failed: %v", err)
+		skipIfSymlinkNotSupported(t, err)
+		return
 	}
 
 	targetFile := filepath.Join(realDir, "file.txt")
@@ -94,5 +97,12 @@ func TestBuildDownloadURL_VirtualHostEndpointWithoutScheme(t *testing.T) {
 	want := "http://bucket.example.com:9000/base/a%20b.txt"
 	if u != want {
 		t.Fatalf("unexpected download url:\n got: %s\nwant: %s", u, want)
+	}
+}
+
+func skipIfSymlinkNotSupported(t *testing.T, err error) {
+	t.Helper()
+	if os.IsPermission(err) || strings.Contains(strings.ToLower(err.Error()), "privilege") {
+		t.Skipf("symlink not supported in this environment: %v", err)
 	}
 }

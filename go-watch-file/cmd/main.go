@@ -58,14 +58,7 @@ func parseFlags() string {
 }
 
 func loadAndValidateConfig(configPath string) (*models.Config, error) {
-	cfg, err := config.LoadConfig(configPath)
-	if err != nil {
-		return nil, err
-	}
-	if err := config.ValidateConfig(cfg); err != nil {
-		return nil, err
-	}
-	return cfg, nil
+	return config.LoadConfig(configPath)
 }
 
 func logConfig(cfg *models.Config) {

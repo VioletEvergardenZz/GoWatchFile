@@ -1,202 +1,103 @@
 # File Watch Service
 
-一个基于 Go 的文件监控服务，支持文件变化检测、S3 上传、Jenkins 构建触发和企业微信/钉钉通知。
+一个通用的文件监控与处理服务：监听目录、过滤/匹配文件、并行上传到 S3 兼容存储，可选触发 Jenkins 任务，并通过企业微信/钉钉机器人通知。最初用于 Java `.hprof` 转储监控，现在已扩展为通用文件流水线。
 
-## 项目结构
+## 能力概览
+- 目录监听：递归监控指定目录，基于后缀过滤目标文件。
+- 上传流水线：S3 兼容存储上传，工作池并发 + 队列限流，防止积压。
+- 触发动作：可选 Jenkins Job 触发，上传完成后执行后续处理。
+- 通知告警：企业微信 / 钉钉机器人推送结果或异常。
+- 路径规范：统一的相对路径与对象 Key 生成，避免路径穿越和重复。
+- 配置管理：YAML + 环境变量覆盖，内置默认值与严格校验，支持 `.env`。
 
-```
-go-watch-file/
-├── cmd/                      # 应用程序入口
-│   └── main.go               # 主程序入口
-├── internal/                 # 内部包
-│   ├── config/               # 配置管理
-│   │   └── config.go         # 配置加载和验证
-│   ├── logger/               # 日志管理
-│   │   └── logger.go         # 日志系统
-│   ├── s3/                   # S3 客户端
-│   │   └── client.go         # S3 上传功能
-│   ├── jenkins/              # Jenkins 客户端
-│   │   └── client.go         # Jenkins 构建触发
-│   ├── wechat/               # 企业微信机器人
-│   │   └── robot.go          # 微信消息发送
-│   ├── dingtalk/             # 钉钉机器人
-│   │   └── robot.go          # 钉钉消息发送
-│   ├── watcher/              # 文件监控
-│   │   └── file_watcher.go   # 文件变化监控
-│   ├── upload/               # 上传管理
-│   │   └── worker_pool.go    # 上传工作池
-│   ├── service/              # 服务层
-│   │   └── file_service.go   # 文件服务协调器
-│   ├── pathutil/             # 路径处理
-│   │   └── pathutil.go       # 路径规则集中处理
-│   └── models/               # 数据模型
-│       └── types.go          # 结构体定义
-├── pkg/                      # 公共包
-│   └── utils/                # 工具函数
-│       └── file_utils.go     # 文件操作工具
-├── config.yaml               # 配置文件
-├── go.mod                    # Go 模块文件
-├── go.sum                    # Go 依赖校验文件
-└── README.md                 # 项目说明
-```
+## 快速上手
+1) 复制并填写环境变量  
+   ```bash
+   cp .env.example .env
+   # 按需填充存储凭证、Jenkins、Webhook 等
+   ```
+2) 配置监控目录与文件类型  
+   编辑 `config.yaml`，主要关心：
+   - `watch_dir`: 需要监控的根目录
+   - `file_ext`: 目标文件后缀（如 `.log` / `.hprof` / `.txt`）
+   其他字段保持 `${ENV}` 占位符，用 `.env` 或真实环境变量注入。
+3) 运行
+   ```bash
+   go build -o file-watch cmd/main.go
+   ./file-watch -config config.yaml
+   ```
+4) 停止：终端 `Ctrl + C`，服务会优雅退出。
 
-## 模块说明
+环境变量优先级：真实环境变量 > `.env` > `config.yaml` 占位符 > 内置默认值。
 
-### 1. cmd/main.go
-- 程序入口点
-- 命令行参数处理
-- 服务初始化和启动
-- 信号处理
-
-### 2. internal/config
-- 配置文件加载和解析
-- 配置验证
-- 默认值设置
-
-### 3. internal/logger
-- 日志系统初始化
-- 多级别日志记录（输出为中文）
-- 文件和控制台输出
-
-### 4. internal/s3
-- S3 客户端管理
-- 文件上传功能
-- 下载链接生成
-
-### 5. internal/jenkins
-- Jenkins 连接管理
-- 构建任务触发
-
-### 6. internal/wechat
-- 企业微信机器人
-- 消息发送功能
-
-### 7. internal/dingtalk
-- 钉钉机器人
-- 消息发送功能
-
-### 8. internal/watcher
-- 文件系统监控
-- 递归目录监控
-- 文件变化检测
-
-### 9. internal/upload
-- 上传工作池管理
-- 并发上传控制
-- 队列管理
-
-### 10. internal/service
-- 服务协调器
-- 业务流程管理
-- 组件间通信
-
-### 11. internal/pathutil
-- 路径规则集中处理
-- 相对路径、S3 Key 与下载 URL 的统一生成
-
-### 12. internal/models
-- 配置与统计相关结构体
-- 文件事件结构体
-
-### 13. pkg/utils
-- 通用工具函数
-- 文件操作工具
-
-## 路径处理规则（重要）
-
-为了让上传路径与下载链接更稳定，项目统一采用以下规则：
-
-1. **监控目录是根路径**：所有业务路径都以 `watch_dir` 为基准计算相对路径。
-2. **S3 对象 Key**：优先使用相对路径，并移除前导 `/`，统一用 `/` 作为分隔符。
-3. **下载链接生成**：
-   - `force_path_style: true` 时：`https://endpoint/bucket/objectKey`
-   - `force_path_style: false` 时：`https://bucket.endpoint/objectKey`
-4. **应用名解析**：取相对路径的第一段目录名作为 `appName`。
-
-示例（Linux 路径）：
-```
-watch_dir: /data/logs
-file:      /data/logs/appA/2025/dump_001.hprof
-
-相对路径: appA/2025/dump_001.hprof
-对象 Key: appA/2025/dump_001.hprof
-appName : appA
-下载链接: https://bucket.endpoint/appA/2025/dump_001.hprof
-```
-
-## 使用方法
-
-### 1. 准备环境
-- 安装 Go（建议与 `go.mod` 中版本保持一致）
-- 准备好 S3 与 Jenkins 的可用配置
-
-### 2. 编译
-```bash
-go build -o file-watch cmd/main.go
-```
-
-### 3. 运行
-```bash
-./file-watch -config config.yaml
-```
-
-### 4. 停止
-- 在控制台按 `Ctrl + C`，程序会优雅退出并释放资源
-
-### 5. 日志查看
-- `log_file` 为空：日志输出到控制台
-- `log_file` 有值：日志同时输出到控制台和文件
-
-### 配置文件示例
+## 配置与环境变量
+`config.yaml` 仅保留占位符；实际值放在 `.env` 或外部环境：
 ```yaml
-watch_dir: "/path/to/watch"
-file_ext: ".hprof"
-robot_key: "your-robot-key"
-dingtalk_webhook: "https://oapi.dingtalk.com/robot/send?access_token=your_access_token"
-dingtalk_secret: "your-secret"
-bucket: "your-bucket"
-ak: "your-access-key"
-sk: "your-secret-key"
-endpoint: "your-s3-endpoint"
-region: "your-region"
-force_path_style: true
+watch_dir: "${WATCH_DIR}"
+file_ext: "${FILE_EXT}"
+robot_key: "${ROBOT_KEY}"
+dingtalk_webhook: "${DINGTALK_WEBHOOK}"
+dingtalk_secret: "${DINGTALK_SECRET}"
+bucket: "${S3_BUCKET}"
+ak: "${S3_AK}"
+sk: "${S3_SK}"
+endpoint: "${S3_ENDPOINT}"
+region: "${S3_REGION}"
+force_path_style: false
 disable_ssl: false
-jenkins_host: "http://jenkins.example.com"
-jenkins_user: "your-jenkins-user"
-jenkins_password: "your-jenkins-password"
-jenkins_job: "your-jenkins-job"
-log_level: "info"
-log_file: "/var/log/file-watch.log"
+jenkins_host: "${JENKINS_HOST}"
+jenkins_user: "${JENKINS_USER}"
+jenkins_password: "${JENKINS_PASSWORD}"
+jenkins_job: "${JENKINS_JOB}"
+log_level: "${LOG_LEVEL}"
+log_file: "${LOG_FILE}"
+log_to_std: true
+log_show_caller: false
 upload_workers: 3
 upload_queue_size: 100
 ```
 
-## 特性
-
-1. **模块化设计**：清晰的模块分离，便于维护和扩展
-2. **并发处理**：使用工作池处理文件上传，提高性能
-3. **文件监控**：实时监控文件变化，支持递归目录监控
-4. **S3 集成**：支持 S3 兼容存储的文件上传
-5. **Jenkins 集成**：自动触发 Jenkins 构建任务
-6. **微信/钉钉通知**：企业微信或钉钉机器人消息推送
-7. **日志管理**：多级别日志记录，支持文件输出
-8. **配置管理**：YAML 配置文件，支持验证和默认值
-9. **优雅关闭**：信号处理，确保服务正常关闭
-
-## 开发说明
-
-### 添加新功能
-1. 在相应的模块中添加功能
-2. 更新 `internal/models` 中的数据结构（如果需要）
-3. 在 `internal/service` 中集成新功能
-4. 更新配置与文档
-
-### 测试
-```bash
-go test ./...
+`.env.example` 提供模板（复制为 `.env` 后填写）：
+```
+WATCH_DIR=/path/to/watch
+FILE_EXT=.hprof
+S3_BUCKET=your-bucket
+S3_AK=your-ak
+S3_SK=your-sk
+S3_ENDPOINT=s3.example.com
+S3_REGION=us-east-1
+JENKINS_HOST=http://jenkins.example.com:8080
+JENKINS_USER=admin
+JENKINS_PASSWORD=your-password
+JENKINS_JOB=dump
+LOG_LEVEL=info
+LOG_FILE=logs/file-monitor.log
+LOG_TO_STD=true
+LOG_SHOW_CALLER=false
+UPLOAD_WORKERS=3
+UPLOAD_QUEUE_SIZE=100
 ```
 
-### 代码规范
-- 遵循 Go 语言官方代码规范
-- 使用 `gofmt` 格式化代码
-- 添加适当的注释和文档
+关键校验与默认策略：
+- `watch_dir` 必须存在且为目录；`file_ext` 必须以 `.` 开头。
+- 日志级别仅允许 `debug|info|warn|error`。
+- 上传并发/队列为容错默认（3/100），可被环境变量覆盖。
+
+## 架构与模块
+- `watcher/`：文件系统监听，过滤后缀，推送事件到队列。
+- `upload/`：工作池消费队列并上传至 S3 兼容存储。
+- `pathutil/`：路径归一化、相对路径校验、对象 Key/下载 URL 生成。
+- `jenkins/`：触发 Jenkins 任务（可选）。
+- `wechat/` / `dingtalk/`：机器人通知发送。
+- `config/`：配置加载（YAML + env）、默认值填充、强校验。
+- `logger/`：级别化日志，支持文件/标准输出。
+
+## 设计要点
+- 配置加载分层：读取 → 环境变量覆盖 → 默认值 → 强校验，避免启动时潜在配置缺失。
+- 三态布尔处理：日志输出等布尔值通过指针区分“未配置 / false / true”。
+- 安全路径：相对路径解析防止目录穿越，生成的 S3 Key 统一去除前导 `/`。
+- 并发与背压：上传工作池 + 队列大小可调，避免流量突增时阻塞监控线程。
+
+## 开发与测试
+- 运行测试：`go test ./...`
+- 代码格式：`gofmt`，遵循 Go 官方规范。

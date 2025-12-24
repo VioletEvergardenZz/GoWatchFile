@@ -1,16 +1,19 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"file-watch/internal/models"
 )
 
 func TestLoadConfig(t *testing.T) {
-	// 创建临时配置文件
-	tempConfig := `
-watch_dir: "/test/dir"
+	watchDir := filepath.ToSlash(t.TempDir())
+
+	tempConfig := fmt.Sprintf(`
+watch_dir: "%s"
 file_ext: ".hprof"
 robot_key: "test-key"
 dingtalk_webhook: "https://oapi.dingtalk.com/robot/send?access_token=test-token"
@@ -18,7 +21,7 @@ dingtalk_secret: "test-secret"
 bucket: "test-bucket"
 ak: "test-ak"
 sk: "test-sk"
-endpoint: "test-endpoint"
+endpoint: "https://test-endpoint.com"
 region: "test-region"
 force_path_style: true
 disable_ssl: false
@@ -32,29 +35,17 @@ log_to_std: false
 log_show_caller: true
 upload_workers: 5
 upload_queue_size: 200
-`
+`, watchDir)
 
-	// 写入临时文件
-	tmpFile, err := os.CreateTemp("", "test-config-*.yaml")
-	if err != nil {
-		t.Fatalf("创建临时文件失败: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
+	configPath := writeTempConfig(t, tempConfig)
 
-	if _, err := tmpFile.WriteString(tempConfig); err != nil {
-		t.Fatalf("写入临时文件失败: %v", err)
-	}
-	tmpFile.Close()
-
-	// 测试加载配置
-	config, err := LoadConfig(tmpFile.Name())
+	config, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 验证配置值
-	if config.WatchDir != "/test/dir" {
-		t.Errorf("WatchDir 期望 /test/dir, 实际 %s", config.WatchDir)
+	if config.WatchDir != watchDir {
+		t.Errorf("WatchDir 期望 %s, 实际 %s", watchDir, config.WatchDir)
 	}
 	if config.FileExt != ".hprof" {
 		t.Errorf("FileExt 期望 .hprof, 实际 %s", config.FileExt)
@@ -83,68 +74,90 @@ upload_queue_size: 200
 }
 
 func TestValidateConfig(t *testing.T) {
-	// 测试有效配置
-	validConfig := &models.Config{
-		WatchDir:    "/test/dir",
-		FileExt:     ".hprof",
-		RobotKey:    "test-key",
-		Bucket:      "test-bucket",
-		AK:          "test-ak",
-		SK:          "test-sk",
-		Endpoint:    "test-endpoint",
-		Region:      "test-region",
-		JenkinsHost: "http://test-jenkins.com",
-		JenkinsJob:  "test-job",
-	}
+	t.Run("valid config", func(t *testing.T) {
+		watchDir := filepath.ToSlash(t.TempDir())
+		validConfig := &models.Config{
+			WatchDir:    watchDir,
+			FileExt:     ".hprof",
+			RobotKey:    "test-key",
+			Bucket:      "test-bucket",
+			AK:          "test-ak",
+			SK:          "test-sk",
+			Endpoint:    "https://test-endpoint.com",
+			Region:      "test-region",
+			JenkinsHost: "http://test-jenkins.com",
+			JenkinsJob:  "test-job",
+			LogLevel:    "info",
+		}
 
-	if err := ValidateConfig(validConfig); err != nil {
-		t.Errorf("有效配置验证失败: %v", err)
-	}
+		if err := ValidateConfig(validConfig); err != nil {
+			t.Fatalf("有效配置验证失败: %v", err)
+		}
+	})
 
-	// 测试无效配置
-	invalidConfig := &models.Config{
-		WatchDir: "", // 空监控目录
-	}
+	t.Run("invalid file ext", func(t *testing.T) {
+		watchDir := filepath.ToSlash(t.TempDir())
+		invalidConfig := &models.Config{
+			WatchDir:    watchDir,
+			FileExt:     "hprof", // missing leading dot
+			Bucket:      "test-bucket",
+			AK:          "test-ak",
+			SK:          "test-sk",
+			Endpoint:    "https://test-endpoint.com",
+			Region:      "test-region",
+			JenkinsHost: "http://test-jenkins.com",
+			JenkinsJob:  "test-job",
+			LogLevel:    "info",
+		}
 
-	if err := ValidateConfig(invalidConfig); err == nil {
-		t.Error("无效配置应该验证失败")
-	}
+		if err := ValidateConfig(invalidConfig); err == nil {
+			t.Fatal("无效配置应该验证失败")
+		}
+	})
+
+	t.Run("invalid log level", func(t *testing.T) {
+		watchDir := filepath.ToSlash(t.TempDir())
+		invalidConfig := &models.Config{
+			WatchDir:    watchDir,
+			FileExt:     ".hprof",
+			Bucket:      "test-bucket",
+			AK:          "test-ak",
+			SK:          "test-sk",
+			Endpoint:    "https://test-endpoint.com",
+			Region:      "test-region",
+			JenkinsHost: "http://test-jenkins.com",
+			JenkinsJob:  "test-job",
+			LogLevel:    "infos",
+		}
+
+		if err := ValidateConfig(invalidConfig); err == nil {
+			t.Fatal("无效日志级别应该验证失败")
+		}
+	})
 }
 
 func TestLoadConfigWithDefaults(t *testing.T) {
-	// 创建最小配置文件
-	minimalConfig := `
-watch_dir: "/test/dir"
+	watchDir := filepath.ToSlash(t.TempDir())
+	minimalConfig := fmt.Sprintf(`
+watch_dir: "%s"
 file_ext: ".hprof"
 robot_key: "test-key"
 bucket: "test-bucket"
 ak: "test-ak"
 sk: "test-sk"
-endpoint: "test-endpoint"
+endpoint: "https://test-endpoint.com"
 region: "test-region"
 jenkins_host: "http://test-jenkins.com"
 jenkins_job: "test-job"
-`
+`, watchDir)
 
-	// 写入临时文件
-	tmpFile, err := os.CreateTemp("", "test-minimal-config-*.yaml")
-	if err != nil {
-		t.Fatalf("创建临时文件失败: %v", err)
-	}
-	defer os.Remove(tmpFile.Name())
+	configPath := writeTempConfig(t, minimalConfig)
 
-	if _, err := tmpFile.WriteString(minimalConfig); err != nil {
-		t.Fatalf("写入临时文件失败: %v", err)
-	}
-	tmpFile.Close()
-
-	// 测试加载配置
-	config, err := LoadConfig(tmpFile.Name())
+	config, err := LoadConfig(configPath)
 	if err != nil {
 		t.Fatalf("加载配置失败: %v", err)
 	}
 
-	// 验证默认值
 	if config.UploadWorkers != 3 {
 		t.Errorf("UploadWorkers 默认值期望 3, 实际 %d", config.UploadWorkers)
 	}
@@ -160,4 +173,66 @@ jenkins_job: "test-job"
 	if config.LogShowCaller != false {
 		t.Errorf("LogShowCaller 默认值期望 false, 实际 %v", config.LogShowCaller)
 	}
+}
+
+func TestLoadConfigEnvOverrides(t *testing.T) {
+	fileWatchDir := filepath.ToSlash(t.TempDir())
+	envWatchDir := filepath.ToSlash(t.TempDir())
+
+	baseConfig := fmt.Sprintf(`
+watch_dir: "%s"
+file_ext: ".hprof"
+robot_key: "test-key"
+bucket: "test-bucket"
+ak: "file-ak"
+sk: "file-sk"
+endpoint: "https://test-endpoint.com"
+region: "test-region"
+jenkins_host: "http://test-jenkins.com"
+jenkins_job: "test-job"
+upload_workers: 2
+log_level: "info"
+`, fileWatchDir)
+
+	configPath := writeTempConfig(t, baseConfig)
+
+	t.Setenv("WATCH_DIR", envWatchDir)
+	t.Setenv("S3_AK", "env-ak")
+	t.Setenv("S3_SK", "env-sk")
+	t.Setenv("UPLOAD_WORKERS", "7")
+	t.Setenv("LOG_LEVEL", "error")
+
+	config, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+
+	if config.WatchDir != envWatchDir {
+		t.Errorf("WatchDir 应从环境变量覆盖, 实际 %s", config.WatchDir)
+	}
+	if config.AK != "env-ak" || config.SK != "env-sk" {
+		t.Errorf("AK/SK 应从环境变量覆盖, 实际 ak=%s sk=%s", config.AK, config.SK)
+	}
+	if config.UploadWorkers != 7 {
+		t.Errorf("UploadWorkers 应从环境变量覆盖为 7, 实际 %d", config.UploadWorkers)
+	}
+	if config.LogLevel != "error" {
+		t.Errorf("LogLevel 应从环境变量覆盖为 error, 实际 %s", config.LogLevel)
+	}
+}
+
+func writeTempConfig(t *testing.T, content string) string {
+	t.Helper()
+	tmpFile, err := os.CreateTemp("", "test-config-*.yaml")
+	if err != nil {
+		t.Fatalf("创建临时文件失败: %v", err)
+	}
+	if _, err := tmpFile.WriteString(content); err != nil {
+		t.Fatalf("写入临时文件失败: %v", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		t.Fatalf("关闭临时文件失败: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Remove(tmpFile.Name()) })
+	return tmpFile.Name()
 }

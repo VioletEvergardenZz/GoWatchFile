@@ -1,39 +1,30 @@
 # 文件监控配置
-# 监控目录路径
-watch_dir: 'C:\Users\admin\Downloads'
+watch_dir: "${WATCH_DIR}"
+file_ext: "${FILE_EXT}"
 
-# 监控的文件后缀
-file_ext: ".hprof"
-
-# 企业微信机器人 webhook key
-robot_key: "your_robot_key_here"
-
-# DingTalk robot webhook
-dingtalk_webhook: "https://oapi.dingtalk.com/robot/send?access_token=e9623c99edbef40739a4c750e9526923d07d318b0abd1b9c2800e582dc6b934c"
-# DingTalk secret (optional)
-dingtalk_secret: ""
+# 通知机器人配置
+robot_key: "${ROBOT_KEY}"
+dingtalk_webhook: "${DINGTALK_WEBHOOK}"
+dingtalk_secret: "${DINGTALK_SECRET}"
 
 # S3兼容对象存储配置
-bucket: "go-watch-file"
-ak: "LTAI5tQstJDyziXToSV8J7rJ"
-sk: "DzTgJVI8kljsh2hPh5e8OSQw2RNBnC"
-endpoint: "oss-cn-hangzhou.aliyuncs.com"
-region: "cn-hangzhou"
+bucket: "${S3_BUCKET}"
+ak: "${S3_AK}"
+sk: "${S3_SK}"
+endpoint: "${S3_ENDPOINT}"
+region: "${S3_REGION}"
 force_path_style: false
 disable_ssl: false
 
 # Jenkins 配置
-jenkins_host: "http://192.168.127.128:32000"
-jenkins_user: "admin"
-jenkins_password: "123456"
-jenkins_job: "dump"
+jenkins_host: "${JENKINS_HOST}"
+jenkins_user: "${JENKINS_USER}"
+jenkins_password: "${JENKINS_PASSWORD}"
+jenkins_job: "${JENKINS_JOB}"
 
 # 日志配置
-# 日志级别: info, warn, error, debug (debug级别会输出更详细的日志)
-log_level: "info"
-# 日志文件路径 (留空则只输出到控制台)
-log_file: "logs/file-monitor.log"
-# 是否输出到标准输出（默认 true，容器环境建议 true）
+log_level: "${LOG_LEVEL}"
+log_file: "${LOG_FILE}"
 log_to_std: true
 # 是否显示调用文件和行号（开启会有额外开销）
 log_show_caller: false
