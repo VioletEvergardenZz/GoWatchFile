@@ -126,6 +126,7 @@ func Close() error {
 }
 
 func logWithLevel(level int32, levelLabel, format string, v ...interface{}) {
+	// 通过阈值过滤低级别日志
 	if level < logLevel.Load() {
 		return
 	}
