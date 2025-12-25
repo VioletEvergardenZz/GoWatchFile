@@ -20,7 +20,7 @@ func TestRelativePath_PreventsSymlinkEscape(t *testing.T) {
 
 	outsideFile := filepath.Join(outsideDir, "out.txt")
 	if err := os.WriteFile(outsideFile, []byte("data"), 0o644); err != nil {
-			t.Fatalf("写入外部文件失败: %v", err)
+		t.Fatalf("写入外部文件失败: %v", err)
 	}
 
 	_, err := RelativePath(baseDir, filepath.Join(escapeLink, "out.txt"))

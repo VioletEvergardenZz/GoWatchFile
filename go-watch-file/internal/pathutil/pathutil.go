@@ -101,8 +101,8 @@ func BuildDownloadURL(endpoint, bucket, objectKey string, forcePathStyle, disabl
 		scheme = normalizedScheme
 	}
 
-	rawKey := cleanObjectKey(objectKey)        //未转义的原始 key
-	escapedKey := escapeObjectKey(objectKey)   //转义后的 key 
+	rawKey := cleanObjectKey(objectKey)      //未转义的原始 key
+	escapedKey := escapeObjectKey(objectKey) //转义后的 key
 
 	u := &url.URL{Scheme: scheme}
 

@@ -61,9 +61,6 @@ func LoadConfig(configFile string) (*models.Config, error) {
 
 // ValidateConfig 验证配置必填项。
 func ValidateConfig(config *models.Config) error {
-	if err := requireValue(config.WatchDir, "监控目录"); err != nil {
-		return err
-	}
 	if err := validateWatchDir(config.WatchDir); err != nil {
 		return err
 	}
@@ -210,6 +207,9 @@ func requireValue(value, name string) error {
 }
 
 func validateWatchDir(path string) error {
+	if err := requireValue(path, "监控目录"); err != nil {
+		return err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("监控目录无效: %w", err)
@@ -294,7 +294,7 @@ func loadEnvFiles(paths ...string) error {
 			return err
 		}
 	}
-	return nil			
+	return nil
 }
 
 func loadEnvFile(path string) error {
