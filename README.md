@@ -1,301 +1,99 @@
-# Java堆内存转储自动化分析系统
-
-## 📁 目录结构
-
-```
-mat-java-oom-md/
-├── README.md                            # 本文件
-├── java-heapdump-automation-system.md   # 系统详细文档
-├── system-flowchart.md                  # 系统流程图
-├── go-watch-file/                       # Go文件监控工具
-│   ├── main.go                          # 主程序
-│   ├── Dockerfile                       # Docker镜像定义
-│   ├── docker-build.sh                  # Docker构建脚本
-│   └── Makefile                         # 构建配置
-├── ai-analysis/                         # AI智能分析模块
-│   ├── main.py                          # AI分析主程序
-│   ├── requirements.txt                 # Python依赖
-│   ├── Dockerfile                       # Docker镜像定义
-│   ├── build.sh                         # 构建脚本
-│   └── .dockerignore                    # Docker忽略文件
-├── jenkins-job/                         # Jenkins自动化任务
-│   ├── jenkinsfile                      # Jenkins流水线
-│   ├── dockerfile                       # 内存转储分析镜像
-│   ├── entrypoint.sh                    # 容器启动脚本
-│   └── dump/                            # 分析报告模板
-│       └── index.html                   # 报告首页
-└── java-springboot-example/             # 示例应用
-    ├── src/                             # Java示例代码
-    ├── docker-compose.yml               # 容器编排
-    └── prometheus.yml                   # 监控配置
-```
-
-## 🚀 系统概述
-
-本系统是一个完整的Java堆内存转储自动化分析解决方案，通过Kubernetes DaemonSet部署的Go监控工具，结合AI智能分析，实现从文件检测到在线分析报告的完整自动化流程。
-
-## ✨ 核心特性
-
-- **🔍 自动监控**：基于Go fsnotify的实时文件监控
-- **☁️ 自动存储**：集成对象存储服务，支持多种云存储
-- **📊 自动分析**：集成MAT-CLI工具，自动生成HTML分析报告
-- **🤖 AI智能分析**：基于大语言模型的深度OOM分析
-- **🌐 在线预览**：通过Nginx提供在线分析报告访问
-- **🔔 智能通知**：自动识别应用并通知相关开发人员
-- **⏰ 生命周期管理**：自动清理过期文件，节省存储成本
-- **🔄 CI/CD集成**：Jenkins流水线自动化处理
-
-## 🏗️ 系统架构
-
-### 核心组件
-
-1. **Java应用程序**：配置堆内存转储参数
-2. **DaemonSet监控工具**：基于Go fsnotify的文件监控
-3. **对象存储服务**：hprof文件存储和生命周期管理
-4. **CMDB配置系统**：应用与开发人员关联关系
-5. **通知服务**：内部消息推送接口
-6. **MAT-CLI工具**：自动化堆内存分析
-7. **AI分析引擎**：基于OpenAI API的智能分析
-8. **Nginx服务**：在线分析报告展示
-9. **Jenkins流水线**：自动化CI/CD处理
-
-### 技术栈
-
-- **监控工具**：Go + fsnotify
-- **存储服务**：对象存储（OSS/COS/S3等）
-- **部署方式**：Kubernetes DaemonSet
-- **文件系统**：HostPath挂载
-- **分析工具**：MAT-CLI（Linux命令行版本）
-- **AI分析**：Python + OpenAI API
-- **Web服务**：Nginx + HTML报告
-- **CI/CD**：Jenkins Pipeline
-
-## 📋 工作流程
-
-1. **文件生成** → Java应用OOM异常，自动生成hprof文件
-2. **文件监控** → DaemonSet工具监听文件变化
-3. **文件处理** → 自动上传至对象存储，解析应用信息
-4. **通知推送** → 调用CMDB API，推送通知给开发人员
-5. **自动化分析** → 使用MAT-CLI分析hprof文件
-6. **AI智能分析** → 基于大语言模型进行深度分析
-7. **在线展示** → 生成HTML报告，部署到Nginx
-8. **生命周期管理** → 15天后自动清理过期文件
-
-## 🛠️ 快速开始
-
-### 1. 配置Java应用
-
-```bash
--XX:+HeapDumpOnOutOfMemoryError
--XX:HeapDumpPath=/logs/dump-${HOSTNAME}-$(date '+%s').hprof
-```
-
-### 2. 部署Go监控工具
-
-```bash
-cd go-watch-file
-./docker-build.sh
-```
-
-### 3. 部署AI分析模块
-
-```bash
-cd ai-analysis
-./build.sh
-```
-
-### 4. 配置Jenkins流水线
-
-```groovy
-pipeline {
-    agent any
-    stages {
-        stage('dump') {
-            // MAT分析阶段
-        }
-        stage('ai-analysis') {
-            // AI分析阶段
-        }
-    }
-}
-```
-
-### 5. 配置对象存储
-
-```yaml
-storage:
-  type: "oss"
-  endpoint: "https://oss.example.com"
-  bucket: "heapdump-files"
-```
-
-### 6. 配置Nginx服务
-
-```nginx
-server {
-    listen 80;
-    server_name reports.example.com;
-    root /var/www/html/reports;
-}
-```
-
-## 🤖 AI智能分析模块
-
-### 功能特性
-
-- **深度分析**：基于大语言模型的OOM根因分析
-- **专业报告**：生成结构化的中文分析报告
-- **智能诊断**：自动识别内存泄漏模式和性能瓶颈
-- **优化建议**：提供具体的代码和配置优化建议
-
-### 支持的分析内容
-
-1. **根本原因分析** - OOM的根本原因识别
-2. **堆内存占用分布** - 内存使用情况分析
-3. **对象引用链分析** - 对象引用关系分析
-4. **导致OOM的操作链** - 导致内存溢出的操作序列
-5. **OOM发生时的堆栈跟踪** - 错误发生时的调用栈
-6. **关键词高亮** - 重要信息高亮显示
-7. **解决方案与优化建议** - 具体的优化建议
-
-### 使用方法
-
-```bash
-# 环境变量配置
-export OPENAI_API_KEY="your-api-key"
-export OPENAI_BASE_URL="https://api.siliconflow.cn/v1"
-export HTML_DIR="/path/to/html/files"
-export OUTPUT_FILE="analysis.html"
-export MODEL="deepseek-ai/DeepSeek-R1"
-
-# 运行分析
-python main.py
-```
-
-### Docker部署
-
-```bash
-# 构建镜像
-docker build -t ai-analysis:v1 .
-
-# 运行容器
-docker run --rm \
-  -e OPENAI_API_KEY="your-api-key" \
-  -e HTML_DIR="/app/input" \
-  -e OUTPUT_FILE="/app/output/analysis.html" \
-  -v /path/to/html:/app/input:ro \
-  -v /path/to/output:/app/output \
-  ai-analysis:v1
-```
-
-## 📊 监控指标
-
-### 系统指标
-
-- 文件监控数量
-- 上传成功率
-- 处理延迟时间
-- 存储空间使用量
-- 分析报告生成成功率
-- AI分析成功率
-
-### 业务指标
-
-- 各应用OOM发生频率
-- 文件大小分布
-- 开发人员响应时间
-- 存储成本统计
-- 在线报告访问量
-- AI分析准确率
-
-### JVM 监控 Dashboard
-
-为了方便监控 Java 应用的 JVM 状态，推荐导入 Grafana 官方 JVM 中文 Dashboard：
-
-**Dashboard ID**: `12856`**Dashboard 名称**: JVM (Micrometer) - 中文版**导入方式**:
-
-1. 在 Grafana 中点击 "+" → "Import"
-2. 输入 Dashboard ID: `12856`
-3. 选择 Prometheus 数据源
-4. 调整应用标签匹配规则
-5. 点击 "Import" 完成导入
-
-**主要监控指标**:
-
-- JVM 内存使用情况（堆内存、非堆内存）
-- 垃圾回收性能（GC 时间、频率、暂停时间）
-- 线程状态（活跃线程、守护线程、峰值线程）
-- 类加载统计（已加载类、已卸载类）
-- 系统资源使用（CPU、内存、磁盘 I/O）
-
-## 🔧 故障处理
-
-### 常见问题
-
-1. **文件监控失效**：检查DaemonSet状态和日志
-2. **上传失败**：验证对象存储配置和网络连接
-3. **通知推送失败**：检查CMDB API和通知服务状态
-4. **存储空间不足**：确认生命周期策略配置
-5. **MAT分析失败**：检查MAT-CLI工具和内存配置
-6. **报告生成失败**：验证输出目录权限和空间
-7. **AI分析失败**：检查OpenAI API密钥和网络连接
-
-### 故障恢复
-
-- 自动重试机制
-- 手动文件同步
-- 监控服务重启
-- 配置参数调整
-- 报告重新生成
-- AI分析重新执行
-
-## 📚 文档说明
-
-- **`java-heapdump-automation-system.md`**：系统详细技术文档，包含配置、部署、监控等完整信息
-- **`system-flowchart.md`**：系统流程图，包含整体流程、详细工作流、组件交互、数据流向、部署架构和监控指标等图表
-
-## 🎯 最佳实践
-
-### 部署建议
-
-- 使用DaemonSet确保每个节点都有监控
-- 配置资源限制避免资源竞争
-- 定期备份监控配置和状态
-- 合理配置MAT-CLI内存参数
-- 设置AI分析超时和重试机制
-
-### 运维建议
-
-- 监控系统运行状态和性能指标
-- 定期检查存储空间和文件清理情况
-- 及时更新监控工具版本和配置
-- 监控在线报告服务的可用性
-- 定期评估AI分析准确率
-
-### 安全建议
-
-- 使用最小权限原则配置访问密钥
-- 定期轮换存储服务密钥
-- 监控异常访问和操作日志
-- 限制报告访问权限
-- 保护AI API密钥安全
-
-## 🌟 系统优势
-
-1. **全自动化流程**：从文件检测到报告生成的完整自动化
-2. **在线分析能力**：开发人员无需下载文件即可在线分析
-3. **智能通知系统**：自动识别应用并通知相关开发人员
-4. **AI智能分析**：基于大语言模型的深度分析能力
-5. **生命周期管理**：自动清理过期文件，节省存储成本
-6. **高可用性**：基于Kubernetes的分布式部署架构
-7. **CI/CD集成**：Jenkins流水线自动化处理
-
-## 📞 技术支持
-
-如有问题或建议，请联系系统维护团队。
-
----
-
-**版本**: 2.0.0
-**更新时间**: 2025-01-02
-**维护团队**: 运维团队
+# 通用文件监控管理系统（File Watch & Processing）
+
+> 将原来的 Java 堆转储分析方案演进为**通用文件监控与处理管道**。当前核心是 Go Agent（`go-watch-file`）：递归监听目录、按后缀过滤、判定写入完成后异步上传到 S3 兼容存储，并可触发 Jenkins 任务与企业微信/钉钉通知。后续会补充控制面、策略编排和 Web 控制台，支持更多文件类型与处理场景。
+
+## 能力概览
+- **目录监控**：基于 fsnotify 递归监听，自动发现新建子目录，按指定后缀过滤目标文件。  
+- **写入完成判定**：10s 静默窗口确认文件写入结束，避免上传半截文件。  
+- **异步上传**：可配置的并发 + 队列背压（默认 3 worker / 100 队列），上传至 S3 兼容存储（AWS/MinIO/OSS/COS）。  
+- **动作触发**：上传后触发 Jenkins Job（参数：`DOWNLOAD_FILE`、`APP`、`FILE_NAME`），用于后续加工/分析；可扩展为 Webhook 或自定义处理器。  
+- **通知告警**：企业微信/钉钉机器人推送上传结果或异常。  
+- **路径规范**：严格的相对路径校验与对象 Key 生成，防止目录穿越，自动生成下载 URL。  
+- **配置管理**：`config.yaml` + `.env` + 环境变量覆盖，内置默认值与严格校验，便于不同环境落地。  
+
+典型场景：日志归档、业务落地文件入云、ETL 入口、模型产物推送、图片/文档收集等。
+
+## 仓库结构
+- `go-watch-file/`：Go Agent，提供监听、上传、Jenkins 触发与通知能力（当前核心）。  
+- `jenkins-job/`：Jenkins Job 示例（可按需改造成通用处理流水线）。  
+- `ai-analysis/`：示例型 Python 处理模块，可演化为自定义处理器模板。  
+- `server-ui-prototype.html`：早期 Web 管理界面原型，可用于后续控制台设计参考。  
+- `system-flowchart.md`：旧版系统流程图，可在重构时参考结构化思路。  
+
+## 快速开始（Agent）
+1) 准备环境  
+   - Go 1.21+，网络可访问 S3 兼容存储。  
+   - Jenkins 账户（如需触发），企业微信/钉钉机器人（如需通知）。  
+2) 配置  
+   ```bash
+   cd go-watch-file
+   cp .env.example .env
+   # 填写 watch_dir、file_ext、S3/账号、Jenkins/通知等
+   ```
+   核心字段：
+   - `watch_dir`：要监听的根目录，必须存在。  
+   - `file_ext`：目标后缀，如 `.log` / `.txt` / `.hprof`。  
+   - 存储：`S3_BUCKET`、`S3_AK`、`S3_SK`、`S3_ENDPOINT`、`S3_REGION`、`S3_FORCE_PATH_STYLE`、`S3_DISABLE_SSL`。  
+   - Jenkins：`JENKINS_HOST`、`JENKINS_USER`、`JENKINS_PASSWORD`、`JENKINS_JOB`。  
+   - 通知：`ROBOT_KEY`（企微）、`DINGTALK_WEBHOOK`、`DINGTALK_SECRET`。  
+   - 日志与并发：`LOG_LEVEL`、`LOG_FILE`、`LOG_TO_STD`、`UPLOAD_WORKERS`、`UPLOAD_QUEUE_SIZE`。  
+3) 运行  
+   ```bash
+   go build -o bin/file-watch cmd/main.go
+   ./bin/file-watch -config config.yaml
+   # Ctrl+C 可优雅退出，确保队列 drain
+   ```
+4) 可选：容器化  
+   ```bash
+   ./docker-build.sh
+   # 或自定义 Dockerfile/Helm，挂载 config.yaml 与 .env
+   ```
+
+配置优先级：环境变量 > `.env` > `config.yaml` 占位符 > 内置默认值。  
+
+## 工作流
+1. 监听 `watch_dir`（递归），捕获满足 `file_ext` 的写入/创建事件。  
+2. 进入 10s 静默检测，确认文件写入完成。  
+3. 投递到上传队列；worker 并发上传至 S3 兼容存储，生成下载链接。  
+4. 触发 Jenkins Job（可替换为 Webhook/自定义处理器），透传下载链接、应用名、文件名。  
+5. 通过企业微信/钉钉发送结果通知；失败会记录日志。  
+6. 队列与 worker 可按需调整以应对突发流量。  
+
+## 运维与排障
+- 日志：默认 `logs/`（或按 `LOG_FILE` 配置），支持标准输出，`LOG_LEVEL=debug` 便于排查。  
+- 测试：`cd go-watch-file && go test ./...`。  
+- 观测：当前提供队列长度与 worker 数（`UploadStats`）；后续将补充 Prometheus 指标。  
+- 常见问题：  
+  - 未触发上传：确认 `watch_dir` 存在且后缀匹配；观察 10s 静默窗口是否结束。  
+  - 上传失败：检查 S3 访问与凭证；确认 `S3_ENDPOINT`、`S3_REGION`、`force_path_style`。  
+  - Jenkins 未执行：核对 Jenkins 账号、Job 名与网络连通性。  
+  - 通知未达：检查机器人配置与出网权限。  
+
+## 路线图（vNext）
+1) Agent 强化  
+   - 队列/worker 指标暴露（Prometheus），限流与告警阈值。  
+   - 断点续传/失败重试策略，文件完整性校验（size/etag）。  
+   - 更灵活的文件匹配（多后缀、路径规则、忽略列表）。  
+2) 控制面 & API  
+   - 统一的文件事件/任务模型（FileSource、FileEvent、Task、Action）。  
+   - REST/gRPC API：文件状态查询、重试、手动触发、Agent 心跳。  
+   - 基础存储：事件/任务/通知流水落库（MySQL/PostgreSQL/SQLite）。  
+3) 处理链路与插件  
+   - 动作类型扩展：HTTP Webhook、消息队列、脚本执行、本地/远端处理器。  
+   - 规则编排：按路径/标签/大小/来源选择处理链路；重试与补偿策略。  
+4) Web 控制台  
+   - 任务列表、事件时间线、告警面板、Agent 状态、配置管理。  
+   - 访问控制与审计。  
+5) 发布与部署  
+   - Docker/Helm/Compose 样例；一键启动开发环境。  
+   - 配置模板与最佳实践（多环境、出网/离线场景）。  
+
+## 历史与状态
+- 旧版定位：Java 堆转储自动化分析（MAT + AI），相关文档仍保留在 `java-heapdump-automation-system.md` 供参考。  
+- 现阶段：以通用文件监控/上传/触发为核心，逐步演进为可扩展的文件处理平台。  
+- 建议先稳定 Agent（go-watch-file），再补齐控制面与可观测性。  
+
+—
+
+维护：运维团队（计划重构为 vNext 通用版）
+更新时间：2025-12-25
