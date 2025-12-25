@@ -226,7 +226,7 @@ func TestStringFromEnv_Trims(t *testing.T) {
 	defer os.Unsetenv("TEST_STR")
 	got := stringFromEnv("TEST_STR", "fallback")
 	if got != "/tmp/dir" {
-		t.Fatalf("expected '/tmp/dir', got '%s'", got)
+		t.Fatalf("期望 '/tmp/dir'，实际 '%s'", got)
 	}
 }
 
@@ -235,11 +235,11 @@ func TestResolveEnvPlaceholder(t *testing.T) {
 	defer os.Unsetenv("PLACE")
 	got := resolveEnvPlaceholder("${PLACE}")
 	if got != "value" {
-		t.Fatalf("expected 'value', got '%s'", got)
+		t.Fatalf("期望 'value'，实际 '%s'", got)
 	}
 	got2 := resolveEnvPlaceholder("${MISSING}")
 	if got2 != "" {
-		t.Fatalf("expected '', got '%s'", got2)
+		t.Fatalf("期望 ''，实际 '%s'", got2)
 	}
 }
 
@@ -248,13 +248,13 @@ func TestIntFromEnv(t *testing.T) {
 	defer os.Unsetenv("INT_KEY")
 	v, ok, err := intFromEnv("INT_KEY")
 	if err != nil || !ok || v != 42 {
-		t.Fatalf("expected 42, true, nil; got %v, %v, %v", v, ok, err)
+		t.Fatalf("期望 42, true, nil；实际 %v, %v, %v", v, ok, err)
 	}
 	os.Setenv("INT_BAD", "notint")
 	defer os.Unsetenv("INT_BAD")
 	_, _, err = intFromEnv("INT_BAD")
 	if err == nil {
-		t.Fatalf("expected error for invalid int")
+		t.Fatalf("期望无效整数时返回错误")
 	}
 }
 
@@ -263,7 +263,7 @@ func TestBoolFromEnv_Trims(t *testing.T) {
 	defer os.Unsetenv("BOOL_KEY")
 	v, ok, err := boolFromEnv("BOOL_KEY")
 	if err != nil || !ok || v != true {
-		t.Fatalf("expected true, true, nil; got %v, %v, %v", v, ok, err)
+		t.Fatalf("期望 true, true, nil；实际 %v, %v, %v", v, ok, err)
 	}
 }
 
@@ -272,10 +272,10 @@ func TestApplyEnvOverrides_UploadWorkers(t *testing.T) {
 	defer os.Unsetenv("UPLOAD_WORKERS")
 	cfg := &models.Config{}
 	if err := applyEnvOverrides(cfg); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("意外错误: %v", err)
 	}
 	if cfg.UploadWorkers != 7 {
-		t.Fatalf("expected UploadWorkers=7, got %d", cfg.UploadWorkers)
+		t.Fatalf("期望 UploadWorkers=7，实际 %d", cfg.UploadWorkers)
 	}
 }
 
