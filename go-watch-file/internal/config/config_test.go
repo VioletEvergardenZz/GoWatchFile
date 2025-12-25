@@ -221,6 +221,64 @@ log_level: "info"
 	}
 }
 
+func TestStringFromEnv_Trims(t *testing.T) {
+	os.Setenv("TEST_STR", "  /tmp/dir  ")
+	defer os.Unsetenv("TEST_STR")
+	got := stringFromEnv("TEST_STR", "fallback")
+	if got != "/tmp/dir" {
+		t.Fatalf("expected '/tmp/dir', got '%s'", got)
+	}
+}
+
+func TestResolveEnvPlaceholder(t *testing.T) {
+	os.Setenv("PLACE", " value ")
+	defer os.Unsetenv("PLACE")
+	got := resolveEnvPlaceholder("${PLACE}")
+	if got != "value" {
+		t.Fatalf("expected 'value', got '%s'", got)
+	}
+	got2 := resolveEnvPlaceholder("${MISSING}")
+	if got2 != "" {
+		t.Fatalf("expected '', got '%s'", got2)
+	}
+}
+
+func TestIntFromEnv(t *testing.T) {
+	os.Setenv("INT_KEY", "  42 ")
+	defer os.Unsetenv("INT_KEY")
+	v, ok, err := intFromEnv("INT_KEY")
+	if err != nil || !ok || v != 42 {
+		t.Fatalf("expected 42, true, nil; got %v, %v, %v", v, ok, err)
+	}
+	os.Setenv("INT_BAD", "notint")
+	defer os.Unsetenv("INT_BAD")
+	_, _, err = intFromEnv("INT_BAD")
+	if err == nil {
+		t.Fatalf("expected error for invalid int")
+	}
+}
+
+func TestBoolFromEnv_Trims(t *testing.T) {
+	os.Setenv("BOOL_KEY", " true ")
+	defer os.Unsetenv("BOOL_KEY")
+	v, ok, err := boolFromEnv("BOOL_KEY")
+	if err != nil || !ok || v != true {
+		t.Fatalf("expected true, true, nil; got %v, %v, %v", v, ok, err)
+	}
+}
+
+func TestApplyEnvOverrides_UploadWorkers(t *testing.T) {
+	os.Setenv("UPLOAD_WORKERS", "7")
+	defer os.Unsetenv("UPLOAD_WORKERS")
+	cfg := &models.Config{}
+	if err := applyEnvOverrides(cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.UploadWorkers != 7 {
+		t.Fatalf("expected UploadWorkers=7, got %d", cfg.UploadWorkers)
+	}
+}
+
 func writeTempConfig(t *testing.T, content string) string {
 	t.Helper()
 	tmpFile, err := os.CreateTemp("", "test-config-*.yaml")

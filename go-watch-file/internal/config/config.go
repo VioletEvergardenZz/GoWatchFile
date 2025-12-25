@@ -54,7 +54,7 @@ func LoadConfig(configFile string) (*models.Config, error) {
 	}
 	applyDefaults(&cfg)
 	if err := ValidateConfig(&cfg); err != nil {
-		return nil, fmt.Errorf("config validation failed: %w", err)
+		return nil, fmt.Errorf("配置验证失败: %w", err)
 	}
 	return &cfg, nil
 }
@@ -128,26 +128,21 @@ func applyEnvOverrides(cfg *models.Config) error {
 		cfg.LogShowCaller = parsed
 	}
 
-	if val, ok := os.LookupEnv("LOG_TO_STD"); ok {
-		parsed, err := strconv.ParseBool(val)
-		if err != nil {
-			return fmt.Errorf("environment variable LOG_TO_STD is not a valid boolean: %w", err)
-		}
+	if parsed, ok, err := boolFromEnv("LOG_TO_STD"); err != nil {
+		return err
+	} else if ok {
+		// LogToStd 用 *bool，因为它的默认值想设为 true
 		cfg.LogToStd = boolPtr(parsed)
 	}
 
-	if val, ok := os.LookupEnv("UPLOAD_WORKERS"); ok {
-		parsed, err := strconv.Atoi(val)
-		if err != nil {
-			return fmt.Errorf("environment variable UPLOAD_WORKERS is not a valid integer: %w", err)
-		}
+	if parsed, ok, err := intFromEnv("UPLOAD_WORKERS"); err != nil {
+		return err
+	} else if ok {
 		cfg.UploadWorkers = parsed
 	}
-	if val, ok := os.LookupEnv("UPLOAD_QUEUE_SIZE"); ok {
-		parsed, err := strconv.Atoi(val)
-		if err != nil {
-			return fmt.Errorf("environment variable UPLOAD_QUEUE_SIZE is not a valid integer: %w", err)
-		}
+	if parsed, ok, err := intFromEnv("UPLOAD_QUEUE_SIZE"); err != nil {
+		return err
+	} else if ok {
 		cfg.UploadQueueSize = parsed
 	}
 
@@ -175,23 +170,38 @@ func boolPtr(v bool) *bool {
 
 func stringFromEnv(envKey, current string) string {
 	if val, ok := os.LookupEnv(envKey); ok {
-		return val
+		return strings.TrimSpace(val)
 	}
-	return resolveEnvPlaceholder(current)
+	return strings.TrimSpace(resolveEnvPlaceholder(current))
 }
 
 func boolFromEnv(envKey string) (bool, bool, error) {
 	val, ok := os.LookupEnv(envKey)
+	// 环境变量不存在
 	if !ok {
 		return false, false, nil
 	}
-	parsed, err := strconv.ParseBool(val)
+	// 把环境变量里的字符串解析成布尔值（允许前后空格）
+	parsed, err := strconv.ParseBool(strings.TrimSpace(val))
 	if err != nil {
 		return false, false, fmt.Errorf("environment variable %s is not a valid boolean: %w", envKey, err)
 	}
 	return parsed, true, nil
 }
 
+func intFromEnv(envKey string) (int, bool, error) {
+	val, ok := os.LookupEnv(envKey)
+	if !ok {
+		return 0, false, nil
+	}
+	parsed, err := strconv.Atoi(strings.TrimSpace(val))
+	if err != nil {
+		return 0, false, fmt.Errorf("environment variable %s is not a valid integer: %w", envKey, err)
+	}
+	return parsed, true, nil
+}
+
+// 检查字符串是否为空
 func requireValue(value, name string) error {
 	if value == "" {
 		return fmt.Errorf("%s不能为空", name)
@@ -258,7 +268,7 @@ func resolveEnvPlaceholder(value string) string {
 	if strings.HasPrefix(trimmed, "${") && strings.HasSuffix(trimmed, "}") {
 		envKey := strings.TrimSuffix(strings.TrimPrefix(trimmed, "${"), "}")
 		if envVal, ok := os.LookupEnv(envKey); ok {
-			return envVal
+			return strings.TrimSpace(envVal)
 		}
 		return ""
 	}
