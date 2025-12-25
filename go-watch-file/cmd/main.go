@@ -79,10 +79,6 @@ func logConfig(cfg *models.Config) {
 	logger.Info("S3 Region: %s", cfg.Region)
 	logger.Info("S3 路径风格: %v", cfg.ForcePathStyle)
 	logger.Info("S3 禁用 SSL: %v", cfg.DisableSSL)
-	logger.Info("Jenkins 地址: %s", cfg.JenkinsHost)
-	logger.Info("Jenkins 任务: %s", cfg.JenkinsJob)
-	// logger.Info("Jenkins User: %s", cfg.JenkinsUser)
-	// logger.Info("Jenkins Password: %s", cfg.JenkinsPassword)
 	logToStd := cfg.LogToStd == nil || *cfg.LogToStd
 	logger.Info("日志级别: %s", cfg.LogLevel)
 	if cfg.LogFile != "" {

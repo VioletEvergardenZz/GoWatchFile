@@ -79,12 +79,6 @@ func ValidateConfig(config *models.Config) error {
 	if err := requireValue(config.Region, "S3 Region"); err != nil {
 		return err
 	}
-	if err := requireValue(config.JenkinsHost, "Jenkins Host"); err != nil {
-		return err
-	}
-	if err := requireValue(config.JenkinsJob, "Jenkins Job"); err != nil {
-		return err
-	}
 	if err := validateLogLevel(config.LogLevel); err != nil {
 		return err
 	}
@@ -113,10 +107,6 @@ func applyEnvOverrides(cfg *models.Config) error {
 	} else if ok {
 		cfg.DisableSSL = parsed
 	}
-	cfg.JenkinsHost = stringFromEnv("JENKINS_HOST", cfg.JenkinsHost)
-	cfg.JenkinsUser = stringFromEnv("JENKINS_USER", cfg.JenkinsUser)
-	cfg.JenkinsPassword = stringFromEnv("JENKINS_PASSWORD", cfg.JenkinsPassword)
-	cfg.JenkinsJob = stringFromEnv("JENKINS_JOB", cfg.JenkinsJob)
 	cfg.LogLevel = stringFromEnv("LOG_LEVEL", cfg.LogLevel)
 	cfg.LogFile = stringFromEnv("LOG_FILE", cfg.LogFile)
 	if parsed, ok, err := boolFromEnv("LOG_SHOW_CALLER"); err != nil {

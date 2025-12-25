@@ -11,7 +11,7 @@ graph TD
     D -->|是| E[写入完成判定]
     E --> F[上传至对象存储]
     F --> G[触发处理动作
-(Jenkins/Webhook/脚本)]
+(Webhook/脚本/队列)]
     F --> H[通知推送
 (企微/钉钉)]
     G --> I[处理结果/下游消费]
@@ -24,14 +24,14 @@ sequenceDiagram
     participant App as 业务系统
     participant Agent as Agent
     participant S3 as 对象存储
-    participant Jenkins as 处理动作
+    participant Action as 处理动作
     participant Notify as 通知渠道
 
     App->>Agent: 文件写入
     Agent->>Agent: 静默窗口检测
     Agent->>S3: 上传文件
     S3-->>Agent: 返回下载链接
-    Agent->>Jenkins: 触发任务
+    Agent->>Action: 触发任务（规划中）
     Agent->>Notify: 发送通知
 ```
 

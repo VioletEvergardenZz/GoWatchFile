@@ -1,99 +1,66 @@
-﻿# 通用文件监控管理系统（File Watch & Processing）
+﻿# 通用文件监控与处理平台（File Watch & Processing）
 
-> 将原来的 Java 堆转储分析方案演进为**通用文件监控与处理管道**。当前核心是 Go Agent（`go-watch-file`）：递归监听目录、按后缀过滤、判定写入完成后异步上传到 S3 兼容存储，并触发 Jenkins 任务与企业微信/钉钉通知。旧版 OOM 堆转储相关材料已归档至 `legacy/oom/`。
+> 面向 SRE/运维的多应用、多目录“文件入云 + 路由 + 自动处理”平台。当前核心为 Go Agent（`go-watch-file`），负责监听/过滤/上传与通知；控制面、路由编排、可视化与分析按路线图演进。旧版 OOM 材料归档于 `legacy/oom/`。
 
-## 能力概览
-- **目录监控**：基于 fsnotify 递归监听，自动发现新建子目录，按指定后缀过滤目标文件。  
-- **写入完成判定**：10s 静默窗口确认文件写入结束，避免上传半截文件。  
-- **异步上传**：可配置的并发 + 队列背压（默认 3 worker / 100 队列），上传至 S3 兼容存储（AWS/MinIO/OSS/COS）。  
-- **动作触发**：上传后触发 Jenkins Job（参数：`DOWNLOAD_FILE`、`APP`、`FILE_NAME`），可扩展为 Webhook 或自定义处理器。  
-- **通知告警**：企业微信/钉钉机器人推送上传结果或异常。  
-- **路径规范**：严格的相对路径校验与对象 Key 生成，防止目录穿越，自动生成下载 URL。  
-- **配置管理**：`config.yaml` + `.env` + 环境变量覆盖，内置默认值与严格校验，便于不同环境落地。  
+## 目标与场景
+- 多主机/多应用：日志、转储、归档/媒体文件自动入云与集中管理  
+- 自动处理：上传后可扩展 Webhook/队列等后续流程（当前不使用 Jenkins）  
+- 观测与管理：事件时间线、成功率/滞留、告警、日志检索（规划中）  
 
-典型场景：日志归档、业务落地文件入云、ETL 入口、模型产物推送、图片/文档收集等。
+## 模块与职责（蓝图）
+- **Agent 采集**：inotify/轮询，过滤后缀/路径，检测写入完成并推送事件与内容。  
+- **控制与配置**：集中配置/下发，多 Agent 注册与分组，目标存储/策略管理。  
+- **文件路由与处理**：策略引擎分流到不同桶/队列/动作；支持解压、预处理、脚本/Webhook。  
+- **上传传输**：并发控制、重试/断点、进度与错误监控，失败可重传。  
+- **存储与索引**：对象存储承载原始文件；元数据/事件/任务落库并可检索报表。  
+- **可视化界面**：仪表盘、事件时间线、失败/滞留列表、日志查看（tail/全文检索）。  
+- **报警与通知**：失败/滞留/SLA 告警，邮件/钉钉/Webhook，支持重试与抑制。  
 
-## 文档导航
-- 平台概述：`docs/overview.md`
-- 流程图：`docs/system-flowchart.md`
-- 开发指南：`docs/dev-guide.md`
-- 常见问题：`docs/faq.md`
+## 当前交付（Agent）
+- **目录监控**：基于 fsnotify 递归监听，自动发现子目录，按后缀过滤。  
+- **写入完成判定**：静默窗口确认写入结束，避免半截文件。  
+- **异步上传**：工作池并发 + 队列背压，上传至 S3 兼容存储（AWS/OSS/MinIO/COS）。  
+- **通知告警**：企业微信/钉钉机器人推送成功/异常。  
+- **路径与安全**：相对路径校验，统一对象 Key/下载 URL 生成，防止目录穿越。  
+- **配置管理**：`config.yaml` + `.env` + 环境变量覆盖，严格校验与默认值。  
+- **观测（当前）**：上传队列与 worker 统计；Prometheus 指标规划中。  
 
-## 仓库结构
-- `go-watch-file/`：Go Agent，提供监听、上传、Jenkins 触发与通知能力（当前核心）。  
-- `docs/`：平台概述、流程图、开发指南与 FAQ。  
-- `legacy/`：旧版 OOM 相关文档与示例归档（不再维护）。  
-
-## 快速开始（Agent）
-1) 准备环境  
-   - Go 1.21+，网络可访问 S3 兼容存储。  
-   - Jenkins 账户（触发处理需要），企业微信/钉钉机器人（通知需要）。  
+## 快速开始（go-watch-file Agent）
+1) 环境：Go 1.21+；可访问 S3 兼容存储；可选 企微/钉钉机器人。  
 2) 配置  
    ```bash
    cd go-watch-file
    cp .env.example .env
-   # 填写 watch_dir、file_ext、S3/账号、Jenkins/通知等
+   # 填写 watch_dir、file_ext、S3、通知等
    ```
-   核心字段：
-   - `watch_dir`：要监听的根目录，必须存在。  
-   - `file_ext`：目标后缀（仅支持单一后缀，如 `.log` / `.txt` / `.zip`）。  
-   - 存储：`S3_BUCKET`、`S3_AK`、`S3_SK`、`S3_ENDPOINT`、`S3_REGION`、`S3_FORCE_PATH_STYLE`、`S3_DISABLE_SSL`。  
-   - Jenkins：`JENKINS_HOST`、`JENKINS_USER`、`JENKINS_PASSWORD`、`JENKINS_JOB`。  
-   - 通知：`ROBOT_KEY`（企微）、`DINGTALK_WEBHOOK`、`DINGTALK_SECRET`。  
-   - 日志与并发：`LOG_LEVEL`、`LOG_FILE`、`LOG_TO_STD`、`UPLOAD_WORKERS`、`UPLOAD_QUEUE_SIZE`。  
+   关键字段：`watch_dir`、`file_ext`（单后缀）、S3 凭证与 endpoint、通知 Webhook、`UPLOAD_WORKERS`、`UPLOAD_QUEUE_SIZE`。  
 3) 运行  
    ```bash
    go build -o bin/file-watch cmd/main.go
    ./bin/file-watch -config config.yaml
-   # Ctrl+C 可优雅退出，确保队列 drain
+   # Ctrl+C 优雅退出，等待队列 drain
    ```
-4) 可选：容器化  
-   ```bash
-   ./docker-build.sh
-   # 或自定义 Dockerfile/Helm，挂载 config.yaml 与 .env
-   ```
+4) 测试：`cd go-watch-file && go test ./...`。  
+5) 容器化：`./docker-build.sh` 或自定义 Dockerfile/Helm，挂载 `config.yaml` 与 `.env`。  
 
 配置优先级：环境变量 > `.env` > `config.yaml` 占位符 > 内置默认值。  
 
-## 工作流
-1. 监听 `watch_dir`（递归），捕获满足 `file_ext` 的写入/创建事件。  
-2. 进入 10s 静默检测，确认文件写入完成。  
-3. 投递到上传队列；worker 并发上传至 S3 兼容存储，生成下载链接。  
-4. 触发 Jenkins Job（可替换为 Webhook/自定义处理器），透传下载链接、应用名、文件名。  
-5. 通过企业微信/钉钉发送结果通知；失败会记录日志。  
-6. 队列与 worker 可按需调整以应对突发流量。  
+## 仓库结构
+- `go-watch-file/`：Go Agent 源码、配置模板与脚本。  
+- `docs/`：概述、流程图、开发指南、FAQ。  
+- `legacy/`：旧版 OOM 方案归档。  
+- `大纲.md`：平台蓝图与模块说明。  
+
+## 迭代路径（与大纲对齐）
+- **MVP**：单目录/单后缀 → 上传 → 通知（当前阶段无 Jenkins 触发）。  
+- **多源/多 Agent**：多后缀与忽略规则，Agent 分组与配置中心下发，上传可靠性增强。  
+- **可视化与告警**：仪表盘、事件时间线、失败/滞留列表、SLA 告警、日志查看/检索。  
+- **编排与路由**：规则/工作流驱动的多桶/多队列分流与处理链路。  
+- **分析与报表**：日/周趋势、容量/成本预测、异常检测与报表。  
 
 ## 运维与排障
-- 日志：默认 `logs/`（或按 `LOG_FILE` 配置），支持标准输出，`LOG_LEVEL=debug` 便于排查。  
-- 测试：`cd go-watch-file && go test ./...`。  
-- 观测：当前提供队列长度与 worker 数（`UploadStats`）；后续将补充 Prometheus 指标。  
-- 常见问题：参见 `docs/faq.md`。  
+- 日志：默认写入 `logs/`（或按 `LOG_FILE`），`LOG_LEVEL=debug` 便于排查。  
+- 常见问题：`docs/faq.md`。  
+- 建议：先稳固 Agent（可靠性、观测、配置），再逐步补齐控制面、编排与可视化。  
 
-## 路线图（vNext）
-1) Agent 强化  
-   - 队列/worker 指标暴露（Prometheus），限流与告警阈值。  
-   - 断点续传/失败重试策略，文件完整性校验（size/etag）。  
-   - 更灵活的文件匹配（多后缀、路径规则、忽略列表）。  
-2) 控制面 & API  
-   - 统一的文件事件/任务模型（FileSource、FileEvent、Task、Action）。  
-   - REST/gRPC API：文件状态查询、重试、手动触发、Agent 心跳。  
-   - 基础存储：事件/任务/通知流水落库（MySQL/PostgreSQL/SQLite）。  
-3) 处理链路与插件  
-   - 动作类型扩展：HTTP Webhook、消息队列、脚本执行、本地/远端处理器。  
-   - 规则编排：按路径/标签/大小/来源选择处理链路；重试与补偿策略。  
-4) Web 控制台  
-   - 任务列表、事件时间线、告警面板、Agent 状态、配置管理。  
-   - 访问控制与审计。  
-5) 发布与部署  
-   - Docker/Helm/Compose 样例；一键启动开发环境。  
-   - 配置模板与最佳实践（多环境、出网/离线场景）。  
-
-## 历史与状态
-- 旧版 OOM 堆转储相关材料已归档至 `legacy/oom/`，不再维护。  
-- 现阶段以通用文件监控/上传/触发为核心，逐步演进为可扩展的文件处理平台。  
-- 建议先稳定 Agent（go-watch-file），再补齐控制面与可观测性。  
-
-—
-
-维护：运维团队（计划重构为 vNext 通用版）
-更新时间：2025-12-25
+维护：运维团队；旧版材料参考 `legacy/oom/`。

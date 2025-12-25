@@ -18,10 +18,6 @@ type Config struct {
 	Region          string `yaml:"region"`
 	ForcePathStyle  bool   `yaml:"force_path_style"`
 	DisableSSL      bool   `yaml:"disable_ssl"`
-	JenkinsHost     string `yaml:"jenkins_host"`
-	JenkinsUser     string `yaml:"jenkins_user"`
-	JenkinsPassword string `yaml:"jenkins_password"`
-	JenkinsJob      string `yaml:"jenkins_job"`
 	LogLevel        string `yaml:"log_level"`
 	LogFile         string `yaml:"log_file"`
 	LogToStd        *bool  `yaml:"log_to_std"`

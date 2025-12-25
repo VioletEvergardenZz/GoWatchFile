@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"file-watch/internal/dingtalk"
-	"file-watch/internal/jenkins"
 	"file-watch/internal/logger"
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
@@ -21,7 +20,6 @@ import (
 type FileService struct {
 	config        *models.Config
 	s3Client      *s3.Client
-	jenkinsClient *jenkins.Client
 	wechatRobot   *wechat.Robot
 	dingtalkRobot *dingtalk.Robot
 	uploadPool    *upload.WorkerPool
@@ -37,15 +35,9 @@ func NewFileService(config *models.Config) (*FileService, error) {
 		return nil, err
 	}
 
-	jenkinsClient, err := newJenkinsClient(config)
-	if err != nil {
-		return nil, err
-	}
-
 	fileService := &FileService{
 		config:        config,
 		s3Client:      s3Client,
-		jenkinsClient: jenkinsClient,
 		wechatRobot:   newWeChatRobot(config),
 		dingtalkRobot: newDingTalkRobot(config),
 	}
@@ -69,14 +61,6 @@ func newS3Client(config *models.Config) (*s3.Client, error) {
 	client, err := s3.NewClient(config)
 	if err != nil {
 		return nil, fmt.Errorf("初始化S3客户端失败: %w", err)
-	}
-	return client, nil
-}
-
-func newJenkinsClient(config *models.Config) (*jenkins.Client, error) {
-	client, err := jenkins.NewClient(config)
-	if err != nil {
-		return nil, fmt.Errorf("初始化Jenkins客户端失败: %w", err)
 	}
 	return client, nil
 }
@@ -145,7 +129,6 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	appName, fileName := fs.parseFileInfo(filePath)
 	logger.Info("文件信息 - 应用名: %s, 文件名: %s", appName, fileName)
 
-	fs.triggerJenkinsBuild(ctx, downloadURL, appName, fileName)
 	fs.sendWeChat(ctx, downloadURL, appName)
 	dingAppName := appName
 	dingFileName := fileName
@@ -171,12 +154,6 @@ func (fs *FileService) parseFileInfo(filePath string) (string, string) {
 		return "unknown", "unknown"
 	}
 	return appName, fileName
-}
-
-func (fs *FileService) triggerJenkinsBuild(ctx context.Context, downloadURL, appName, fileName string) {
-	if err := fs.jenkinsClient.BuildJob(ctx, downloadURL, appName, fileName); err != nil {
-		logger.Error("触发Jenkins构建失败: %v", err)
-	}
 }
 
 func (fs *FileService) sendWeChat(ctx context.Context, downloadURL, appName string) {
