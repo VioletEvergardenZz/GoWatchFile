@@ -71,7 +71,7 @@ func BuildObjectKey(watchDir, filePath string) string {
 func ParseAppAndFileName(watchDir, filePath string) (string, string, error) {
 	fileName := baseNameNoExt(filePath)
 	if fileName == "" {
-		return "", "", fmt.Errorf("invalid file path: %s", filePath)
+		return "", "", fmt.Errorf("无效文件路径: %s", filePath)
 	}
 
 	appName := appNameFromHomePath(filePath)
@@ -84,7 +84,7 @@ func ParseAppAndFileName(watchDir, filePath string) (string, string, error) {
 		appName = parentDirName(filePath)
 	}
 	if appName == "" {
-		return "", "", fmt.Errorf("invalid file path: %s", filePath)
+		return "", "", fmt.Errorf("无效文件路径: %s", filePath)
 	}
 	return appName, fileName, nil
 }

@@ -184,7 +184,7 @@ func boolFromEnv(envKey string) (bool, bool, error) {
 	// 把环境变量里的字符串解析成布尔值（允许前后空格）
 	parsed, err := strconv.ParseBool(strings.TrimSpace(val))
 	if err != nil {
-		return false, false, fmt.Errorf("environment variable %s is not a valid boolean: %w", envKey, err)
+		return false, false, fmt.Errorf("环境变量 %s 不是合法的布尔值: %w", envKey, err)
 	}
 	return parsed, true, nil
 }
@@ -196,7 +196,7 @@ func intFromEnv(envKey string) (int, bool, error) {
 	}
 	parsed, err := strconv.Atoi(strings.TrimSpace(val))
 	if err != nil {
-		return 0, false, fmt.Errorf("environment variable %s is not a valid integer: %w", envKey, err)
+		return 0, false, fmt.Errorf("环境变量 %s 不是合法的整数: %w", envKey, err)
 	}
 	return parsed, true, nil
 }
@@ -212,10 +212,10 @@ func requireValue(value, name string) error {
 func validateWatchDir(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
-		return fmt.Errorf("watch dir invalid: %w", err)
+		return fmt.Errorf("监控目录无效: %w", err)
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("watch dir is not a directory")
+		return fmt.Errorf("监控目录不是一个目录")
 	}
 	return nil
 }
@@ -226,7 +226,7 @@ func validateFileExt(ext string) error {
 	}
 	trimmed := strings.TrimSpace(ext)
 	if !strings.HasPrefix(trimmed, ".") || trimmed == "." {
-		return fmt.Errorf("file extension must start with '.'")
+		return fmt.Errorf("文件后缀必须以 '.' 开头")
 	}
 	return nil
 }
@@ -247,7 +247,7 @@ func validateEndpoint(endpoint string) error {
 
 	parsed, err = url.Parse("//" + trimmed)
 	if err != nil || parsed.Host == "" {
-		return fmt.Errorf("invalid S3 endpoint: %s", endpoint)
+		return fmt.Errorf("无效的 S3 Endpoint: %s", endpoint)
 	}
 	return nil
 }
@@ -258,7 +258,7 @@ func validateLogLevel(level string) error {
 	}
 	level = strings.ToLower(strings.TrimSpace(level))
 	if _, ok := allowedLogLevels[level]; !ok {
-		return fmt.Errorf("unsupported log level: %s", level)
+		return fmt.Errorf("不支持的日志级别: %s", level)
 	}
 	return nil
 }
@@ -300,7 +300,7 @@ func loadEnvFiles(paths ...string) error {
 func loadEnvFile(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
-		return fmt.Errorf("failed to open env file %s: %w", path, err)
+		return fmt.Errorf("打开 env 文件 %s 失败: %w", path, err)
 	}
 	defer f.Close()
 
@@ -312,12 +312,12 @@ func loadEnvFile(path string) error {
 		}
 		parts := strings.SplitN(line, "=", 2)		    //只按第一个 = 拆成两段：parts[0] 是键，parts[1] 是值（后面允许值里再出现 = 也不会被继续拆）
 		if len(parts) != 2 {
-			return fmt.Errorf("invalid env line in %s: %s", path, line)
+			return fmt.Errorf("env 文件 %s 中存在无效行: %s", path, line)
 		}
 		key := strings.TrimSpace(parts[0])
 		val := strings.TrimSpace(parts[1])
 		if key == "" {
-			return fmt.Errorf("invalid env key in %s: %s", path, line)
+			return fmt.Errorf("env 文件 %s 中存在无效键: %s", path, line)
 		}
 
 		if unquoted, ok := trimQuotes(val); ok {
@@ -328,13 +328,13 @@ func loadEnvFile(path string) error {
 			continue
 		}
 		if err := os.Setenv(key, val); err != nil {		//设置进当前进程的环境变量 .env 不会覆盖现有值
-			return fmt.Errorf("failed to set env %s from %s: %w", key, path, err)
+			return fmt.Errorf("设置环境变量 %s 来自 %s 失败: %w", key, path, err)
 		}
 	}
 
 	// 判断扫描过程中是否发生错误
 	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("failed to read env file %s: %w", path, err)
+		return fmt.Errorf("读取 env 文件 %s 失败: %w", path, err)
 	}
 	return nil
 }
