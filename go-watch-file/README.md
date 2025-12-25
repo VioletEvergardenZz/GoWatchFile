@@ -1,6 +1,6 @@
 # File Watch Service
 
-一个通用的文件监控与处理服务：监听目录、过滤/匹配文件、并行上传到 S3 兼容存储，可选触发 Jenkins 任务，并通过企业微信/钉钉机器人通知。最初用于 Java `.hprof` 转储监控，现在已扩展为通用文件流水线。
+一个通用的文件监控与处理服务：监听目录、过滤/匹配文件、并行上传到 S3 兼容存储，触发 Jenkins 任务并通过企业微信/钉钉机器人通知。适用于日志归档、落地文件入云、模型产物分发等场景。
 
 ## 能力概览
 - 目录监听：递归监控指定目录，基于后缀过滤目标文件。
@@ -19,7 +19,7 @@
 2) 配置监控目录与文件类型  
    编辑 `config.yaml`，主要关心：
    - `watch_dir`: 需要监控的根目录
-   - `file_ext`: 目标文件后缀（如 `.log` / `.hprof` / `.txt`）
+   - `file_ext`: 目标文件后缀（仅支持单一后缀，如 `.log` / `.txt` / `.zip`）
    其他字段保持 `${ENV}` 占位符，用 `.env` 或真实环境变量注入。
 3) 运行
    ```bash
@@ -60,7 +60,7 @@ upload_queue_size: 100
 `.env.example` 提供模板（复制为 `.env` 后填写）：
 ```
 WATCH_DIR=/path/to/watch
-FILE_EXT=.hprof
+FILE_EXT=.log
 S3_BUCKET=your-bucket
 S3_AK=your-ak
 S3_SK=your-sk
@@ -69,9 +69,9 @@ S3_REGION=us-east-1
 JENKINS_HOST=http://jenkins.example.com:8080
 JENKINS_USER=admin
 JENKINS_PASSWORD=your-password
-JENKINS_JOB=dump
+JENKINS_JOB=file-process
 LOG_LEVEL=info
-LOG_FILE=logs/file-monitor.log
+LOG_FILE=logs/file-watch.log
 LOG_TO_STD=true
 LOG_SHOW_CALLER=false
 UPLOAD_WORKERS=3
@@ -97,6 +97,12 @@ UPLOAD_QUEUE_SIZE=100
 - 三态布尔处理：日志输出等布尔值通过指针区分“未配置 / false / true”。
 - 安全路径：相对路径解析防止目录穿越，生成的 S3 Key 统一去除前导 `/`。
 - 并发与背压：上传工作池 + 队列大小可调，避免流量突增时阻塞监控线程。
+
+## 相关文档
+- 平台概述：`../docs/overview.md`
+- 流程图：`../docs/system-flowchart.md`
+- 开发指南：`../docs/dev-guide.md`
+- 常见问题：`../docs/faq.md`
 
 ## 开发与测试
 - 运行测试：`go test ./...`

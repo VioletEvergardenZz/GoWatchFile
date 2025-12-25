@@ -1,8 +1,9 @@
 # 文件监控配置
 watch_dir: "${WATCH_DIR}"
+# 仅支持单一后缀。示例：.log / .txt / .zip
 file_ext: "${FILE_EXT}"
 
-# 通知机器人配置
+# 通知机器人配置（可选）
 robot_key: "${ROBOT_KEY}"
 dingtalk_webhook: "${DINGTALK_WEBHOOK}"
 dingtalk_secret: "${DINGTALK_SECRET}"
@@ -11,8 +12,10 @@ dingtalk_secret: "${DINGTALK_SECRET}"
 bucket: "${S3_BUCKET}"
 ak: "${S3_AK}"
 sk: "${S3_SK}"
+# endpoint 可带协议或不带协议（如 https://s3.example.com 或 s3.example.com）
 endpoint: "${S3_ENDPOINT}"
 region: "${S3_REGION}"
+# 可被环境变量 S3_FORCE_PATH_STYLE / S3_DISABLE_SSL 覆盖
 force_path_style: false
 disable_ssl: false
 
@@ -25,6 +28,7 @@ jenkins_job: "${JENKINS_JOB}"
 # 日志配置
 log_level: "${LOG_LEVEL}"
 log_file: "${LOG_FILE}"
+# 标准输出开关（可被 LOG_TO_STD 覆盖）
 log_to_std: true
 # 是否显示调用文件和行号（开启会有额外开销）
 log_show_caller: false

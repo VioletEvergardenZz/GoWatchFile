@@ -1,29 +1,33 @@
-# 通用文件监控管理系统（File Watch & Processing）
+﻿# 通用文件监控管理系统（File Watch & Processing）
 
-> 将原来的 Java 堆转储分析方案演进为**通用文件监控与处理管道**。当前核心是 Go Agent（`go-watch-file`）：递归监听目录、按后缀过滤、判定写入完成后异步上传到 S3 兼容存储，并可触发 Jenkins 任务与企业微信/钉钉通知。后续会补充控制面、策略编排和 Web 控制台，支持更多文件类型与处理场景。
+> 将原来的 Java 堆转储分析方案演进为**通用文件监控与处理管道**。当前核心是 Go Agent（`go-watch-file`）：递归监听目录、按后缀过滤、判定写入完成后异步上传到 S3 兼容存储，并触发 Jenkins 任务与企业微信/钉钉通知。旧版 OOM 堆转储相关材料已归档至 `legacy/oom/`。
 
 ## 能力概览
 - **目录监控**：基于 fsnotify 递归监听，自动发现新建子目录，按指定后缀过滤目标文件。  
 - **写入完成判定**：10s 静默窗口确认文件写入结束，避免上传半截文件。  
 - **异步上传**：可配置的并发 + 队列背压（默认 3 worker / 100 队列），上传至 S3 兼容存储（AWS/MinIO/OSS/COS）。  
-- **动作触发**：上传后触发 Jenkins Job（参数：`DOWNLOAD_FILE`、`APP`、`FILE_NAME`），用于后续加工/分析；可扩展为 Webhook 或自定义处理器。  
+- **动作触发**：上传后触发 Jenkins Job（参数：`DOWNLOAD_FILE`、`APP`、`FILE_NAME`），可扩展为 Webhook 或自定义处理器。  
 - **通知告警**：企业微信/钉钉机器人推送上传结果或异常。  
 - **路径规范**：严格的相对路径校验与对象 Key 生成，防止目录穿越，自动生成下载 URL。  
 - **配置管理**：`config.yaml` + `.env` + 环境变量覆盖，内置默认值与严格校验，便于不同环境落地。  
 
 典型场景：日志归档、业务落地文件入云、ETL 入口、模型产物推送、图片/文档收集等。
 
+## 文档导航
+- 平台概述：`docs/overview.md`
+- 流程图：`docs/system-flowchart.md`
+- 开发指南：`docs/dev-guide.md`
+- 常见问题：`docs/faq.md`
+
 ## 仓库结构
 - `go-watch-file/`：Go Agent，提供监听、上传、Jenkins 触发与通知能力（当前核心）。  
-- `jenkins-job/`：Jenkins Job 示例（可按需改造成通用处理流水线）。  
-- `ai-analysis/`：示例型 Python 处理模块，可演化为自定义处理器模板。  
-- `server-ui-prototype.html`：早期 Web 管理界面原型，可用于后续控制台设计参考。  
-- `system-flowchart.md`：旧版系统流程图，可在重构时参考结构化思路。  
+- `docs/`：平台概述、流程图、开发指南与 FAQ。  
+- `legacy/`：旧版 OOM 相关文档与示例归档（不再维护）。  
 
 ## 快速开始（Agent）
 1) 准备环境  
    - Go 1.21+，网络可访问 S3 兼容存储。  
-   - Jenkins 账户（如需触发），企业微信/钉钉机器人（如需通知）。  
+   - Jenkins 账户（触发处理需要），企业微信/钉钉机器人（通知需要）。  
 2) 配置  
    ```bash
    cd go-watch-file
@@ -32,7 +36,7 @@
    ```
    核心字段：
    - `watch_dir`：要监听的根目录，必须存在。  
-   - `file_ext`：目标后缀，如 `.log` / `.txt` / `.hprof`。  
+   - `file_ext`：目标后缀（仅支持单一后缀，如 `.log` / `.txt` / `.zip`）。  
    - 存储：`S3_BUCKET`、`S3_AK`、`S3_SK`、`S3_ENDPOINT`、`S3_REGION`、`S3_FORCE_PATH_STYLE`、`S3_DISABLE_SSL`。  
    - Jenkins：`JENKINS_HOST`、`JENKINS_USER`、`JENKINS_PASSWORD`、`JENKINS_JOB`。  
    - 通知：`ROBOT_KEY`（企微）、`DINGTALK_WEBHOOK`、`DINGTALK_SECRET`。  
@@ -63,11 +67,7 @@
 - 日志：默认 `logs/`（或按 `LOG_FILE` 配置），支持标准输出，`LOG_LEVEL=debug` 便于排查。  
 - 测试：`cd go-watch-file && go test ./...`。  
 - 观测：当前提供队列长度与 worker 数（`UploadStats`）；后续将补充 Prometheus 指标。  
-- 常见问题：  
-  - 未触发上传：确认 `watch_dir` 存在且后缀匹配；观察 10s 静默窗口是否结束。  
-  - 上传失败：检查 S3 访问与凭证；确认 `S3_ENDPOINT`、`S3_REGION`、`force_path_style`。  
-  - Jenkins 未执行：核对 Jenkins 账号、Job 名与网络连通性。  
-  - 通知未达：检查机器人配置与出网权限。  
+- 常见问题：参见 `docs/faq.md`。  
 
 ## 路线图（vNext）
 1) Agent 强化  
@@ -89,8 +89,8 @@
    - 配置模板与最佳实践（多环境、出网/离线场景）。  
 
 ## 历史与状态
-- 旧版定位：Java 堆转储自动化分析（MAT + AI），相关文档仍保留在 `java-heapdump-automation-system.md` 供参考。  
-- 现阶段：以通用文件监控/上传/触发为核心，逐步演进为可扩展的文件处理平台。  
+- 旧版 OOM 堆转储相关材料已归档至 `legacy/oom/`，不再维护。  
+- 现阶段以通用文件监控/上传/触发为核心，逐步演进为可扩展的文件处理平台。  
 - 建议先稳定 Agent（go-watch-file），再补齐控制面与可观测性。  
 
 —
