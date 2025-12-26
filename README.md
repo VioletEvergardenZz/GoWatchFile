@@ -47,6 +47,7 @@
 
 ## 仓库结构
 - `go-watch-file/`：Go Agent 源码、配置模板与脚本。  
+- `console-frontend/`：File Watch 控制台前端（React + TS + Vite），基于 `docs/prototype` 原型。  
 - `docs/`：概述、流程图、开发指南、FAQ。  
 - `legacy/`：旧版 OOM 方案归档。  
 - `大纲.md`：平台蓝图与模块说明。  
