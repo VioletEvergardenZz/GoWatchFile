@@ -19,12 +19,6 @@ region: "${S3_REGION}"
 force_path_style: false
 disable_ssl: false
 
-# Jenkins 配置
-jenkins_host: "${JENKINS_HOST}"
-jenkins_user: "${JENKINS_USER}"
-jenkins_password: "${JENKINS_PASSWORD}"
-jenkins_job: "${JENKINS_JOB}"
-
 # 日志配置
 log_level: "${LOG_LEVEL}"
 log_file: "${LOG_FILE}"

@@ -6,7 +6,6 @@ toolchain go1.24.3
 
 require (
 	github.com/aws/aws-sdk-go v1.50.0
-	github.com/bndr/gojenkins v1.1.0
 	github.com/fsnotify/fsnotify v1.9.0
 	gopkg.in/yaml.v2 v2.4.0
 )

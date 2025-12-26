@@ -25,10 +25,6 @@ endpoint: "https://test-endpoint.com"
 region: "test-region"
 force_path_style: true
 disable_ssl: false
-jenkins_host: "http://test-jenkins.com"
-jenkins_user: "test-user"
-jenkins_password: "test-password"
-jenkins_job: "test-job"
 log_level: "debug"
 log_file: "/var/log/test.log"
 log_to_std: false
@@ -80,18 +76,16 @@ func TestValidateConfig(t *testing.T) {
 			WatchDir:    watchDir,
 			FileExt:     ".hprof",
 			RobotKey:    "test-key",
-			Bucket:      "test-bucket",
-			AK:          "test-ak",
-			SK:          "test-sk",
-			Endpoint:    "https://test-endpoint.com",
-			Region:      "test-region",
-			JenkinsHost: "http://test-jenkins.com",
-			JenkinsJob:  "test-job",
-			LogLevel:    "info",
-		}
+		Bucket:      "test-bucket",
+		AK:          "test-ak",
+		SK:          "test-sk",
+		Endpoint:    "https://test-endpoint.com",
+		Region:      "test-region",
+		LogLevel:    "info",
+	}
 
-		if err := ValidateConfig(validConfig); err != nil {
-			t.Fatalf("有效配置验证失败: %v", err)
+	if err := ValidateConfig(validConfig); err != nil {
+		t.Fatalf("有效配置验证失败: %v", err)
 		}
 	})
 
@@ -105,8 +99,6 @@ func TestValidateConfig(t *testing.T) {
 			SK:          "test-sk",
 			Endpoint:    "https://test-endpoint.com",
 			Region:      "test-region",
-			JenkinsHost: "http://test-jenkins.com",
-			JenkinsJob:  "test-job",
 			LogLevel:    "info",
 		}
 
@@ -125,8 +117,6 @@ func TestValidateConfig(t *testing.T) {
 			SK:          "test-sk",
 			Endpoint:    "https://test-endpoint.com",
 			Region:      "test-region",
-			JenkinsHost: "http://test-jenkins.com",
-			JenkinsJob:  "test-job",
 			LogLevel:    "infos",
 		}
 
@@ -147,8 +137,6 @@ ak: "test-ak"
 sk: "test-sk"
 endpoint: "https://test-endpoint.com"
 region: "test-region"
-jenkins_host: "http://test-jenkins.com"
-jenkins_job: "test-job"
 `, watchDir)
 
 	configPath := writeTempConfig(t, minimalConfig)
@@ -188,8 +176,6 @@ ak: "file-ak"
 sk: "file-sk"
 endpoint: "https://test-endpoint.com"
 region: "test-region"
-jenkins_host: "http://test-jenkins.com"
-jenkins_job: "test-job"
 upload_workers: 2
 log_level: "info"
 `, fileWatchDir)

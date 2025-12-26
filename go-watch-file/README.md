@@ -1,11 +1,10 @@
 # File Watch Service
 
-一个通用的文件监控与处理服务：监听目录、过滤/匹配文件、并行上传到 S3 兼容存储，触发 Jenkins 任务并通过企业微信/钉钉机器人通知。适用于日志归档、落地文件入云、模型产物分发等场景。
+一个通用的文件监控与处理服务：监听目录、过滤/匹配文件、并行上传到 S3 兼容存储，并通过企业微信/钉钉机器人通知。适用于日志归档、落地文件入云、模型产物分发等场景。
 
 ## 能力概览
 - 目录监听：递归监控指定目录，基于后缀过滤目标文件。
 - 上传流水线：S3 兼容存储上传，工作池并发 + 队列限流，防止积压。
-- 触发动作：可选 Jenkins Job 触发，上传完成后执行后续处理。
 - 通知告警：企业微信 / 钉钉机器人推送结果或异常。
 - 路径规范：统一的相对路径与对象 Key 生成，避免路径穿越和重复。
 - 配置管理：YAML + 环境变量覆盖，内置默认值与严格校验，支持 `.env`。
@@ -14,7 +13,7 @@
 1) 复制并填写环境变量  
    ```bash
    cp .env.example .env
-   # 按需填充存储凭证、Jenkins、Webhook 等
+   # 按需填充存储凭证与通知配置
    ```
 2) 配置监控目录与文件类型  
    编辑 `config.yaml`，主要关心：
@@ -45,10 +44,6 @@ endpoint: "${S3_ENDPOINT}"
 region: "${S3_REGION}"
 force_path_style: false
 disable_ssl: false
-jenkins_host: "${JENKINS_HOST}"
-jenkins_user: "${JENKINS_USER}"
-jenkins_password: "${JENKINS_PASSWORD}"
-jenkins_job: "${JENKINS_JOB}"
 log_level: "${LOG_LEVEL}"
 log_file: "${LOG_FILE}"
 log_to_std: true
@@ -66,10 +61,6 @@ S3_AK=your-ak
 S3_SK=your-sk
 S3_ENDPOINT=s3.example.com
 S3_REGION=us-east-1
-JENKINS_HOST=http://jenkins.example.com:8080
-JENKINS_USER=admin
-JENKINS_PASSWORD=your-password
-JENKINS_JOB=file-process
 LOG_LEVEL=info
 LOG_FILE=logs/file-watch.log
 LOG_TO_STD=true
@@ -87,7 +78,6 @@ UPLOAD_QUEUE_SIZE=100
 - `watcher/`：文件系统监听，过滤后缀，推送事件到队列。
 - `upload/`：工作池消费队列并上传至 S3 兼容存储。
 - `pathutil/`：路径归一化、相对路径校验、对象 Key/下载 URL 生成。
-- `jenkins/`：触发 Jenkins 任务（可选）。
 - `wechat/` / `dingtalk/`：机器人通知发送。
 - `config/`：配置加载（YAML + env）、默认值填充、强校验。
 - `logger/`：级别化日志，支持文件/标准输出。
