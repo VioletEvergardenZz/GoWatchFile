@@ -1,0 +1,42 @@
+# IDEs
+.idea/
+.vscode/
+.fleet/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go build outputs
+/bin/
+/dist/
+/out/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+*.prof
+coverage.*
+
+# Go module cache (local)
+/pkg/
+
+# Vendor (optional; uncomment if you do not commit vendor)
+# /vendor/
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+
+
+# Temp files
+*.tmp
+*.swp
+*.swo
+*~
