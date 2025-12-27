@@ -57,7 +57,6 @@ export type ConfigSnapshot = {
   silence: string;
   concurrency: string;
   bucket: string;
-  strategy: string;
   action: string;
 };
 
@@ -79,3 +78,35 @@ export type ChartPoint = {
 };
 
 export type FileFilter = "all" | "auto" | "manual" | "approval" | "failed";
+
+export type UploadRecord = {
+  file: string;
+  target: string;
+  size: string;
+  result: "success" | "failed" | "pending";
+  latency: string;
+  time: string;
+  note?: string;
+};
+
+export type MonitorSummary = {
+  label: string;
+  value: string;
+  desc: string;
+};
+
+export type DashboardPayload = {
+  heroCopy: HeroCopy;
+  heroHighlights: string[];
+  metricCards: MetricCard[];
+  directoryTree: FileNode[];
+  files: FileItem[];
+  tailLines: string[];
+  timelineEvents: TimelineEvent[];
+  routes: RoutePreview[];
+  monitorNotes: MonitorNote[];
+  uploadRecords: UploadRecord[];
+  monitorSummary: MonitorSummary[];
+  configSnapshot: ConfigSnapshot;
+  chartPoints: ChartPoint[];
+};

@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
+	"file-watch/internal/api"
 	"file-watch/internal/config"
 	"file-watch/internal/logger"
 	"file-watch/internal/models"
@@ -46,7 +49,10 @@ func run() error {
 		return err
 	}
 
-	waitForShutdown(fileService)
+	apiServer := api.NewServer(cfg, fileService)
+	apiServer.Start()
+
+	waitForShutdown(fileService, apiServer)
 	return nil
 }
 
@@ -90,7 +96,7 @@ func logConfig(cfg *models.Config) {
 	logger.Info("上传队列大小: %d", cfg.UploadQueueSize)
 }
 
-func waitForShutdown(fileService *service.FileService) {
+func waitForShutdown(fileService *service.FileService, apiServer *api.Server) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 
@@ -99,6 +105,13 @@ func waitForShutdown(fileService *service.FileService) {
 
 	if err := fileService.Stop(); err != nil {
 		logger.Error("停止文件服务失败: %v", err)
+	}
+	if apiServer != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := apiServer.Shutdown(ctx); err != nil {
+			logger.Warn("关闭 API 服务失败: %v", err)
+		}
 	}
 
 	logger.Info("程序已退出")

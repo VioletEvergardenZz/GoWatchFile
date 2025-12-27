@@ -1,3 +1,6 @@
 .env
 *.yaml
 !config.example.yaml
+logs/
+file-watch
+

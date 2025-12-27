@@ -31,6 +31,7 @@ log_to_std: false
 log_show_caller: true
 upload_workers: 5
 upload_queue_size: 200
+api_bind: ":9000"
 `, watchDir)
 
 	configPath := writeTempConfig(t, tempConfig)
@@ -67,39 +68,44 @@ upload_queue_size: 200
 	if config.UploadQueueSize != 200 {
 		t.Errorf("UploadQueueSize 期望 200, 实际 %d", config.UploadQueueSize)
 	}
+	if config.APIBind != ":9000" {
+		t.Errorf("APIBind 期望 :9000, 实际 %s", config.APIBind)
+	}
 }
 
 func TestValidateConfig(t *testing.T) {
 	t.Run("valid config", func(t *testing.T) {
 		watchDir := filepath.ToSlash(t.TempDir())
 		validConfig := &models.Config{
-			WatchDir:    watchDir,
-			FileExt:     ".hprof",
-			RobotKey:    "test-key",
-		Bucket:      "test-bucket",
-		AK:          "test-ak",
-		SK:          "test-sk",
-		Endpoint:    "https://test-endpoint.com",
-		Region:      "test-region",
-		LogLevel:    "info",
-	}
+			WatchDir: watchDir,
+			FileExt:  ".hprof",
+			RobotKey: "test-key",
+			Bucket:   "test-bucket",
+			AK:       "test-ak",
+			SK:       "test-sk",
+			Endpoint: "https://test-endpoint.com",
+			Region:   "test-region",
+			LogLevel: "info",
+			APIBind:  ":8080",
+		}
 
-	if err := ValidateConfig(validConfig); err != nil {
-		t.Fatalf("有效配置验证失败: %v", err)
+		if err := ValidateConfig(validConfig); err != nil {
+			t.Fatalf("有效配置验证失败: %v", err)
 		}
 	})
 
 	t.Run("invalid file ext", func(t *testing.T) {
 		watchDir := filepath.ToSlash(t.TempDir())
 		invalidConfig := &models.Config{
-			WatchDir:    watchDir,
-			FileExt:     "hprof", // missing leading dot
-			Bucket:      "test-bucket",
-			AK:          "test-ak",
-			SK:          "test-sk",
-			Endpoint:    "https://test-endpoint.com",
-			Region:      "test-region",
-			LogLevel:    "info",
+			WatchDir: watchDir,
+			FileExt:  "hprof", // missing leading dot
+			Bucket:   "test-bucket",
+			AK:       "test-ak",
+			SK:       "test-sk",
+			Endpoint: "https://test-endpoint.com",
+			Region:   "test-region",
+			LogLevel: "info",
+			APIBind:  ":8080",
 		}
 
 		if err := ValidateConfig(invalidConfig); err == nil {
@@ -110,14 +116,15 @@ func TestValidateConfig(t *testing.T) {
 	t.Run("invalid log level", func(t *testing.T) {
 		watchDir := filepath.ToSlash(t.TempDir())
 		invalidConfig := &models.Config{
-			WatchDir:    watchDir,
-			FileExt:     ".hprof",
-			Bucket:      "test-bucket",
-			AK:          "test-ak",
-			SK:          "test-sk",
-			Endpoint:    "https://test-endpoint.com",
-			Region:      "test-region",
-			LogLevel:    "infos",
+			WatchDir: watchDir,
+			FileExt:  ".hprof",
+			Bucket:   "test-bucket",
+			AK:       "test-ak",
+			SK:       "test-sk",
+			Endpoint: "https://test-endpoint.com",
+			Region:   "test-region",
+			LogLevel: "infos",
+			APIBind:  ":8080",
 		}
 
 		if err := ValidateConfig(invalidConfig); err == nil {
@@ -161,6 +168,9 @@ region: "test-region"
 	if config.LogShowCaller != false {
 		t.Errorf("LogShowCaller 默认值期望 false, 实际 %v", config.LogShowCaller)
 	}
+	if config.APIBind != ":8080" {
+		t.Errorf("APIBind 默认值期望 :8080, 实际 %s", config.APIBind)
+	}
 }
 
 func TestLoadConfigEnvOverrides(t *testing.T) {
@@ -187,6 +197,7 @@ log_level: "info"
 	t.Setenv("S3_SK", "env-sk")
 	t.Setenv("UPLOAD_WORKERS", "7")
 	t.Setenv("LOG_LEVEL", "error")
+	t.Setenv("API_BIND", ":18080")
 
 	config, err := LoadConfig(configPath)
 	if err != nil {
@@ -204,6 +215,9 @@ log_level: "info"
 	}
 	if config.LogLevel != "error" {
 		t.Errorf("LogLevel 应从环境变量覆盖为 error, 实际 %s", config.LogLevel)
+	}
+	if config.APIBind != ":18080" {
+		t.Errorf("APIBind 应从环境变量覆盖为 :18080, 实际 %s", config.APIBind)
 	}
 }
 

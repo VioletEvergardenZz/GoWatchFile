@@ -45,6 +45,11 @@
 
 配置优先级：环境变量 > `.env` > `config.yaml` 占位符 > 内置默认值。  
 
+## 前后端联调（Console）
+1) 启动 `go-watch-file`（默认 API 监听 `:8080`，可用 `API_BIND` 覆盖）。  
+2) 前端：`cd console-frontend && npm install && npm run dev`，Vite 将 `/api` 代理到 `http://localhost:8080`；若后端地址不同可设置 `VITE_API_BASE`。  
+3) 访问 `http://localhost:5173`，目录树/文件列表/上传记录/图表等数据来自后端 API，切换自动上传或手动上传会实时调用接口并刷新视图。  
+
 ## 仓库结构
 - `go-watch-file/`：Go Agent 源码、配置模板与脚本。  
 - `console-frontend/`：File Watch 控制台前端（React + TS + Vite），基于 `docs/prototype` 原型。  

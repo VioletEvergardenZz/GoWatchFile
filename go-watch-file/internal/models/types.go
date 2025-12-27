@@ -24,6 +24,7 @@ type Config struct {
 	LogShowCaller   bool   `yaml:"log_show_caller"`
 	UploadWorkers   int    `yaml:"upload_workers"`    // 上传工作池大小
 	UploadQueueSize int    `yaml:"upload_queue_size"` // 上传队列大小
+	APIBind         string `yaml:"api_bind"`          // API 服务监听地址
 }
 
 // FileEvent 文件事件结构体

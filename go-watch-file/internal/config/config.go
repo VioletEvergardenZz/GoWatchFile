@@ -19,6 +19,7 @@ const (
 	defaultUploadQueueSize = 100
 	defaultLogLevel        = "info"
 	defaultLogToStd        = true
+	defaultAPIBind         = ":8080"
 )
 
 var allowedLogLevels = map[string]struct{}{
@@ -43,7 +44,7 @@ func LoadConfig(configFile string) (*models.Config, error) {
 		return nil, fmt.Errorf("读取配置文件失败: %w", err)
 	}
 
-	var cfg models.Config	//值类型结构体 在栈上分配、读完填数据后再取地址即可
+	var cfg models.Config //值类型结构体 在栈上分配、读完填数据后再取地址即可
 	err = yaml.Unmarshal(data, &cfg)
 	if err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
@@ -80,6 +81,9 @@ func ValidateConfig(config *models.Config) error {
 		return err
 	}
 	if err := validateLogLevel(config.LogLevel); err != nil {
+		return err
+	}
+	if err := requireValue(config.APIBind, "API 监听地址"); err != nil {
 		return err
 	}
 
@@ -132,6 +136,7 @@ func applyEnvOverrides(cfg *models.Config) error {
 	} else if ok {
 		cfg.UploadQueueSize = parsed
 	}
+	cfg.APIBind = stringFromEnv("API_BIND", cfg.APIBind)
 
 	return nil
 }
@@ -148,6 +153,9 @@ func applyDefaults(cfg *models.Config) {
 	}
 	if cfg.LogToStd == nil {
 		cfg.LogToStd = boolPtr(defaultLogToStd)
+	}
+	if strings.TrimSpace(cfg.APIBind) == "" {
+		cfg.APIBind = defaultAPIBind
 	}
 }
 
@@ -211,10 +219,11 @@ func validateWatchDir(path string) error {
 }
 
 func validateFileExt(ext string) error {
-	if err := requireValue(ext, "文件后缀"); err != nil {
-		return err
-	}
 	trimmed := strings.TrimSpace(ext)
+	if trimmed == "" {
+		// 允许留空，表示不过滤后缀，监控所有文件
+		return nil
+	}
 	if !strings.HasPrefix(trimmed, ".") || trimmed == "." {
 		return fmt.Errorf("文件后缀必须以 '.' 开头")
 	}
@@ -269,12 +278,12 @@ func loadEnvFiles(paths ...string) error {
 	seen := make(map[string]struct{})
 	for _, p := range paths {
 		if p == "" {
-			continue			//跳过当前循环剩余逻辑，直接进入下一次迭代
+			continue //跳过当前循环剩余逻辑，直接进入下一次迭代
 		}
 		if _, ok := seen[p]; ok {
 			continue
 		}
-		seen[p] = struct{}{}	 //将路径添加到已处理集合中
+		seen[p] = struct{}{} //将路径添加到已处理集合中
 
 		info, err := os.Stat(p)
 		if err != nil || info.IsDir() {

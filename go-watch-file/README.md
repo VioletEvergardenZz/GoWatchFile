@@ -50,6 +50,7 @@ log_to_std: true
 log_show_caller: false
 upload_workers: 3
 upload_queue_size: 100
+api_bind: "${API_BIND}"
 ```
 
 `.env.example` 提供模板（复制为 `.env` 后填写）：
@@ -67,12 +68,14 @@ LOG_TO_STD=true
 LOG_SHOW_CALLER=false
 UPLOAD_WORKERS=3
 UPLOAD_QUEUE_SIZE=100
+API_BIND=:8080
 ```
 
 关键校验与默认策略：
 - `watch_dir` 必须存在且为目录；`file_ext` 必须以 `.` 开头。
 - 日志级别仅允许 `debug|info|warn|error`。
 - 上传并发/队列为容错默认（3/100），可被环境变量覆盖。
+- API 默认监听 `:8080`，用于控制台/调试数据查询，可用 `API_BIND` 覆盖。
 
 ## 架构与模块
 - `watcher/`：文件系统监听，过滤后缀，推送事件到队列。

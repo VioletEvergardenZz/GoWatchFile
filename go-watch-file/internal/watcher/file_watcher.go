@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -131,8 +132,10 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 }
 
 func (fw *FileWatcher) isTargetFileEvent(event fsnotify.Event) bool {
-	if filepath.Ext(event.Name) != fw.config.FileExt {
-		return false
+	if strings.TrimSpace(fw.config.FileExt) != "" {
+		if filepath.Ext(event.Name) != fw.config.FileExt {
+			return false
+		}
 	}
 	//把 event.Op 当成一个装了很多开关的面板，fsnotify.Write 是其中一个开关。event.Op & fsnotify.Write 就是在检查“Write 这个开关是不是开着”
 	return event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create

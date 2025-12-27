@@ -7,8 +7,10 @@ import type {
   HeroCopy,
   MetricCard,
   MonitorNote,
+  MonitorSummary,
   RoutePreview,
   TimelineEvent,
+  UploadRecord,
 } from "./types";
 
 export const heroCopy: HeroCopy = {
@@ -226,13 +228,27 @@ export const monitorNotes: MonitorNote[] = [
   { title: "通知", detail: "钉钉机器人已配置 · 失败自动重试 3 次" },
 ];
 
+export const uploadRecords: UploadRecord[] = [
+  { file: "app-2024-12-26.log", target: "s3://logs-warm", size: "14.2 MB", result: "success", latency: "640 ms", time: "10:32:10", note: "自动上传" },
+  { file: "etl-raw-2024-12-26-01.csv", target: "s3://etl-raw", size: "8.6 MB", result: "success", latency: "520 ms", time: "10:31:58", note: "校验通过" },
+  { file: "heap-2024-12-26.hprof", target: "隔离区 /data/quarantine", size: "1.2 GB", result: "pending", latency: "排队", time: "10:31:45", note: "等待审批" },
+  { file: "vid-2301.mp4", target: "s3://logs-warm", size: "92 MB", result: "failed", latency: "timeout", time: "10:31:12", note: "已触发告警" },
+  { file: "model-v12.zip", target: "s3://artifacts", size: "482 MB", result: "success", latency: "2.4 s", time: "10:30:44", note: "断点续传" },
+];
+
+export const monitorSummary: MonitorSummary[] = [
+  { label: "当前吞吐", value: "480/min", desc: "峰值 520/min" },
+  { label: "成功率", value: "98.6%", desc: "失败率 1.4%" },
+  { label: "平均延迟", value: "820 ms", desc: "P95 1.4s" },
+  { label: "队列 backlog", value: "32", desc: "workers=8 / retry=3" },
+];
+
 export const configSnapshot: ConfigSnapshot = {
   watchDir: "/data/logs/app , /data/etl/raw",
   fileExt: "关闭 · 全量目录",
   silence: "4s",
   concurrency: "workers=8 / queue=200",
   bucket: "s3://logs-warm",
-  strategy: "按目录树开关自动上传",
   action: "上传 + Webhook",
 };
 

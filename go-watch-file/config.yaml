@@ -32,3 +32,6 @@ log_show_caller: false
 upload_workers: 3
 ## 上传队列大小（存放待上传的文件路径）
 upload_queue_size: 100
+
+# API 服务监听地址
+api_bind: "${API_BIND}"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Line } from "react-chartjs-2";
 import type { ChartOptions } from "chart.js";
 import { CategoryScale, Chart as ChartJS, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from "chart.js";
@@ -7,21 +7,23 @@ import {
   chartPoints,
   configSnapshot,
   directoryTree as treeSeed,
-  failures,
   files as fileSeed,
   heroCopy,
   heroHighlights,
   metricCards,
   monitorNotes,
+  monitorSummary,
   routes,
   tailLines,
   timelineEvents,
+  uploadRecords,
 } from "./mockData";
-import type { FileFilter, FileItem, FileNode } from "./types";
+import type { DashboardPayload, FileFilter, FileItem, FileNode } from "./types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler, Legend);
 
-const SECTION_IDS = ["overview", "directory", "files", "tail", "failures", "monitor"];
+const SECTION_IDS = ["overview", "config", "directory", "files", "tail", "failures", "monitor"];
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 
 const fmt = (t: string) => `${new Date().toISOString().split("T")[0]} ${t}`;
 
@@ -46,6 +48,8 @@ const findNode = (nodes: FileNode[], path: string): FileNode | undefined => {
   }
   return undefined;
 };
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const propagateAuto = (children: FileNode[] | undefined, value: boolean): FileNode[] | undefined => {
   if (!children) return children;
@@ -85,6 +89,23 @@ function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [manualUploadMap, setManualUploadMap] = useState<Record<string, string>>({});
   const [activeSection, setActiveSection] = useState<string>(SECTION_IDS[0]);
+  const [configForm, setConfigForm] = useState(configSnapshot);
+  const [keyword, setKeyword] = useState("");
+  const [showMatchesOnly, setShowMatchesOnly] = useState(false);
+  const [heroState, setHeroState] = useState(heroCopy);
+  const [heroHighlightState, setHeroHighlightState] = useState(heroHighlights);
+  const [metricCardsState, setMetricCardsState] = useState(metricCards);
+  const [routesState, setRoutesState] = useState(routes);
+  const [monitorNotesState, setMonitorNotesState] = useState(monitorNotes);
+  const [uploadRecordsState, setUploadRecordsState] = useState(uploadRecords);
+  const [monitorSummaryState, setMonitorSummaryState] = useState(monitorSummary);
+  const [chartPointsState, setChartPointsState] = useState(chartPoints);
+  const [tailLinesState, setTailLinesState] = useState(tailLines);
+  const [timelineEventsState, setTimelineEventsState] = useState(timelineEvents);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const rootNodes = useMemo(() => {
     const filtered = tree.filter((node) => !currentRoot || node.path === currentRoot);
@@ -95,6 +116,58 @@ function App() {
     if (!activePath) return undefined;
     return findNode(rootNodes, activePath);
   }, [activePath, rootNodes]);
+
+  const refreshDashboard = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard`);
+      if (!res.ok) {
+        throw new Error(`加载数据失败，状态码 ${res.status}`);
+      }
+      const data = (await res.json()) as Partial<DashboardPayload>;
+      const directoryTree = data.directoryTree ?? [];
+      const filesData = data.files ?? [];
+      const heroData = data.heroCopy ?? heroCopy;
+      const highlights = data.heroHighlights ?? heroHighlights;
+      const metrics = data.metricCards ?? metricCards;
+      const routesData = data.routes ?? routes;
+      const notes = data.monitorNotes ?? monitorNotes;
+      const uploads = data.uploadRecords ?? [];
+      const summary = data.monitorSummary ?? monitorSummary;
+      const configData = data.configSnapshot ?? configSnapshot;
+      const chartPointsData = data.chartPoints ?? [];
+      const tails = data.tailLines ?? [];
+      const timeline = data.timelineEvents ?? [];
+
+      setTree(directoryTree);
+      setFiles(filesData);
+      setHeroState(heroData);
+      setHeroHighlightState(highlights);
+      setMetricCardsState(metrics);
+      setRoutesState(routesData);
+      setMonitorNotesState(notes);
+      setUploadRecordsState(uploads);
+      setMonitorSummaryState(summary);
+      setConfigForm(configData);
+      setChartPointsState(chartPointsData);
+      setTailLinesState(tails);
+      setTimelineEventsState(timeline);
+      setCurrentRoot((prev) => directoryTree[0]?.path ?? heroData.watchDirs[0] ?? prev);
+      setActivePath((prev) => {
+        const nextActive = findFirstFile(directoryTree)?.path ?? filesData[0]?.path ?? prev;
+        return nextActive || prev;
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshDashboard();
+  }, [refreshDashboard]);
 
   useEffect(() => {
     const hasActiveUnderRoot = activePath && activePath.startsWith(currentRoot);
@@ -121,7 +194,7 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
-  const handleAutoToggle = (path: string, value: boolean) => {
+  const handleAutoToggle = async (path: string, value: boolean) => {
     const node = findNode(tree, path);
     const isDir = node?.type === "dir";
     setTree((prev) => updateAutoUpload(prev, path, value));
@@ -133,6 +206,15 @@ function App() {
         return f;
       })
     );
+    try {
+      await fetch(`${API_BASE}/api/auto-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path, enabled: value }),
+      });
+    } catch (err) {
+      setError((err as Error).message);
+    }
   };
 
   const handleCollapseToggle = (path: string) => {
@@ -160,10 +242,23 @@ function App() {
     setCollapsed(new Set(dirPaths));
   };
 
-  const handleManualUpload = () => {
+  const handleManualUpload = async () => {
     if (!activePath) return;
     const now = new Date().toTimeString().slice(0, 8);
     setManualUploadMap((prev) => ({ ...prev, [activePath]: now }));
+    try {
+      const res = await fetch(`${API_BASE}/api/manual-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: activePath }),
+      });
+      if (!res.ok) {
+        throw new Error(`手动上传失败，状态码 ${res.status}`);
+      }
+      await refreshDashboard();
+    } catch (err) {
+      setError((err as Error).message);
+    }
   };
 
   const filteredFiles = useMemo(() => {
@@ -191,13 +286,84 @@ function App() {
       });
   }, [files, currentRoot, fileFilter, searchTerm]);
 
+  const keywordNormalized = keyword.trim().toLowerCase();
+
+  const tailDisplayLines = useMemo(() => {
+    if (!keywordNormalized) return tailLinesState;
+    const matched = tailLinesState.filter((line) => line.toLowerCase().includes(keywordNormalized));
+    return showMatchesOnly ? matched : tailLinesState;
+  }, [keywordNormalized, showMatchesOnly, tailLinesState]);
+
+  const highlightTailLine = (line: string) => {
+    if (!keywordNormalized) return line;
+    const regex = new RegExp(escapeRegExp(keywordNormalized), "gi");
+    const segments = line.split(regex);
+    const matches = line.match(regex);
+    return segments.flatMap((segment, idx) => {
+      const match = matches?.[idx];
+      return match
+        ? [segment, <mark className="highlight" key={`${line}-${idx}`}>{match}</mark>]
+        : [segment];
+    });
+  };
+
+  const handleSaveSnapshot = async () => {
+    setSaveMessage(null);
+    setError(null);
+    const watchDir = configForm.watchDir?.trim();
+    const fileExt = configForm.fileExt?.trim() ?? "";
+    if (!watchDir) {
+      setSaveMessage("请填写监控目录");
+      return;
+    }
+    const { workers, queue } = parseConcurrency(configForm.concurrency);
+    if (!Number.isFinite(workers) || !Number.isFinite(queue)) {
+      setSaveMessage("并发/队列格式不合法，示例：workers=3 / queue=100");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          watchDir,
+          fileExt,
+          uploadWorkers: workers,
+          uploadQueueSize: queue,
+        }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `保存失败，状态码 ${res.status}`);
+      }
+      const data = (await res.json()) as { ok?: boolean; config?: { watchDir: string; fileExt: string; concurrency?: string } };
+      if (data.config) {
+        setConfigForm((prev) => ({
+          ...prev,
+          watchDir: data.config.watchDir ?? prev.watchDir,
+          fileExt: data.config.fileExt ?? prev.fileExt,
+          concurrency: data.config.concurrency ?? prev.concurrency,
+        }));
+        setCurrentRoot(data.config.watchDir ?? watchDir);
+      }
+      setSaveMessage(`已保存当前表单（监控目录：${watchDir}），后端已应用`);
+      await refreshDashboard();
+    } catch (err) {
+      setError((err as Error).message);
+      setSaveMessage(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const chartData = useMemo(
     () => ({
-      labels: chartPoints.map((p) => p.label),
+      labels: chartPointsState.map((p) => p.label),
       datasets: [
         {
           label: "Uploads",
-          data: chartPoints.map((p) => p.uploads),
+          data: chartPointsState.map((p) => p.uploads),
           borderColor: "#22d3ee",
           backgroundColor: "rgba(34,211,238,0.12)",
           fill: true,
@@ -206,7 +372,7 @@ function App() {
         },
         {
           label: "Failures",
-          data: chartPoints.map((p) => p.failures),
+          data: chartPointsState.map((p) => p.failures),
           borderColor: "#f43f5e",
           backgroundColor: "rgba(244,63,94,0.10)",
           fill: true,
@@ -215,7 +381,7 @@ function App() {
         },
         {
           label: "Queue",
-          data: chartPoints.map((p) => p.queue),
+          data: chartPointsState.map((p) => p.queue),
           borderColor: "#f59e0b",
           backgroundColor: "rgba(245,158,11,0.08)",
           fill: true,
@@ -224,8 +390,16 @@ function App() {
         },
       ],
     }),
-    []
+    [chartPointsState]
   );
+
+  const parseConcurrency = (value: string) => {
+    const workersMatch = value.match(/workers\s*=?\s*(\d+)/i) ?? value.match(/并发\s*=?\s*(\d+)/i);
+    const queueMatch = value.match(/queue\s*=?\s*(\d+)/i) ?? value.match(/队列\s*=?\s*(\d+)/i);
+    const workers = workersMatch ? Number.parseInt(workersMatch[1], 10) : Number.NaN;
+    const queue = queueMatch ? Number.parseInt(queueMatch[1], 10) : Number.NaN;
+    return { workers, queue };
+  };
 
   const chartOptions: ChartOptions<"line"> = useMemo(
     () => ({
@@ -266,11 +440,26 @@ function App() {
                 setActivePath(node.path);
               } else if (node.children) {
                 const next = findFirstFile(node.children);
-                if (next) setActivePath(next.path);
+                if (!isCollapsed && next) setActivePath(next.path);
+                handleCollapseToggle(node.path);
               }
             }}
           >
             <div className="node-head">
+              {node.type === "dir" ? (
+                <button
+                  className="chevron"
+                  aria-label={isCollapsed ? "展开目录" : "收起目录"}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleCollapseToggle(node.path);
+                  }}
+                >
+                  {isCollapsed ? "▸" : "▾"}
+                </button>
+              ) : (
+                <span className="chevron placeholder">•</span>
+              )}
               <span className={`node-icon ${isFile ? "file" : "dir"}`} />
               <span className={`pill ${isFile ? "info" : "success"} mini-pill`}>{isFile ? "FILE" : "DIR"}</span>
             </div>
@@ -282,17 +471,6 @@ function App() {
               </div>
             </div>
             <div className="node-actions">
-              {node.type === "dir" ? (
-                <button
-                  className="collapse-btn"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleCollapseToggle(node.path);
-                  }}
-                >
-                  {isCollapsed ? "展开" : "收起"}
-                </button>
-              ) : null}
               <span className={`pill ${node.autoUpload ? "success" : "warning"}`}>{node.autoUpload ? "自动" : "手动"}</span>
               <label className="switch mini" onClick={(e) => e.stopPropagation()}>
                 <input
@@ -329,39 +507,84 @@ function App() {
           </div>
           <div className="nav-meta">
             <span className="pill success">运行中</span>
-            <span className="badge">srv-01</span>
-            <span className="badge">全量监控</span>
+            <span className="badge">{heroState.agent}</span>
+            <span className="badge">{heroState.watchDirs.length} 个目录</span>
+            <span className="badge ghost">{heroState.queue}</span>
           </div>
           <nav className="nav-list">
-            {SECTION_IDS.map((id) => (
-              <a key={id} className={`nav-item ${activeSection === id ? "active" : ""}`} href={`#${id}`}>
-                <span>
-                  {id === "overview" ? "总览" : id === "directory" ? "目录浏览" : id === "files" ? "文件列表" : id === "tail" ? "Tail / 配置" : id === "failures" ? "失败重试" : "监控"}
-                </span>
-                <small>
-                  {id === "overview"
-                    ? "心跳 / 摘要"
-                    : id === "directory"
-                    ? "自动上传"
-                    : id === "files"
-                    ? "CRUD"
-                    : id === "tail"
-                    ? "实时"
-                    : id === "failures"
-                    ? "队列"
-                    : "吞吐"}
-                </small>
-              </a>
-            ))}
+            {SECTION_IDS.map((id) => {
+              const title =
+                id === "overview"
+                  ? "总览"
+                  : id === "config"
+                  ? "上传与路由配置"
+                  : id === "directory"
+                  ? "目录浏览"
+                  : id === "files"
+                  ? "文件列表"
+                  : id === "tail"
+                  ? "Tail / 关键字"
+                  : id === "failures"
+                  ? "上传记录"
+                  : "监控";
+              const desc =
+                id === "overview"
+                  ? "心跳 · 策略摘要"
+                  : id === "config"
+                  ? "本机配置 · 路由"
+                  : id === "directory"
+                  ? "单目录展开 / 收起"
+                  : id === "files"
+                  ? "基础信息"
+                  : id === "tail"
+                  ? "实时匹配"
+                  : id === "failures"
+                  ? "最近上传"
+                  : "吞吐 / 队列";
+              const badge =
+                id === "overview"
+                  ? "状态"
+                  : id === "config"
+                  ? "配置"
+                  : id === "directory"
+                  ? "目录树"
+                  : id === "files"
+                  ? "列表"
+                  : id === "tail"
+                  ? "日志"
+                  : id === "failures"
+                  ? "记录"
+                  : "图表";
+              return (
+                <a key={id} className={`nav-item ${activeSection === id ? "active" : ""}`} href={`#${id}`}>
+                  <div className="nav-label">
+                    <span className={`nav-dot ${activeSection === id ? "live" : ""}`} />
+                    <div>
+                      <div className="nav-label-title">{title}</div>
+                      <small>{desc}</small>
+                    </div>
+                  </div>
+                  <span className="badge ghost">{badge}</span>
+                </a>
+              );
+            })}
           </nav>
           <div className="nav-foot">
             <div className="nav-foot-row">
               <span>后缀过滤</span>
-              <span className="pill warning">关闭</span>
+              <span className="badge ghost">{configForm.fileExt || "未配置"}</span>
             </div>
             <div className="nav-foot-row">
               <span>目录递归</span>
               <span className="pill success">开启</span>
+            </div>
+            <div className="nav-foot-row">
+              <span>监听目录</span>
+              <span className="badge ghost">{tree.length} 个</span>
+            </div>
+            <div className="nav-foot-row">
+              <span>最近心跳</span>
+              <span className="badge ghost">{loading ? "刷新中" : "刚刚"}</span>
             </div>
             <div className="nav-foot-row">
               <span>自动刷新</span>
@@ -372,7 +595,7 @@ function App() {
             </div>
             <div className="nav-foot-row">
               <span>上传并发</span>
-              <span className="badge">8 workers</span>
+              <span className="badge">{configForm.concurrency}</span>
             </div>
           </div>
         </aside>
@@ -387,12 +610,19 @@ function App() {
               </div>
             </div>
             <div className="controls">
+              {loading ? <span className="badge">刷新中</span> : <span className="badge ghost">最新数据</span>}
+              {error ? (
+                <>
+                  <span className="pill danger">接口异常</span>
+                  <span className="badge ghost">{error}</span>
+                </>
+              ) : null}
               <div className="chip active">实时</div>
               <div className="chip">最近 24h</div>
-              <button className="btn secondary" type="button">
+              <button className="btn secondary" type="button" onClick={() => void refreshDashboard()}>
                 重载配置
               </button>
-              <button className="btn" type="button">
+              <button className="btn" type="button" onClick={() => void handleManualUpload()}>
                 手动上传/同步
               </button>
             </div>
@@ -402,21 +632,21 @@ function App() {
             <div className="hero">
               <div>
                 <div className="hero-title">
-                  当前 Agent：<strong>{heroCopy.agent}</strong>
+                  当前 Agent：<strong>{heroState.agent}</strong>
                 </div>
                 <div className="hero-desc">
-                  监听目录 <strong>{heroCopy.watchDirs.join(" , ")}</strong> ，后缀过滤{heroCopy.suffixFilter}；静默窗口 {heroCopy.silence}，{heroCopy.queue}，{heroCopy.concurrency}，目标存储 <strong>{heroCopy.bucket}</strong>。 单机视角：本地主机事件、队列、告警与上云进度一屏掌握，目录树可逐个文件关闭自动上传。
+                  监听目录 <strong>{heroState.watchDirs.join(" , ")}</strong> ，后缀过滤{heroState.suffixFilter}；静默窗口 {heroState.silence}，{heroState.queue}，{heroState.concurrency}，目标存储 <strong>{heroState.bucket}</strong>。 总览用于确认心跳与策略，目录树可逐层展开/收起并切换自动上传；下方文件列表聚焦基础信息，日志区域支持关键字匹配，右侧配置可以手动编辑。
                 </div>
               </div>
               <div className="hero-list">
-                {heroHighlights.map((item) => (
+                {heroHighlightState.map((item) => (
                   <span key={item}>{item}</span>
                 ))}
               </div>
             </div>
 
             <section className="grid">
-              {metricCards.map((card) => (
+              {metricCardsState.map((card) => (
                 <div className="card" key={card.label}>
                   <small>{card.label}</small>
                   <div className="value">
@@ -430,10 +660,83 @@ function App() {
             </section>
           </div>
 
+          <section className="panel" id="config">
+            <div className="section-title">
+              <h2>上传与路由配置（本机，可手动编辑）</h2>
+              <span>可手动填写 / 试算路由</span>
+            </div>
+            <div className="inputs">
+              <div className="input">
+                <label>监控目录</label>
+                <input
+                  placeholder="填写要监听的目录，例如 /opt/test"
+                  value={configForm.watchDir}
+                  onChange={(e) => setConfigForm((prev) => ({ ...prev, watchDir: e.target.value }))}
+                />
+              </div>
+              <div className="input">
+                <label>文件后缀过滤</label>
+                <input
+                  placeholder="不填则默认显示监控目录下的所有文件和子目录"
+                  value={configForm.fileExt}
+                  onChange={(e) => setConfigForm((prev) => ({ ...prev, fileExt: e.target.value }))}
+                />
+              </div>
+              <div className="input">
+                <label>静默窗口</label>
+                <input
+                  placeholder="例如 10s / 30s"
+                  value={configForm.silence}
+                  onChange={(e) => setConfigForm((prev) => ({ ...prev, silence: e.target.value }))}
+                />
+              </div>
+              <div className="input">
+                <label>并发/队列</label>
+                <input
+                  placeholder="示例：workers=3 / queue=100（必填，数字）"
+                  value={configForm.concurrency}
+                  onChange={(e) => setConfigForm((prev) => ({ ...prev, concurrency: e.target.value }))}
+                />
+              </div>
+              <div className="input">
+                <label>
+                  Action
+                  <small className="muted" style={{ marginLeft: 8 }}>说明：展示选中的上传动作/审批链描述</small>
+                </label>
+                <select value={configForm.action} onChange={(e) => setConfigForm((prev) => ({ ...prev, action: e.target.value }))}>
+                  <option>上传 + Webhook</option>
+                  <option>上传 + 队列</option>
+                  <option>隔离 + 审核</option>
+                </select>
+              </div>
+            </div>
+            <div className="toolbar space-between">
+              <span className="badge">路径校验已启用 · 防穿越</span>
+              <div className="toolbar-actions">
+                <button className="btn secondary" type="button" onClick={() => setConfigForm(configSnapshot)}>
+                  恢复演示值
+                </button>
+                <button className="btn" type="button" onClick={() => void handleSaveSnapshot()} disabled={saving}>
+                  {saving ? "保存中..." : "保存快照"}
+                </button>
+              </div>
+            </div>
+            {saveMessage ? <div className="badge">{saveMessage}</div> : null}
+            <div className="stack">
+              {routesState.map((r) => (
+                <div className="stack-item" key={r.name}>
+                  <strong>{r.name}</strong>
+                  <div className="meta">When: {r.cond}</div>
+                  <div className="meta">Action: {r.action}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+
           <section className="panel" id="directory">
             <div className="section-title">
               <h2>目录浏览 / 自动上传控制</h2>
-              <span>全量目录监控 · 后缀匹配已关闭</span>
+              <span>单个目录可展开/收起 · 右侧展示基础信息</span>
             </div>
             <div className="workspace">
               <div className="tree-panel">
@@ -489,13 +792,28 @@ function App() {
                       />
                       <span className="slider" />
                     </label>
-                    <button className="btn secondary" type="button" onClick={handleManualUpload} disabled={!activeNode}>
+                    <button className="btn secondary" type="button" onClick={() => void handleManualUpload()} disabled={!activeNode}>
                       立即上传
                     </button>
                   </div>
                 </div>
                 <div className="preview-meta" id="previewMeta">
-                  {activeNode ? `大小 ${activeNode.size ?? "--"} · ${updatedSegment} · 目录监控中` : "目录树展示全部文件，可切换自动上传"}
+                  {activeNode ? `${updatedSegment} · 路径信息收敛在此，适合做基础确认` : "目录树展示全部文件，可切换自动上传"}
+                </div>
+                <div className="preview-hint">用于展示当前选中文件的基础信息、状态与上传策略，避免占用列表区域。</div>
+                <div className="info-grid">
+                  <div className="info-item">
+                    <span className="muted">大小</span>
+                    <strong>{activeNode?.size ?? "--"}</strong>
+                  </div>
+                  <div className="info-item">
+                    <span className="muted">模式</span>
+                    <strong>{activeNode ? (activeNode.autoUpload ? "自动上传" : "需手动/审批") : "--"}</strong>
+                  </div>
+                  <div className="info-item">
+                    <span className="muted">更新时间</span>
+                    <strong>{activeNode ? updatedSegment : "--"}</strong>
+                  </div>
                 </div>
                 <div className="preview-content" id="previewContent">
                   {activeNode ? activeNode.content ?? "文件内容预览" : "点击左侧目录树中的文件预览内容。"}
@@ -506,8 +824,8 @@ function App() {
 
           <section className="panel" id="files">
             <div className="section-title">
-              <h2>文件列表（单机 CRUD）</h2>
-              <span>查看 / 下载 / 删除 / 重试</span>
+              <h2>文件列表（基础信息）</h2>
+              <span>轻量查看 · 下载 · 删除</span>
             </div>
             <div className="toolbar">
               <input className="search" placeholder="搜索文件名 / 路径" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -578,114 +896,83 @@ function App() {
             </table>
           </section>
 
-          <section className="flex-2" id="tail">
-            <div className="panel">
-              <div className="section-title">
-                <h2>实时 Tail / 关键字</h2>
-                <span>最近 200 行</span>
-              </div>
-              <div className="toolbar">
-                <div className="chip active">实时</div>
-                <div className="chip">仅错误</div>
-                <div className="chip">下载原文件</div>
-              </div>
-              <pre className="tail-box">{tailLines.join("\n")}</pre>
-              <div className="timeline">
-                {timelineEvents.map((ev) => (
-                  <div className="timeline-item" key={`${ev.label}-${ev.time}`}>
-                    <span className={`pill ${ev.status}`}>{ev.label}</span>
-                    <div className="timeline-text">{fmt(ev.time)}</div>
-                    <div className="timeline-text right">{ev.host ?? "srv-01"}</div>
-                  </div>
-                ))}
-              </div>
+          <section className="panel" id="tail">
+            <div className="section-title">
+              <h2>日志快速处理 / 关键字匹配</h2>
+              <span>针对已打开的日志做关键词匹配与截取</span>
             </div>
-
-            <div className="panel">
-              <div className="section-title">
-                <h2>上传与路由配置（本机）</h2>
-                <span>表单仅为演示</span>
-              </div>
-              <div className="inputs">
-                <div className="input">
-                  <label>watch_dir</label>
-                  <input value={configSnapshot.watchDir} readOnly />
+            <div className="toolbar">
+              <div className="chip active">实时</div>
+              <div className="chip">最近 200 行</div>
+              <input
+                className="search"
+                placeholder="匹配关键字 / TraceId / 错误码"
+                value={keyword}
+                onChange={(e) => setKeyword(e.target.value)}
+              />
+              <label className="switch mini">
+                <input type="checkbox" checked={showMatchesOnly} onChange={(e) => setShowMatchesOnly(e.target.checked)} />
+                <span className="slider" />
+              </label>
+              <span className="muted">只看匹配</span>
+              <span className="badge ghost">当前：{activeNode?.name ?? "未选择"}</span>
+              <button className="btn secondary" type="button" onClick={() => setKeyword("")}>
+                清除
+              </button>
+            </div>
+            <div className="tail-box">
+              {tailDisplayLines.map((line, idx) => (
+                <div className="tail-line" key={`${line}-${idx}`}>
+                  {highlightTailLine(line)}
                 </div>
-                <div className="input">
-                  <label>后缀过滤</label>
-                  <input value={configSnapshot.fileExt} readOnly />
+              ))}
+            </div>
+            <div className="timeline">
+              {timelineEventsState.map((ev) => (
+                <div className="timeline-item" key={`${ev.label}-${ev.time}`}>
+                  <span className={`pill ${ev.status}`}>{ev.label}</span>
+                  <div className="timeline-text">{fmt(ev.time)}</div>
+                  <div className="timeline-text right">{ev.host ?? "srv-01"}</div>
                 </div>
-                <div className="input">
-                  <label>静默窗口</label>
-                  <input value={configSnapshot.silence} readOnly />
-                </div>
-                <div className="input">
-                  <label>并发/队列</label>
-                  <input value={configSnapshot.concurrency} readOnly />
-                </div>
-                <div className="input">
-                  <label>S3 目标</label>
-                  <input value={configSnapshot.bucket} readOnly />
-                </div>
-                <div className="input">
-                  <label>目录策略</label>
-                  <input value={configSnapshot.strategy} readOnly />
-                </div>
-                <div className="input">
-                  <label>Action</label>
-                  <select value={configSnapshot.action} disabled>
-                    <option>上传 + Webhook</option>
-                    <option>上传 + 队列</option>
-                    <option>隔离 + 审核</option>
-                  </select>
-                </div>
-              </div>
-              <div className="toolbar space-between">
-                <span className="badge">路径校验已启用 · 防穿越</span>
-                <button className="btn" type="button">
-                  预览路由
-                </button>
-              </div>
-              <div className="stack">
-                {routes.map((r) => (
-                  <div className="stack-item" key={r.name}>
-                    <strong>{r.name}</strong>
-                    <div className="meta">When: {r.cond}</div>
-                    <div className="meta">Action: {r.action}</div>
-                  </div>
-                ))}
-              </div>
+              ))}
             </div>
           </section>
 
           <section className="panel" id="failures">
             <div className="section-title">
-              <h2>失败 / 重试 / 告警</h2>
-              <span>单机队列</span>
+              <h2>上传记录 / 最近动作</h2>
+              <span>成功 / 失败 / 等待审批</span>
             </div>
             <table className="table">
               <thead>
                 <tr>
                   <th>文件</th>
-                  <th>原因</th>
-                  <th>尝试</th>
-                  <th>下一步</th>
-                  <th />
+                  <th>状态</th>
+                  <th>耗时</th>
+                  <th>目标</th>
+                  <th>时间</th>
+                  <th>备注</th>
                 </tr>
               </thead>
               <tbody>
-                {failures.map((f) => (
-                  <tr key={f.file}>
-                    <td>{f.file}</td>
+                {uploadRecordsState.map((item) => (
+                  <tr key={`${item.file}-${item.time}`}>
                     <td>
-                      <span className="badge">{f.reason}</span>
+                      <div className="row-title">{item.file}</div>
+                      <div className="row-sub">{item.size}</div>
                     </td>
-                    <td>{f.attempts}x</td>
-                    <td>{f.next}</td>
                     <td>
-                      <button className="btn secondary" type="button">
-                        重试
-                      </button>
+                      <span
+                        className={`pill ${item.result === "success" ? "success" : item.result === "failed" ? "danger" : "warning"}`}
+                      >
+                        {item.result === "success" ? "成功" : item.result === "failed" ? "失败" : "等待"}
+                      </span>
+                    </td>
+                    <td>{item.latency}</td>
+                    <td>{item.target}</td>
+                    <td>{fmt(item.time)}</td>
+                    <td>
+                      <div className="row-sub">{item.note ?? "--"}</div>
                     </td>
                   </tr>
                 ))}
@@ -698,12 +985,21 @@ function App() {
               <h2>运行与上云监控</h2>
               <span>吞吐 / 队列 / 时延</span>
             </div>
+            <div className="monitor-grid">
+              {monitorSummaryState.map((item) => (
+                <div className="card compact" key={item.label}>
+                  <div className="value">{item.value}</div>
+                  <div className="meta">{item.label}</div>
+                  <div className="muted small">{item.desc}</div>
+                </div>
+              ))}
+            </div>
             <div className="flex-2 stretch">
               <div className="chart-wrapper">
                 <Line data={chartData} options={chartOptions} />
               </div>
               <div className="stack">
-                {monitorNotes.map((note) => (
+                {monitorNotesState.map((note) => (
                   <div className="stack-item" key={note.title}>
                     <strong>{note.title}</strong>
                     <div className="meta">{note.detail}</div>

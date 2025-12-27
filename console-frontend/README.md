@@ -10,6 +10,8 @@ npm run dev   # 本地开发
 npm run build # 产出 dist/
 ```
 
+默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`，若后端地址不同可设置 `VITE_API_BASE`。
+
 ## 结构说明
 - `src/App.tsx`：主界面与交互逻辑（目录树、文件表格、Tail、监控图表）。
 - `src/mockData.ts`：当前使用的静态数据，接入后端时可替换为 fetch/API。
