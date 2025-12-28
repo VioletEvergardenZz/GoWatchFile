@@ -23,7 +23,7 @@
 - **通知告警**：企业微信/钉钉机器人推送成功/异常。  
 - **路径与安全**：相对路径校验，统一对象 Key/下载 URL 生成，防止目录穿越。  
 - **配置管理**：`config.yaml` + `.env` + 环境变量覆盖，严格校验与默认值。  
-- **观测（当前）**：上传队列与 worker 统计；Prometheus 指标规划中。  
+- **观测（当前）**：上传队列与 worker 统计；控制台概览卡片基于“当日”上传/失败/通知次数。Prometheus 指标规划中。  
 
 ## 快速开始（go-watch-file Agent）
 1) 环境：Go 1.21+；可访问 S3 兼容存储；可选 企微/钉钉机器人。  
@@ -33,7 +33,7 @@
    cp .env.example .env
    # 填写 watch_dir、file_ext、S3、通知等
    ```
-   关键字段：`watch_dir`、`file_ext`（单后缀）、S3 凭证与 endpoint、通知 Webhook、`UPLOAD_WORKERS`、`UPLOAD_QUEUE_SIZE`。  
+   关键字段：`watch_dir`、`file_ext`（单后缀）、`silence`/`SILENCE_WINDOW`（写入完成静默窗口，默认 10s，可填 `5s` 等），S3 凭证与 endpoint、通知 Webhook、`UPLOAD_WORKERS`、`UPLOAD_QUEUE_SIZE`。  
 3) 运行  
    ```bash
    go build -o bin/file-watch cmd/main.go

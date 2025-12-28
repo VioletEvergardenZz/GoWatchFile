@@ -5,6 +5,8 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -17,8 +19,8 @@ import (
 
 const (
 	// throttleDuration     = 120 * time.Second
-	logThrottleDuration  = 5 * time.Second  // 日志节流时间间隔（控制台或者程序日志文件输出频率）
-	writeCompleteTimeout = 10 * time.Second // 文件写入完成检测超时时间
+	logThrottleDuration   = 5 * time.Second  // 日志节流时间间隔（控制台或者程序日志文件输出频率）
+	defaultSilenceWindow  = 10 * time.Second // 文件写入完成检测超时时间（默认）
 )
 
 // FileWatcher 文件监控器
@@ -32,6 +34,7 @@ type FileWatcher struct {
 	lastLogged    map[string]time.Time
 	lastWriteTime map[string]time.Time
 	writeTimers   map[string]*time.Timer
+	silenceWindow time.Duration
 }
 
 // UploadPool 上传池接口
@@ -56,6 +59,7 @@ func NewFileWatcher(config *models.Config, uploadPool UploadPool) (*FileWatcher,
 		lastLogged:    make(map[string]time.Time),
 		lastWriteTime: make(map[string]time.Time),
 		writeTimers:   make(map[string]*time.Timer),
+		silenceWindow: parseSilenceWindow(config.Silence),
 	}, nil
 }
 
@@ -202,8 +206,8 @@ func (fw *FileWatcher) updateFileWriteTime(filePath string) {
 	if timer, exists := fw.writeTimers[filePath]; exists {
 		timer.Stop()
 	}
-	//如果 10 秒内没有再收到这个文件的写事件，新定时器会触发 handleWriteComplete(filePath)
-	fw.writeTimers[filePath] = time.AfterFunc(writeCompleteTimeout, func() {
+	// 如果 silenceWindow 内没有再收到这个文件的写事件，新定时器会触发 handleWriteComplete(filePath)
+	fw.writeTimers[filePath] = time.AfterFunc(fw.silenceWindow, func() {
 		fw.handleWriteComplete(filePath)
 	})
 }
@@ -215,7 +219,7 @@ func (fw *FileWatcher) handleWriteComplete(filePath string) {
 		fw.stateMutex.Unlock()
 		return
 	}
-	if time.Since(lastWrite) < writeCompleteTimeout {
+	if time.Since(lastWrite) < fw.silenceWindow {
 		fw.stateMutex.Unlock()
 		return
 	}
@@ -226,7 +230,7 @@ func (fw *FileWatcher) handleWriteComplete(filePath string) {
 	delete(fw.lastLogged, filePath)
 	fw.stateMutex.Unlock()
 
-	logger.Info("文件写入完成: %s (超过 %v 无新写入)", filePath, writeCompleteTimeout)
+	logger.Info("文件写入完成: %s (超过 %v 无新写入)", filePath, fw.silenceWindow)
 	if err := fw.uploadPool.AddFile(filePath); err != nil {
 		logger.Error("无法将文件添加到上传队列: %s, 错误: %v", filePath, err)
 	}
@@ -254,4 +258,30 @@ func (fw *FileWatcher) shouldLogFileEvent(filePath string) bool {
 		return true
 	}
 	return false
+}
+
+func parseSilenceWindow(raw string) time.Duration {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return defaultSilenceWindow
+	}
+	clean := strings.ToLower(trimmed)
+	clean = strings.ReplaceAll(clean, "静默", "")
+	clean = strings.ReplaceAll(clean, "秒钟", "秒")
+	clean = strings.ReplaceAll(clean, "秒", "s")
+	clean = strings.TrimSpace(clean)
+
+	if d, err := time.ParseDuration(clean); err == nil && d > 0 {
+		return d
+	}
+
+	numRe := regexp.MustCompile(`\\d+`)
+	if m := numRe.FindString(clean); m != "" {
+		if v, err := strconv.Atoi(m); err == nil && v > 0 {
+			return time.Duration(v) * time.Second
+		}
+	}
+
+	logger.Warn("静默窗口解析失败，使用默认值: %s", trimmed)
+	return defaultSilenceWindow
 }

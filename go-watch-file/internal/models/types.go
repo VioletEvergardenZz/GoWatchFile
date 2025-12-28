@@ -8,6 +8,7 @@ import (
 type Config struct {
 	WatchDir        string `yaml:"watch_dir"`
 	FileExt         string `yaml:"file_ext"`
+	Silence         string `yaml:"silence"`
 	RobotKey        string `yaml:"robot_key"`
 	DingTalkWebhook string `yaml:"dingtalk_webhook"`
 	DingTalkSecret  string `yaml:"dingtalk_secret"`

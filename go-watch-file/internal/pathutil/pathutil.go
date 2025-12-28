@@ -65,30 +65,6 @@ func BuildObjectKey(watchDir, filePath string) string {
 	return BuildObjectKeyPermissive(watchDir, filePath)
 }
 
-// ParseAppAndFileName 从 filePath 解析 app 名与文件名(无扩展名)。
-// 解析优先级：home 路径 > watchDir 相对路径的首层目录 > 父目录名（尽力而为的兜底，不保证语义正确）。
-// app 名为 watchDir 下的第一层目录。
-func ParseAppAndFileName(watchDir, filePath string) (string, string, error) {
-	fileName := baseNameNoExt(filePath)
-	if fileName == "" {
-		return "", "", fmt.Errorf("无效文件路径: %s", filePath)
-	}
-
-	appName := appNameFromHomePath(filePath)
-	if appName == "" {
-		if rel, err := RelativePath(watchDir, filePath); err == nil {
-			appName = appNameFromRelative(rel)
-		}
-	}
-	if appName == "" {
-		appName = parentDirName(filePath)
-	}
-	if appName == "" {
-		return "", "", fmt.Errorf("无效文件路径: %s", filePath)
-	}
-	return appName, fileName, nil
-}
-
 // BuildDownloadURL 根据 bucket、endpoint 和对象 key 构造下载 URL。
 func BuildDownloadURL(endpoint, bucket, objectKey string, forcePathStyle, disableSSL bool) string {
 	scheme := "https"
@@ -153,63 +129,6 @@ func joinURLPath(parts ...string) string {
 		}
 	}
 	return strings.Join(cleaned, "/")
-}
-
-func baseNameNoExt(path string) string {
-	base := baseName(path)
-	if base == "" {
-		return ""
-	}
-	return strings.TrimSuffix(base, filepath.Ext(base))
-}
-
-func baseName(path string) string {
-	parts := splitPathParts(path)
-	if len(parts) == 0 {
-		return ""
-	}
-	// 路径的最后一段
-	return parts[len(parts)-1]
-}
-
-func parentDirName(path string) string {
-	parts := splitPathParts(path)
-	if len(parts) < 2 {
-		return ""
-	}
-	return parts[len(parts)-2]
-}
-
-func appNameFromRelative(rel string) string {
-	parts := splitPathParts(rel)
-	if len(parts) < 2 {
-		return ""
-	}
-	return parts[0]
-}
-
-func appNameFromHomePath(path string) string {
-	parts := splitPathParts(path)
-	if len(parts) < 2 || parts[0] != "home" {
-		return ""
-	}
-	return parts[1]
-}
-
-func splitPathParts(path string) []string {
-	cleaned := strings.TrimSuffix(toSlashPath(path), "/")
-	cleaned = strings.TrimPrefix(cleaned, "/")
-	if cleaned == "" || cleaned == "." {
-		return nil
-	}
-	parts := strings.Split(cleaned, "/")
-	filtered := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part != "" && part != "." {
-			filtered = append(filtered, part)
-		}
-	}
-	return filtered
 }
 
 // resolvePath 返回绝对路径，并解析路径中的符号链接

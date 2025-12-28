@@ -20,6 +20,7 @@ const (
 	defaultLogLevel        = "info"
 	defaultLogToStd        = true
 	defaultAPIBind         = ":8080"
+	defaultSilence         = "10s"
 )
 
 var allowedLogLevels = map[string]struct{}{
@@ -93,6 +94,7 @@ func ValidateConfig(config *models.Config) error {
 func applyEnvOverrides(cfg *models.Config) error {
 	cfg.WatchDir = stringFromEnv("WATCH_DIR", cfg.WatchDir)
 	cfg.FileExt = stringFromEnv("FILE_EXT", cfg.FileExt)
+	cfg.Silence = stringFromEnv("SILENCE_WINDOW", cfg.Silence)
 	cfg.RobotKey = stringFromEnv("ROBOT_KEY", cfg.RobotKey)
 	cfg.DingTalkWebhook = stringFromEnv("DINGTALK_WEBHOOK", cfg.DingTalkWebhook)
 	cfg.DingTalkSecret = stringFromEnv("DINGTALK_SECRET", cfg.DingTalkSecret)
@@ -147,6 +149,9 @@ func applyDefaults(cfg *models.Config) {
 	}
 	if cfg.UploadQueueSize <= 0 {
 		cfg.UploadQueueSize = defaultUploadQueueSize
+	}
+	if strings.TrimSpace(cfg.Silence) == "" {
+		cfg.Silence = defaultSilence
 	}
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = defaultLogLevel

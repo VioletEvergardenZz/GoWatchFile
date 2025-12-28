@@ -18,6 +18,7 @@ const (
 	maxTimelineEvents = 120
 	maxUploadRecords  = 200
 	maxQueuePoints    = 32
+	maxNotifications  = 200
 )
 
 type fileState struct {
@@ -47,6 +48,11 @@ type uploadHistory struct {
 	Note    string
 }
 
+type notificationEvent struct {
+	Time    time.Time
+	Channel string
+}
+
 // RuntimeState stores in-memory runtime data for the API and UI.
 type RuntimeState struct {
 	mu sync.RWMutex
@@ -66,6 +72,8 @@ type RuntimeState struct {
 	failures  int
 	workers   int
 	queueLen  int
+
+	notifications []notificationEvent
 }
 
 // NewRuntimeState constructs RuntimeState from config defaults.
@@ -85,6 +93,27 @@ func NewRuntimeState(cfg *models.Config) *RuntimeState {
 		queue:     seedQueuePoints(),
 		workers:   cfg.UploadWorkers,
 	}
+}
+
+// CarryOverFrom migrates counters and history from an existing state to preserve metrics across config reloads.
+func (s *RuntimeState) CarryOverFrom(old *RuntimeState) {
+	if old == nil {
+		return
+	}
+	old.mu.RLock()
+	defer old.mu.RUnlock()
+
+	s.successes = old.successes
+	s.failures = old.failures
+	s.queueLen = old.queueLen
+
+	s.timeline = append([]timelineEntry(nil), old.timeline...)
+	s.tailLines = append([]string(nil), old.tailLines...)
+	s.uploads = append([]uploadHistory(nil), old.uploads...)
+	s.notifications = append([]notificationEvent(nil), old.notifications...)
+
+	// Preserve queue stats trend; actual pool stats will overwrite soon.
+	s.queue = append([]ChartPoint(nil), old.queue...)
 }
 
 // BootstrapExisting preloads existing files under watchDir as uploaded.
@@ -237,6 +266,17 @@ func (s *RuntimeState) MarkFailed(path string, reason error) {
 		Note:    reason.Error(),
 	})
 	s.failures++
+}
+
+// RecordNotification tracks a notification send event.
+func (s *RuntimeState) RecordNotification(channel string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ev := notificationEvent{Time: time.Now(), Channel: channel}
+	s.notifications = append(s.notifications, ev)
+	if len(s.notifications) > maxNotifications {
+		s.notifications = s.notifications[len(s.notifications)-maxNotifications:]
+	}
 }
 
 // SetQueueStats updates queue length/workers and appends a chart point.
@@ -442,17 +482,42 @@ func (s *RuntimeState) MonitorSummary() []MonitorSummary {
 func (s *RuntimeState) MetricCards() []MetricCard {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	total := s.successes + s.failures
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	successesToday := 0
+	failuresToday := 0
+	notifiesToday := 0
+	for _, up := range s.uploads {
+		if up.Note == "历史文件" {
+			continue
+		}
+		if up.Time.Before(todayStart) {
+			continue
+		}
+		switch up.Result {
+		case "success":
+			successesToday++
+		case "failed":
+			failuresToday++
+		}
+	}
+	for _, ev := range s.notifications {
+		if ev.Time.Before(todayStart) {
+			continue
+		}
+		notifiesToday++
+	}
+	totalToday := successesToday + failuresToday
 	failRate := 0.0
-	if total > 0 {
-		failRate = (float64(s.failures) / float64(total)) * 100
+	if totalToday > 0 {
+		failRate = (float64(failuresToday) / float64(totalToday)) * 100
 	}
 	return []MetricCard{
-		{Label: "运行状态", Value: "Running", Trend: "心跳正常", Tone: "up"},
-		{Label: "今日上传", Value: fmt.Sprintf("%d", s.successes), Trend: "累积", Tone: "up"},
-		{Label: "失败率", Value: fmt.Sprintf("%.1f%%", failRate), Trend: "动态", Tone: "warning"},
-		{Label: "队列深度", Value: fmt.Sprintf("%d", s.queueLen), Trend: "背压监控", Tone: "warning"},
+		{Label: "今日上传", Value: fmt.Sprintf("%d", successesToday), Trend: "今日成功", Tone: "up"},
+		{Label: "通知次数", Value: fmt.Sprintf("%d", notifiesToday), Trend: "钉钉", Tone: "up"},
 		{Label: "失败累计", Value: fmt.Sprintf("%d", s.failures), Trend: "重试/隔离", Tone: "muted"},
+		{Label: "失败率", Value: fmt.Sprintf("%.1f%%", failRate), Trend: "今日统计", Tone: "warning"},
+		{Label: "队列深度", Value: fmt.Sprintf("%d", s.queueLen), Trend: "背压监控", Tone: "warning"},
 	}
 }
 
@@ -479,7 +544,7 @@ func (s *RuntimeState) HeroCopy(cfg *models.Config) HeroCopy {
 		Agent:        s.host,
 		WatchDirs:    []string{cfg.WatchDir},
 		SuffixFilter: suffix,
-		Silence:      "10s 静默",
+		Silence:      cfg.Silence,
 		Queue:        fmt.Sprintf("队列 %d", s.queueLen),
 		Concurrency:  fmt.Sprintf("上传并发 %d", s.workers),
 		Bucket:       cfg.Bucket,
@@ -491,7 +556,7 @@ func (s *RuntimeState) ConfigSnapshot(cfg *models.Config) ConfigSnapshot {
 	return ConfigSnapshot{
 		WatchDir:    cfg.WatchDir,
 		FileExt:     cfg.FileExt,
-		Silence:     "10s",
+		Silence:     cfg.Silence,
 		Concurrency: fmt.Sprintf("workers=%d / queue=%d", cfg.UploadWorkers, cfg.UploadQueueSize),
 		Bucket:      cfg.Bucket,
 		Action:      "上传 + Webhook",

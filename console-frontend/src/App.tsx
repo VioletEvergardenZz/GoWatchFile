@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Line } from "react-chartjs-2";
 import type { ChartOptions } from "chart.js";
 import { CategoryScale, Chart as ChartJS, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from "chart.js";
@@ -9,7 +9,6 @@ import {
   directoryTree as treeSeed,
   files as fileSeed,
   heroCopy,
-  heroHighlights,
   metricCards,
   monitorNotes,
   monitorSummary,
@@ -18,7 +17,7 @@ import {
   timelineEvents,
   uploadRecords,
 } from "./mockData";
-import type { DashboardPayload, FileFilter, FileItem, FileNode } from "./types";
+import type { ConfigSnapshot, DashboardPayload, FileFilter, FileItem, FileNode } from "./types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler, Legend);
 
@@ -93,7 +92,6 @@ function App() {
   const [keyword, setKeyword] = useState("");
   const [showMatchesOnly, setShowMatchesOnly] = useState(false);
   const [heroState, setHeroState] = useState(heroCopy);
-  const [heroHighlightState, setHeroHighlightState] = useState(heroHighlights);
   const [metricCardsState, setMetricCardsState] = useState(metricCards);
   const [routesState, setRoutesState] = useState(routes);
   const [monitorNotesState, setMonitorNotesState] = useState(monitorNotes);
@@ -102,10 +100,12 @@ function App() {
   const [chartPointsState, setChartPointsState] = useState(chartPoints);
   const [tailLinesState, setTailLinesState] = useState(tailLines);
   const [timelineEventsState, setTimelineEventsState] = useState(timelineEvents);
+  const [timeframe, setTimeframe] = useState<"realtime" | "24h">("realtime");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const lastSavedConfig = useRef<ConfigSnapshot | null>(null);
 
   const rootNodes = useMemo(() => {
     const filtered = tree.filter((node) => !currentRoot || node.path === currentRoot);
@@ -129,21 +129,31 @@ function App() {
       const directoryTree = data.directoryTree ?? [];
       const filesData = data.files ?? [];
       const heroData = data.heroCopy ?? heroCopy;
-      const highlights = data.heroHighlights ?? heroHighlights;
       const metrics = data.metricCards ?? metricCards;
       const routesData = data.routes ?? routes;
       const notes = data.monitorNotes ?? monitorNotes;
       const uploads = data.uploadRecords ?? [];
       const summary = data.monitorSummary ?? monitorSummary;
-      const configData = data.configSnapshot ?? configSnapshot;
       const chartPointsData = data.chartPoints ?? [];
       const tails = data.tailLines ?? [];
       const timeline = data.timelineEvents ?? [];
 
+      let configData = (data.configSnapshot as ConfigSnapshot | undefined) ?? configSnapshot;
+      if (lastSavedConfig.current) {
+        configData = { ...configData, ...lastSavedConfig.current };
+      }
+
+      const mergedHero = {
+        ...heroData,
+        silence: lastSavedConfig.current?.silence ?? heroData.silence,
+        watchDirs: lastSavedConfig.current?.watchDir
+          ? lastSavedConfig.current.watchDir.split(",").map((d) => d.trim()).filter(Boolean)
+          : heroData.watchDirs,
+      };
+
       setTree(directoryTree);
       setFiles(filesData);
-      setHeroState(heroData);
-      setHeroHighlightState(highlights);
+      setHeroState(mergedHero);
       setMetricCardsState(metrics);
       setRoutesState(routesData);
       setMonitorNotesState(notes);
@@ -153,7 +163,7 @@ function App() {
       setChartPointsState(chartPointsData);
       setTailLinesState(tails);
       setTimelineEventsState(timeline);
-      setCurrentRoot((prev) => directoryTree[0]?.path ?? heroData.watchDirs[0] ?? prev);
+      setCurrentRoot((prev) => directoryTree[0]?.path ?? mergedHero.watchDirs[0] ?? prev);
       setActivePath((prev) => {
         const nextActive = findFirstFile(directoryTree)?.path ?? filesData[0]?.path ?? prev;
         return nextActive || prev;
@@ -312,6 +322,7 @@ function App() {
     setError(null);
     const watchDir = configForm.watchDir?.trim();
     const fileExt = configForm.fileExt?.trim() ?? "";
+    const silence = configForm.silence?.trim() ?? "";
     if (!watchDir) {
       setSaveMessage("请填写监控目录");
       return;
@@ -331,22 +342,34 @@ function App() {
           fileExt,
           uploadWorkers: workers,
           uploadQueueSize: queue,
+          silence,
         }),
       });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || `保存失败，状态码 ${res.status}`);
       }
-      const data = (await res.json()) as { ok?: boolean; config?: { watchDir: string; fileExt: string; concurrency?: string } };
-      if (data.config) {
-        setConfigForm((prev) => ({
-          ...prev,
-          watchDir: data.config.watchDir ?? prev.watchDir,
-          fileExt: data.config.fileExt ?? prev.fileExt,
-          concurrency: data.config.concurrency ?? prev.concurrency,
-        }));
-        setCurrentRoot(data.config.watchDir ?? watchDir);
-      }
+      const data = (await res.json()) as {
+        ok?: boolean;
+        config?: { watchDir: string; fileExt: string; concurrency?: string; silence?: string };
+      };
+      const payloadConfig = data.config;
+      const nextConfig: ConfigSnapshot = {
+        watchDir: payloadConfig?.watchDir ?? watchDir,
+        fileExt: payloadConfig?.fileExt ?? fileExt,
+        concurrency: payloadConfig?.concurrency ?? configForm.concurrency,
+        silence: payloadConfig?.silence ?? silence ?? configForm.silence,
+        bucket: configForm.bucket,
+        action: configForm.action,
+      };
+      lastSavedConfig.current = nextConfig;
+      setConfigForm(nextConfig);
+      setCurrentRoot(nextConfig.watchDir);
+      setHeroState((prev) => ({
+        ...prev,
+        watchDirs: nextConfig.watchDir ? nextConfig.watchDir.split(",").map((d) => d.trim()).filter(Boolean) : prev.watchDirs,
+        silence: nextConfig.silence ?? prev.silence,
+      }));
       setSaveMessage(`已保存当前表单（监控目录：${watchDir}），后端已应用`);
       await refreshDashboard();
     } catch (err) {
@@ -493,23 +516,17 @@ function App() {
     : activeNode?.updated
     ? `更新 ${fmt(activeNode.updated)}`
     : "更新时间未知";
+  const silenceValue = useMemo(() => heroState.silence?.replace(/静默/gi, "").trim() ?? "", [heroState.silence]);
 
   return (
     <div className="page-shell">
       <div className="layout">
         <aside className="sidebar">
           <div className="nav-brand">
-            <div className="brand-badge small">FW</div>
-            <div>
-              <div className="nav-title">File Watch</div>
-              <div className="nav-sub">单机 Agent 控制台</div>
+            <div className="brand-logo brand-logo-small">
+              <div className="brand-logo-mark">GWF</div>
+              <div className="brand-logo-sub">Go Watch File</div>
             </div>
-          </div>
-          <div className="nav-meta">
-            <span className="pill success">运行中</span>
-            <span className="badge">{heroState.agent}</span>
-            <span className="badge">{heroState.watchDirs.length} 个目录</span>
-            <span className="badge ghost">{heroState.queue}</span>
           </div>
           <nav className="nav-list">
             {SECTION_IDS.map((id) => {
@@ -569,85 +586,42 @@ function App() {
               );
             })}
           </nav>
-          <div className="nav-foot">
-            <div className="nav-foot-row">
-              <span>后缀过滤</span>
-              <span className="badge ghost">{configForm.fileExt || "未配置"}</span>
-            </div>
-            <div className="nav-foot-row">
-              <span>目录递归</span>
-              <span className="pill success">开启</span>
-            </div>
-            <div className="nav-foot-row">
-              <span>监听目录</span>
-              <span className="badge ghost">{tree.length} 个</span>
-            </div>
-            <div className="nav-foot-row">
-              <span>最近心跳</span>
-              <span className="badge ghost">{loading ? "刷新中" : "刚刚"}</span>
-            </div>
-            <div className="nav-foot-row">
-              <span>自动刷新</span>
-              <label className="switch mini">
-                <input type="checkbox" defaultChecked />
-                <span className="slider" />
-              </label>
-            </div>
-            <div className="nav-foot-row">
-              <span>上传并发</span>
-              <span className="badge">{configForm.concurrency}</span>
-            </div>
-          </div>
         </aside>
 
         <div className="page">
           <header className="page-header">
             <div className="brand">
-              <div className="brand-badge">FW</div>
               <div className="title">
-                <h1>单机文件监控 Agent 控制台</h1>
-                <p>针对当前主机的目录监听、上云、路由与告警视图</p>
+                <p className="eyebrow">Agent 控制台</p>
+                <h1>文件监控 Agent 控制台</h1>
+                <div className="title-meta">
+                  <span className="badge ghost">主机 {heroState.agent}</span>
+                  <span className="badge ghost">监听目录 {heroState.watchDirs.length}</span>
+                  <span className="badge ghost">{heroState.queue}</span>
+                </div>
               </div>
             </div>
             <div className="controls">
-              {loading ? <span className="badge">刷新中</span> : <span className="badge ghost">最新数据</span>}
+              {loading ? <span className="badge">刷新中</span> : <span className="badge ghost">{timeframe === "realtime" ? "最新数据" : "最近 24h"}</span>}
               {error ? (
                 <>
                   <span className="pill danger">接口异常</span>
                   <span className="badge ghost">{error}</span>
                 </>
               ) : null}
-              <div className="chip active">实时</div>
-              <div className="chip">最近 24h</div>
-              <button className="btn secondary" type="button" onClick={() => void refreshDashboard()}>
-                重载配置
-              </button>
-              <button className="btn" type="button" onClick={() => void handleManualUpload()}>
-                手动上传/同步
-              </button>
+              <div className={`chip ${timeframe === "realtime" ? "active" : ""}`} onClick={() => setTimeframe("realtime")}>
+                实时
+              </div>
+              <div className={`chip ${timeframe === "24h" ? "active" : ""}`} onClick={() => setTimeframe("24h")}>
+                最近 24h
+              </div>
             </div>
           </header>
 
           <div id="overview" className="stack" style={{ gap: 12 }}>
-            <div className="hero">
-              <div>
-                <div className="hero-title">
-                  当前 Agent：<strong>{heroState.agent}</strong>
-                </div>
-                <div className="hero-desc">
-                  监听目录 <strong>{heroState.watchDirs.join(" , ")}</strong> ，后缀过滤{heroState.suffixFilter}；静默窗口 {heroState.silence}，{heroState.queue}，{heroState.concurrency}，目标存储 <strong>{heroState.bucket}</strong>。 总览用于确认心跳与策略，目录树可逐层展开/收起并切换自动上传；下方文件列表聚焦基础信息，日志区域支持关键字匹配，右侧配置可以手动编辑。
-                </div>
-              </div>
-              <div className="hero-list">
-                {heroHighlightState.map((item) => (
-                  <span key={item}>{item}</span>
-                ))}
-              </div>
-            </div>
-
-            <section className="grid">
+            <section className="metric-strip">
               {metricCardsState.map((card) => (
-                <div className="card" key={card.label}>
+                <div className="metric-tile" key={card.label}>
                   <small>{card.label}</small>
                   <div className="value">
                     {card.value}{" "}
@@ -658,6 +632,45 @@ function App() {
                 </div>
               ))}
             </section>
+
+            <div className="hero hero-plain">
+              <div className="hero-left">
+                <div className="hero-status">
+                  <span className="pill success">运行中</span>
+                  <span className="badge ghost">Agent {heroState.agent}</span>
+                  <span className="badge ghost">监听 {heroState.watchDirs.length} 目录</span>
+                </div>
+                <div className="hero-desc">
+                  针对当前主机的目录监听、上云路由与告警视图，核心状态收敛在下方卡片；目录树与文件列表用于日常巡检。
+                </div>
+              </div>
+              <div className="hero-right">
+                <div className="hero-right-grid">
+                  <div className="stat-compact">
+                    <small>监听目录</small>
+                    <div className="hero-tags">
+                      {heroState.watchDirs.map((dir) => (
+                        <span className="hero-tag" key={dir}>
+                          {dir}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="stat-compact">
+                    <small>后缀过滤</small>
+                    <strong>{heroState.suffixFilter}</strong>
+                  </div>
+                  <div className="stat-compact">
+                    <small>静默窗口</small>
+                    <strong>{silenceValue}</strong>
+                  </div>
+                  <div className="stat-compact">
+                    <small>并发数量</small>
+                    <strong>{heroState.concurrency}</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
 
           <section className="panel" id="config">

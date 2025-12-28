@@ -19,6 +19,7 @@ go build -o bin/file-watch cmd/main.go
 ## 配置要点
 - `watch_dir` 必须存在且为目录。
 - `file_ext` 仅支持单一后缀（如 `.log` / `.txt` / `.zip`）。
+- 写入完成判定依赖静默窗口，`silence`/`SILENCE_WINDOW` 默认 `10s`，可填 `5s` 等；若填示例/空值会回退默认。
 - 配置优先级：环境变量 > `.env` > `config.yaml` 占位符 > 默认值。
 
 ## 运行测试

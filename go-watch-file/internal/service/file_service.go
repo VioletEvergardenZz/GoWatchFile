@@ -12,19 +12,16 @@ import (
 	"file-watch/internal/dingtalk"
 	"file-watch/internal/logger"
 	"file-watch/internal/models"
-	"file-watch/internal/pathutil"
 	"file-watch/internal/s3"
 	"file-watch/internal/state"
 	"file-watch/internal/upload"
 	"file-watch/internal/watcher"
-	"file-watch/internal/wechat"
 )
 
 // FileService 负责协调文件监控、上传与通知流程。
 type FileService struct {
 	config        *models.Config
 	s3Client      *s3.Client
-	wechatRobot   *wechat.Robot
 	dingtalkRobot *dingtalk.Robot
 	uploadPool    *upload.WorkerPool
 	watcher       *watcher.FileWatcher
@@ -50,7 +47,6 @@ func NewFileService(config *models.Config) (*FileService, error) {
 	fileService := &FileService{
 		config:        config,
 		s3Client:      s3Client,
-		wechatRobot:   newWeChatRobot(config),
 		dingtalkRobot: newDingTalkRobot(config),
 		state:         runtimeState,
 		manualOnce:    make(map[string]bool),
@@ -78,13 +74,6 @@ func newS3Client(config *models.Config) (*s3.Client, error) {
 		return nil, fmt.Errorf("初始化S3客户端失败: %w", err)
 	}
 	return client, nil
-}
-
-func newWeChatRobot(config *models.Config) *wechat.Robot {
-	if config.RobotKey == "" {
-		return nil
-	}
-	return wechat.NewRobot(config.RobotKey)
 }
 
 func newDingTalkRobot(config *models.Config) *dingtalk.Robot {
@@ -118,13 +107,14 @@ func (fs *FileService) Config() *models.Config {
 }
 
 // UpdateConfig applies config changes at runtime and restarts watcher/pool.
-func (fs *FileService) UpdateConfig(watchDir, fileExt string, uploadWorkers, uploadQueueSize int) (*models.Config, error) {
+func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWorkers, uploadQueueSize int) (*models.Config, error) {
 	fs.mu.Lock()
 	if fs.config == nil {
 		fs.mu.Unlock()
 		return nil, fmt.Errorf("配置未初始化")
 	}
 	current := *fs.config
+	prevState := fs.state
 	fs.mu.Unlock()
 
 	updated := current
@@ -142,6 +132,9 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt string, uploadWorkers, upl
 		}
 		updated.FileExt = strings.TrimSpace(fileExt)
 	}
+	if strings.TrimSpace(silence) != "" && strings.TrimSpace(silence) != current.Silence {
+		updated.Silence = strings.TrimSpace(silence)
+	}
 	if uploadWorkers > 0 && uploadWorkers != current.UploadWorkers {
 		updated.UploadWorkers = uploadWorkers
 	}
@@ -153,6 +146,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt string, uploadWorkers, upl
 	if err := newState.BootstrapExisting(); err != nil {
 		logger.Warn("预加载历史文件失败: %v", err)
 	}
+	newState.CarryOverFrom(prevState)
 
 	newS3, err := newS3Client(&updated)
 	if err != nil {
@@ -298,39 +292,19 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 		return fmt.Errorf("上传文件到S3失败: %w", err)
 	}
 
-	appName, fileName := fs.parseFileInfo(filePath)
-	logger.Info("文件信息 - 应用名: %s, 文件名: %s", appName, fileName)
+	fileName := filepath.Base(filePath)
+	logger.Info("文件信息 - 文件名: %s", fileName)
 
 	if fs.state != nil {
 		fs.state.MarkUploaded(filePath, fs.config.Bucket, time.Since(start))
 		fs.state.SetQueueStats(fs.uploadPool.GetStats())
 	}
 
-	fs.sendWeChat(ctx, downloadURL, appName)
-	dingAppName := appName
-	dingFileName := fileName
-	if filePath != "" {
-		if parentDir := filepath.Base(filepath.Dir(filePath)); parentDir != "." && parentDir != string(filepath.Separator) {
-			dingAppName = parentDir
-		}
-		if baseName := filepath.Base(filePath); baseName != "." && baseName != string(filepath.Separator) {
-			dingFileName = baseName
-		}
-	}
-	fs.sendDingTalk(ctx, downloadURL, dingAppName, dingFileName)
+	fullPath := filepath.Clean(filePath)
+	fs.sendDingTalk(ctx, downloadURL, fullPath)
 
 	logger.Info("文件处理完成: %s", filePath)
 	return nil
-}
-
-func (fs *FileService) parseFileInfo(filePath string) (string, string) {
-	appName, fileName, err := pathutil.ParseAppAndFileName(fs.config.WatchDir, filePath)
-	if err != nil {
-		logger.Error("解析文件信息失败: %v", err)
-		// 解析失败时仍继续流程，避免阻塞后续处理。
-		return "unknown", "unknown"
-	}
-	return appName, fileName
 }
 
 func (fs *FileService) consumeManualOnce(path string) bool {
@@ -358,21 +332,16 @@ func normalizeManualPath(path string) string {
 	return filepath.Clean(abs)
 }
 
-func (fs *FileService) sendWeChat(ctx context.Context, downloadURL, appName string) {
-	if fs.wechatRobot == nil {
-		return
-	}
-	if err := fs.wechatRobot.SendMessage(ctx, downloadURL, appName); err != nil {
-		logger.Error("发送企业微信消息失败: %v", err)
-	}
-}
-
-func (fs *FileService) sendDingTalk(ctx context.Context, downloadURL, appName, fileName string) {
+func (fs *FileService) sendDingTalk(ctx context.Context, downloadURL, fileName string) {
 	if fs.dingtalkRobot == nil {
 		return
 	}
-	if err := fs.dingtalkRobot.SendMessage(ctx, downloadURL, appName, fileName); err != nil {
+	if err := fs.dingtalkRobot.SendMessage(ctx, downloadURL, fileName); err != nil {
 		logger.Error("发送钉钉消息失败: %v", err)
+		return
+	}
+	if fs.state != nil {
+		fs.state.RecordNotification("dingtalk")
 	}
 }
 

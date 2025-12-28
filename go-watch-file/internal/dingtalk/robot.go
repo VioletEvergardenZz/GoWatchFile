@@ -46,15 +46,14 @@ func NewRobot(webhook, secret string) *Robot {
 }
 
 // SendMessage 发送钉钉机器人消息。
-func (r *Robot) SendMessage(ctx context.Context, downloadURL, appName, fileName string) error {
+func (r *Robot) SendMessage(ctx context.Context, downloadURL, fileName string) error {
 	if r.webhook == "" {
 		return fmt.Errorf("钉钉 webhook 为空")
 	}
 
-	appName = defaultValue(appName, "unknown")
 	fileName = defaultValue(fileName, "unknown")
 
-	msg := buildMarkdownMessage(downloadURL, appName, fileName)
+	msg := buildMarkdownMessage(downloadURL, fileName)
 
 	jsonReq, err := json.Marshal(msg)
 	if err != nil {
@@ -74,11 +73,10 @@ func (r *Robot) SendMessage(ctx context.Context, downloadURL, appName, fileName 
 	return nil
 }
 
-func buildMarkdownMessage(downloadURL, appName, fileName string) message {
+func buildMarkdownMessage(downloadURL, fileName string) message {
 	nowTime := time.Now().Format("2006-01-02 15:04:05")
 	text := fmt.Sprintf(
-		"### File uploaded\n\n- app: **%s**\n- file: `%s`\n- download: [download link](%s)\n- time: %s",
-		appName,
+		"### File uploaded\n\n- file: `%s`\n- download: [download link](%s)\n- time: %s",
 		fileName,
 		downloadURL,
 		nowTime,

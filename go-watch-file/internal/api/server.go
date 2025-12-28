@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+	"strings"
 
 	"file-watch/internal/logger"
 	"file-watch/internal/models"
@@ -145,12 +146,13 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		FileExt         string `json:"fileExt"`
 		UploadWorkers   int    `json:"uploadWorkers"`
 		UploadQueueSize int    `json:"uploadQueueSize"`
+		Silence         string `json:"silence"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	cfg, err := h.fs.UpdateConfig(req.WatchDir, req.FileExt, req.UploadWorkers, req.UploadQueueSize)
+	cfg, err := h.fs.UpdateConfig(req.WatchDir, req.FileExt, strings.TrimSpace(req.Silence), req.UploadWorkers, req.UploadQueueSize)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
