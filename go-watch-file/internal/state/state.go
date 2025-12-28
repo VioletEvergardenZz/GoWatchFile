@@ -21,8 +21,18 @@ const (
 	maxNotifications  = 200
 )
 
+type FileStatus int
+
+const (
+	StatusUnknown FileStatus = iota
+	StatusQueued
+	StatusUploaded
+	StatusFailed
+	StatusExisting
+)
+
 type fileState struct {
-	Status           string
+	Status           FileStatus
 	RequiresApproval bool
 	Target           string
 	Latency          time.Duration
@@ -53,7 +63,7 @@ type notificationEvent struct {
 	Channel string
 }
 
-// RuntimeState stores in-memory runtime data for the API and UI.
+// RuntimeState 保存接口与界面所需的内存运行态数据。
 type RuntimeState struct {
 	mu sync.RWMutex
 
@@ -76,7 +86,7 @@ type RuntimeState struct {
 	notifications []notificationEvent
 }
 
-// NewRuntimeState constructs RuntimeState from config defaults.
+// NewRuntimeState 基于配置默认值构建 RuntimeState。
 func NewRuntimeState(cfg *models.Config) *RuntimeState {
 	host, _ := os.Hostname()
 	watchDir := normalizePath(cfg.WatchDir)
@@ -95,7 +105,7 @@ func NewRuntimeState(cfg *models.Config) *RuntimeState {
 	}
 }
 
-// CarryOverFrom migrates counters and history from an existing state to preserve metrics across config reloads.
+// CarryOverFrom 从已有状态迁移计数与历史，保证配置重载后指标连续。
 func (s *RuntimeState) CarryOverFrom(old *RuntimeState) {
 	if old == nil {
 		return
@@ -112,11 +122,11 @@ func (s *RuntimeState) CarryOverFrom(old *RuntimeState) {
 	s.uploads = append([]uploadHistory(nil), old.uploads...)
 	s.notifications = append([]notificationEvent(nil), old.notifications...)
 
-	// Preserve queue stats trend; actual pool stats will overwrite soon.
+	// 保留队列趋势；实际池统计很快会覆盖。
 	s.queue = append([]ChartPoint(nil), old.queue...)
 }
 
-// BootstrapExisting preloads existing files under watchDir as uploaded.
+// BootstrapExisting 预加载监控目录下的已有文件为已存在状态。
 func (s *RuntimeState) BootstrapExisting() error {
 	if s.watchDir == "" {
 		return nil
@@ -138,8 +148,9 @@ func (s *RuntimeState) BootstrapExisting() error {
 		}
 		s.mu.Lock()
 		s.fileState[normalizePath(path)] = fileState{
-			Status:     "uploaded",
+			Status:     StatusExisting,
 			AutoUpload: s.autoUploadLocked(path),
+			Note:       "历史文件",
 		}
 		s.appendUploadLocked(uploadHistory{
 			File:    filepath.Base(path),
@@ -150,21 +161,20 @@ func (s *RuntimeState) BootstrapExisting() error {
 			Time:    stat.ModTime(),
 			Note:    "历史文件",
 		})
-		s.successes++
 		s.mu.Unlock()
 		return nil
 	})
 	return err
 }
 
-// AutoUploadEnabled returns whether auto upload is enabled for the path.
+// AutoUploadEnabled 返回该路径是否启用自动上传。
 func (s *RuntimeState) AutoUploadEnabled(path string) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return s.autoUploadLocked(path)
 }
 
-// SetAutoUpload toggles auto upload for a path (file or directory) and cascades to existing state.
+// SetAutoUpload 为路径（文件或目录）切换自动上传，并联动更新已有状态。
 func (s *RuntimeState) SetAutoUpload(path string, enabled bool) {
 	norm := normalizePath(path)
 	s.mu.Lock()
@@ -183,24 +193,24 @@ func (s *RuntimeState) SetAutoUpload(path string, enabled bool) {
 	s.appendTimelineLocked("调整自动上传", "info", s.host, time.Now())
 }
 
-// MarkQueued records a file entering queue (auto path).
+// MarkQueued 记录文件自动进入队列。
 func (s *RuntimeState) MarkQueued(path string) {
-	s.recordState(path, "queued", false, "自动入队")
+	s.recordState(path, StatusQueued, false, "自动入队")
 }
 
-// MarkManualQueued records a manual upload request.
+// MarkManualQueued 记录手动上传请求。
 func (s *RuntimeState) MarkManualQueued(path string) {
-	s.recordState(path, "queued", true, "手动触发")
+	s.recordState(path, StatusQueued, true, "手动触发")
 }
 
-// MarkSkipped records skipped upload because auto-upload off.
+// MarkSkipped 记录因自动上传关闭而跳过。
 func (s *RuntimeState) MarkSkipped(path string) {
 	norm := normalizePath(path)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
 	st := s.fetchOrInitStateLocked(norm)
-	st.Status = "queued"
+	st.Status = StatusQueued
 	st.RequiresApproval = true
 	st.Note = "自动上传关闭，待审批/手动触发"
 	st.AutoUpload = false
@@ -209,7 +219,7 @@ func (s *RuntimeState) MarkSkipped(path string) {
 	s.appendTimelineLocked("自动上传关闭，跳过", "warning", s.host, now)
 }
 
-// MarkUploaded records successful upload.
+// MarkUploaded 记录上传成功。
 func (s *RuntimeState) MarkUploaded(path, target string, latency time.Duration) {
 	norm := normalizePath(path)
 	info := s.statFile(path)
@@ -218,7 +228,7 @@ func (s *RuntimeState) MarkUploaded(path, target string, latency time.Duration) 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.fetchOrInitStateLocked(norm)
-	st.Status = "uploaded"
+	st.Status = StatusUploaded
 	st.Target = target
 	st.Latency = latency
 	st.Note = "自动上传"
@@ -240,7 +250,7 @@ func (s *RuntimeState) MarkUploaded(path, target string, latency time.Duration) 
 	s.successes++
 }
 
-// MarkFailed records a failed upload.
+// MarkFailed 记录上传失败。
 func (s *RuntimeState) MarkFailed(path string, reason error) {
 	norm := normalizePath(path)
 	info := s.statFile(path)
@@ -249,7 +259,7 @@ func (s *RuntimeState) MarkFailed(path string, reason error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	st := s.fetchOrInitStateLocked(norm)
-	st.Status = "failed"
+	st.Status = StatusFailed
 	st.Note = reason.Error()
 	st.AutoUpload = s.autoUploadLocked(path)
 	s.fileState[norm] = st
@@ -268,7 +278,7 @@ func (s *RuntimeState) MarkFailed(path string, reason error) {
 	s.failures++
 }
 
-// RecordNotification tracks a notification send event.
+// RecordNotification 记录一次通知发送事件。
 func (s *RuntimeState) RecordNotification(channel string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -279,7 +289,7 @@ func (s *RuntimeState) RecordNotification(channel string) {
 	}
 }
 
-// SetQueueStats updates queue length/workers and appends a chart point.
+// SetQueueStats 更新队列长度与工作数，并追加图表点。
 func (s *RuntimeState) SetQueueStats(stats models.UploadStats) {
 	now := time.Now()
 	s.mu.Lock()
@@ -298,14 +308,14 @@ func (s *RuntimeState) SetQueueStats(stats models.UploadStats) {
 	}
 }
 
-// TailLines returns a copy of recent tail lines.
+// TailLines 返回近期尾部日志的副本。
 func (s *RuntimeState) TailLines() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return append([]string(nil), s.tailLines...)
 }
 
-// TimelineEvents returns console-ready timeline events.
+// TimelineEvents 返回可直接用于控制台展示的时间线事件。
 func (s *RuntimeState) TimelineEvents() []TimelineEvent {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -321,7 +331,7 @@ func (s *RuntimeState) TimelineEvents() []TimelineEvent {
 	return events
 }
 
-// UploadRecords returns upload history ordered by time desc.
+// UploadRecords 返回按时间倒序的上传历史。
 func (s *RuntimeState) UploadRecords() []UploadRecord {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -341,7 +351,7 @@ func (s *RuntimeState) UploadRecords() []UploadRecord {
 	return out
 }
 
-// FileItems scans disk and merges runtime state for the file table.
+// FileItems 扫描磁盘并合并运行态，生成文件表数据。
 func (s *RuntimeState) FileItems() []FileItem {
 	files := s.collectFiles()
 	items := make([]FileItem, 0, len(files))
@@ -350,7 +360,7 @@ func (s *RuntimeState) FileItems() []FileItem {
 			Name:             filepath.Base(f.path),
 			Path:             normalizePath(f.path),
 			Size:             formatSize(f.size),
-			Status:           f.state.Status,
+			Status:           fileStatusLabel(f.state.Status),
 			Time:             f.modTime.Format("15:04:05"),
 			AutoUpload:       f.state.AutoUpload,
 			RequiresApproval: f.state.RequiresApproval,
@@ -362,7 +372,7 @@ func (s *RuntimeState) FileItems() []FileItem {
 	return items
 }
 
-// DirectoryTree builds the directory tree for UI.
+// DirectoryTree 构建用于界面的目录树。
 func (s *RuntimeState) DirectoryTree() []FileNode {
 	files := s.collectFiles()
 	dirMap := make(map[string]*FileNode)
@@ -415,7 +425,7 @@ func (s *RuntimeState) DirectoryTree() []FileNode {
 		})
 	}
 
-	// attach directories to their parents after files are added
+	// 文件加入后再把目录挂到其父节点。
 	dirPaths := make([]string, 0, len(dirMap))
 	for p := range dirMap {
 		dirPaths = append(dirPaths, p)
@@ -461,7 +471,7 @@ func sortChildren(node *FileNode) {
 	}
 }
 
-// MonitorSummary builds summary cards.
+// MonitorSummary 构建摘要卡片。
 func (s *RuntimeState) MonitorSummary() []MonitorSummary {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -478,7 +488,7 @@ func (s *RuntimeState) MonitorSummary() []MonitorSummary {
 	}
 }
 
-// MetricCards builds metric cards for overview.
+// MetricCards 构建概览指标卡片。
 func (s *RuntimeState) MetricCards() []MetricCard {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -521,7 +531,7 @@ func (s *RuntimeState) MetricCards() []MetricCard {
 	}
 }
 
-// ChartPoints returns queue trend points.
+// ChartPoints 返回队列趋势点。
 func (s *RuntimeState) ChartPoints() []ChartPoint {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -532,7 +542,7 @@ func (s *RuntimeState) ChartPoints() []ChartPoint {
 	return points
 }
 
-// HeroCopy builds hero summary info.
+// HeroCopy 构建首页摘要信息。
 func (s *RuntimeState) HeroCopy(cfg *models.Config) HeroCopy {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -551,7 +561,7 @@ func (s *RuntimeState) HeroCopy(cfg *models.Config) HeroCopy {
 	}
 }
 
-// ConfigSnapshot builds editable config snapshot.
+// ConfigSnapshot 构建可编辑的配置快照。
 func (s *RuntimeState) ConfigSnapshot(cfg *models.Config) ConfigSnapshot {
 	return ConfigSnapshot{
 		WatchDir:    cfg.WatchDir,
@@ -563,7 +573,7 @@ func (s *RuntimeState) ConfigSnapshot(cfg *models.Config) ConfigSnapshot {
 	}
 }
 
-// Routes returns static routing hints.
+// Routes 返回静态路由提示。
 func (s *RuntimeState) Routes(cfg *models.Config) []RoutePreview {
 	return []RoutePreview{
 		{Name: "主目录上传", Cond: fmt.Sprintf("path startsWith %s", cfg.WatchDir), Action: fmt.Sprintf("直传 %s", cfg.Bucket)},
@@ -572,7 +582,7 @@ func (s *RuntimeState) Routes(cfg *models.Config) []RoutePreview {
 	}
 }
 
-// MonitorNotes returns config-driven notes.
+// MonitorNotes 返回配置驱动的说明信息。
 func (s *RuntimeState) MonitorNotes(cfg *models.Config) []MonitorNote {
 	return []MonitorNote{
 		{Title: "S3 连接", Detail: fmt.Sprintf("endpoint=%s · region=%s", cfg.Endpoint, cfg.Region)},
@@ -581,7 +591,7 @@ func (s *RuntimeState) MonitorNotes(cfg *models.Config) []MonitorNote {
 	}
 }
 
-// HeroHighlights returns headline highlights.
+// HeroHighlights 返回头部高亮文案。
 func (s *RuntimeState) HeroHighlights() []string {
 	return []string{
 		"静默判定防半截",
@@ -592,7 +602,7 @@ func (s *RuntimeState) HeroHighlights() []string {
 	}
 }
 
-// Dashboard aggregates all sections for the API payload.
+// Dashboard 聚合所有板块，生成接口返回结构。
 func (s *RuntimeState) Dashboard(cfg *models.Config) DashboardData {
 	return DashboardData{
 		HeroCopy:       s.HeroCopy(cfg),
@@ -619,7 +629,7 @@ type scannedFile struct {
 }
 
 func (s *RuntimeState) collectFiles() []scannedFile {
-	// snapshot state under lock
+	// 在锁内快照状态。
 	s.mu.RLock()
 	stateCopy := make(map[string]fileState, len(s.fileState))
 	for p, st := range s.fileState {
@@ -651,8 +661,8 @@ func (s *RuntimeState) collectFiles() []scannedFile {
 		}
 		norm := normalizePath(path)
 		fsState := stateCopy[norm]
-		if fsState.Status == "" {
-			fsState.Status = "uploaded"
+		if fsState.Status == StatusUnknown {
+			fsState.Status = StatusExisting
 		}
 		autoEnabled := autoEnabledFromCopy(autoCopy, norm)
 		fsState.AutoUpload = autoEnabled
@@ -672,7 +682,7 @@ func (s *RuntimeState) collectFiles() []scannedFile {
 	return files
 }
 
-func (s *RuntimeState) recordState(path, status string, manual bool, note string) {
+func (s *RuntimeState) recordState(path string, status FileStatus, manual bool, note string) {
 	norm := normalizePath(path)
 	now := time.Now()
 	info := s.statFile(path)
@@ -709,8 +719,23 @@ func (s *RuntimeState) fetchOrInitStateLocked(path string) fileState {
 		return st
 	}
 	return fileState{
-		Status:     "queued",
+		Status:     StatusQueued,
 		AutoUpload: s.autoUploadLocked(path),
+	}
+}
+
+func fileStatusLabel(status FileStatus) string {
+	switch status {
+	case StatusQueued:
+		return "queued"
+	case StatusUploaded:
+		return "uploaded"
+	case StatusFailed:
+		return "failed"
+	case StatusExisting:
+		return "existing"
+	default:
+		return "existing"
 	}
 }
 

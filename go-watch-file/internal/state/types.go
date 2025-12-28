@@ -25,7 +25,7 @@ type FileItem struct {
 	Name             string `json:"name"`
 	Path             string `json:"path"`
 	Size             string `json:"size"`
-	Status           string `json:"status"` // uploaded | queued | failed
+	Status           string `json:"status"` // uploaded | queued | failed | existing
 	Time             string `json:"time"`
 	AutoUpload       bool   `json:"autoUpload"`
 	RequiresApproval bool   `json:"requiresApproval,omitempty"`

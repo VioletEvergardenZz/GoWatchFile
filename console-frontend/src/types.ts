@@ -20,7 +20,7 @@ export type FileItem = {
   name: string;
   path: string;
   size: string;
-  status: "uploaded" | "queued" | "failed";
+  status: "uploaded" | "queued" | "failed" | "existing";
   time: string;
   autoUpload: boolean;
   requiresApproval?: boolean;

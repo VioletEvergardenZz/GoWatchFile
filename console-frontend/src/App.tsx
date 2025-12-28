@@ -886,7 +886,13 @@ function App() {
                     </td>
                     <td>
                       <span className="badge">
-                        {f.status === "uploaded" ? "已上传" : f.status === "queued" ? "队列中" : "失败"}
+                        {f.status === "uploaded"
+                          ? "已上传"
+                          : f.status === "queued"
+                            ? "队列中"
+                            : f.status === "existing"
+                              ? "已存在"
+                              : "失败"}
                       </span>
                     </td>
                     <td>{fmt(f.time)}</td>

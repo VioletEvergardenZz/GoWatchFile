@@ -18,7 +18,7 @@ import (
 	"file-watch/internal/watcher"
 )
 
-// FileService 负责协调文件监控、上传与通知流程。
+// FileService 负责协调文件监控、上传与通知流程
 type FileService struct {
 	config        *models.Config
 	s3Client      *s3.Client
@@ -26,8 +26,8 @@ type FileService struct {
 	uploadPool    *upload.WorkerPool
 	watcher       *watcher.FileWatcher
 	state         *state.RuntimeState
-	mu            sync.Mutex
-	manualOnce    map[string]bool
+	mu            sync.Mutex      //互斥锁，用来保护 FileService 内部共享数据的并发读写
+	manualOnce    map[string]bool //标记“某个路径的下一次处理是手动上传”
 }
 
 const shutdownTimeout = 30 * time.Second
