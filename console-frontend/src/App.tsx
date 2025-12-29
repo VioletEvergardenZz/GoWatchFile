@@ -359,7 +359,6 @@ function App() {
         fileExt: payloadConfig?.fileExt ?? fileExt,
         concurrency: payloadConfig?.concurrency ?? configForm.concurrency,
         silence: payloadConfig?.silence ?? silence ?? configForm.silence,
-        bucket: configForm.bucket,
         action: configForm.action,
       };
       lastSavedConfig.current = nextConfig;

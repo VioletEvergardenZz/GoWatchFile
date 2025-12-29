@@ -56,7 +56,6 @@ export type ConfigSnapshot = {
   fileExt: string;
   silence: string;
   concurrency: string;
-  bucket: string;
   action: string;
 };
 
@@ -67,7 +66,6 @@ export type HeroCopy = {
   silence: string;
   queue: string;
   concurrency: string;
-  bucket: string;
 };
 
 export type ChartPoint = {
@@ -97,7 +95,6 @@ export type MonitorSummary = {
 
 export type DashboardPayload = {
   heroCopy: HeroCopy;
-  heroHighlights: string[];
   metricCards: MetricCard[];
   directoryTree: FileNode[];
   files: FileItem[];

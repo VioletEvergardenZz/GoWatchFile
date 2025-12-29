@@ -557,7 +557,6 @@ func (s *RuntimeState) HeroCopy(cfg *models.Config) HeroCopy {
 		Silence:      cfg.Silence,
 		Queue:        fmt.Sprintf("队列 %d", s.queueLen),
 		Concurrency:  fmt.Sprintf("上传并发 %d", s.workers),
-		Bucket:       cfg.Bucket,
 	}
 }
 
@@ -568,7 +567,6 @@ func (s *RuntimeState) ConfigSnapshot(cfg *models.Config) ConfigSnapshot {
 		FileExt:     cfg.FileExt,
 		Silence:     cfg.Silence,
 		Concurrency: fmt.Sprintf("workers=%d / queue=%d", cfg.UploadWorkers, cfg.UploadQueueSize),
-		Bucket:      cfg.Bucket,
 		Action:      "上传 + Webhook",
 	}
 }
@@ -591,22 +589,10 @@ func (s *RuntimeState) MonitorNotes(cfg *models.Config) []MonitorNote {
 	}
 }
 
-// HeroHighlights 返回头部高亮文案。
-func (s *RuntimeState) HeroHighlights() []string {
-	return []string{
-		"静默判定防半截",
-		"S3/OSS 路径防穿越",
-		"上传并发 + 背压",
-		"失败重试/隔离",
-		"企微/钉钉告警",
-	}
-}
-
 // Dashboard 聚合所有板块，生成接口返回结构。
 func (s *RuntimeState) Dashboard(cfg *models.Config) DashboardData {
 	return DashboardData{
 		HeroCopy:       s.HeroCopy(cfg),
-		HeroHighlights: s.HeroHighlights(),
 		MetricCards:    s.MetricCards(),
 		DirectoryTree:  s.DirectoryTree(),
 		Files:          s.FileItems(),

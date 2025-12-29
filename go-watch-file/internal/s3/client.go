@@ -4,6 +4,7 @@ package s3
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -57,6 +58,8 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 	if err != nil {
 		return "", fmt.Errorf("获取文件信息失败: %w", err)
 	}
+	// 固定上传大小，避免文件增长导致 ContentLength 与实际 Body 长度不一致
+	contentLength := fileInfo.Size()
 
 	objectKey, err := c.buildObjectKey(filePath)
 	if err != nil {
@@ -66,8 +69,9 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 	input := &s3.PutObjectInput{
 		Bucket:        aws.String(c.config.Bucket),
 		Key:           aws.String(objectKey),
-		Body:          file,
-		ContentLength: aws.Int64(fileInfo.Size()),
+		// 只读取固定长度，保证与 ContentLength 匹配
+		Body:          io.NewSectionReader(file, 0, contentLength),
+		ContentLength: aws.Int64(contentLength),
 		ContentType:   aws.String("application/octet-stream"),
 	}
 

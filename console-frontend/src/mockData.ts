@@ -20,16 +20,7 @@ export const heroCopy: HeroCopy = {
   silence: "4s",
   queue: "队列 200",
   concurrency: "上传并发 8",
-  bucket: "s3://logs-warm",
 };
-
-export const heroHighlights = [
-  "静默判定防半截",
-  "S3/OSS 路径防穿越",
-  "上传并发 + 背压",
-  "失败重试/隔离",
-  "企微/钉钉告警",
-];
 
 export const metricCards: MetricCard[] = [
   { label: "运行状态", value: "Running", trend: "心跳正常", tone: "up" },
@@ -248,7 +239,6 @@ export const configSnapshot: ConfigSnapshot = {
   fileExt: "关闭 · 全量目录",
   silence: "4s",
   concurrency: "workers=8 / queue=200",
-  bucket: "s3://logs-warm",
   action: "上传 + Webhook",
 };
 

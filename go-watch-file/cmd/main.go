@@ -71,16 +71,7 @@ func logConfig(cfg *models.Config) {
 	logger.Info("配置加载成功")
 	logger.Info("监控目录: %s", cfg.WatchDir)
 	logger.Info("文件后缀: %s", cfg.FileExt)
-	logger.Info("企业微信机器人 Key: %s", cfg.RobotKey)
-	if cfg.DingTalkWebhook != "" {
-		logger.Info("钉钉 Webhook: %s", cfg.DingTalkWebhook)
-	}
-	if cfg.DingTalkSecret != "" {
-		logger.Info("钉钉 Secret: 已配置")
-	}
-	logger.Info("S3 存储桶: %s", cfg.Bucket)
-	// logger.Info("AK: %s", cfg.AK)
-	// logger.Info("SK: %s", cfg.SK)
+	logger.Info("S3 Bucket: %s", cfg.Bucket)
 	logger.Info("S3 Endpoint: %s", cfg.Endpoint)
 	logger.Info("S3 Region: %s", cfg.Region)
 	logger.Info("S3 路径风格: %v", cfg.ForcePathStyle)
