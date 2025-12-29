@@ -13,16 +13,18 @@ import (
 	"file-watch/internal/models"
 )
 
+//“内存中保留数量的上限”常量，用来限制运行态数据列表的长度
 const (
 	maxTailLines      = 200
 	maxTimelineEvents = 120
 	maxUploadRecords  = 200
-	maxQueuePoints    = 32
-	maxNotifications  = 200
+	maxQueuePoints    = 32		//队列趋势图点的最大数量
+	maxNotifications  = 200		//通知事件的最大数量
 )
 
 type FileStatus int
 
+//枚举类型（整型），表示文件的处理状态
 const (
 	StatusUnknown FileStatus = iota
 	StatusQueued
@@ -31,15 +33,16 @@ const (
 	StatusExisting
 )
 
+//记录“被监控文件”的当前状态
 type fileState struct {
 	Status           FileStatus
-	Target           string
-	Latency          time.Duration
-	Note             string
-	Source           string
+	Target           string				//上传目标
+	Latency          time.Duration		//上传耗时
+	Note             string				//备注信息，如（“自动入队”“上传失败原因”）
 	AutoUpload       bool
 }
 
+//时间线事件条目
 type timelineEntry struct {
 	Label  string
 	Time   time.Time
@@ -47,6 +50,7 @@ type timelineEntry struct {
 	Host   string
 }
 
+//上传历史记录条目
 type uploadHistory struct {
 	File    string
 	Target  string
@@ -57,32 +61,38 @@ type uploadHistory struct {
 	Note    string
 }
 
+//通知事件记录结构
 type notificationEvent struct {
-	Time    time.Time
-	Channel string
+	Time    time.Time		//通知发送时间
+	Channel string			//通知渠道，如“钉钉”“企业微信”等
 }
 
 // RuntimeState 保存接口与界面所需的内存运行态数据
 type RuntimeState struct {
-	mu sync.RWMutex
+	//并发控制
+	mu sync.RWMutex					//读多写少，读用 RLock，写用 Lock
 
+	//配置/环境
 	host      string
 	watchDir  string
 	fileExt   string
+
+	//文件状态
 	fileState map[string]fileState
 	autoOn    map[string]bool
 
+	//UI 面板数据（环形缓存式）
 	tailLines []string
 	timeline  []timelineEntry
 	uploads   []uploadHistory
-	queue     []ChartPoint
+	queue     []ChartPoint			//队列/上传统计的趋势点
+	notifications []notificationEvent
 
-	successes int
+	//计数器/指标
+	successes int					//累计成功上传数
 	failures  int
 	workers   int
 	queueLen  int
-
-	notifications []notificationEvent
 }
 
 // NewRuntimeState 基于配置默认值构建 RuntimeState
@@ -109,19 +119,18 @@ func (s *RuntimeState) CarryOverFrom(old *RuntimeState) {
 	if old == nil {
 		return
 	}
-	old.mu.RLock()
+	old.mu.RLock()			//加读锁
 	defer old.mu.RUnlock()
 
 	s.successes = old.successes
 	s.failures = old.failures
 	s.queueLen = old.queueLen
 
+	//把旧状态里的几组切片“拷贝一份”到新状态里
 	s.timeline = append([]timelineEntry(nil), old.timeline...)
 	s.tailLines = append([]string(nil), old.tailLines...)
 	s.uploads = append([]uploadHistory(nil), old.uploads...)
 	s.notifications = append([]notificationEvent(nil), old.notifications...)
-
-	// 保留队列趋势；实际池统计很快会覆盖。
 	s.queue = append([]ChartPoint(nil), old.queue...)
 }
 
@@ -130,6 +139,8 @@ func (s *RuntimeState) BootstrapExisting() error {
 	if s.watchDir == "" {
 		return nil
 	}
+
+	//扫描监控目录里的所有文件和子目录
 	err := filepath.WalkDir(s.watchDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -138,7 +149,7 @@ func (s *RuntimeState) BootstrapExisting() error {
 			s.setAutoDefault(path)
 			return nil
 		}
-		if !s.isTargetFile(path) {
+		if !s.isTargetFile(path) {	//不符合目标后缀,跳过
 			return nil
 		}
 		stat, statErr := d.Info()
@@ -152,7 +163,7 @@ func (s *RuntimeState) BootstrapExisting() error {
 			Note:       "历史文件",
 		}
 		s.appendUploadLocked(uploadHistory{
-			File:    filepath.Base(path),
+			File:    filepath.Base(path),		//取路径的“最后一段”，也就是文件名
 			Target:  "",
 			Size:    formatSize(stat.Size()),
 			Result:  "success",
@@ -725,13 +736,15 @@ func (s *RuntimeState) appendTimelineLocked(label, status, host string, t time.T
 	}
 }
 
+//追加上传记录
 func (s *RuntimeState) appendUploadLocked(record uploadHistory) {
 	s.uploads = append(s.uploads, record)
-	if len(s.uploads) > maxUploadRecords {
+	if len(s.uploads) > maxUploadRecords {  //如果超过 maxUploadRecords，就把前面旧的裁掉，只保留最新的 N 条
 		s.uploads = s.uploads[len(s.uploads)-maxUploadRecords:]
 	}
 }
 
+//判断某个路径是否“自动上传开启”
 func (s *RuntimeState) autoUploadLocked(path string) bool {
 	norm := normalizePath(path)
 	if norm == "" {
@@ -742,7 +755,7 @@ func (s *RuntimeState) autoUploadLocked(path string) bool {
 	}
 	dir := filepath.Dir(norm)
 	for dir != "." && dir != "/" && dir != norm {
-		if v, ok := s.autoOn[dir]; ok {
+		if v, ok := s.autoOn[dir]; ok {		//找到上级目录的设置
 			return v
 		}
 		dir = filepath.Dir(dir)
@@ -750,21 +763,24 @@ func (s *RuntimeState) autoUploadLocked(path string) bool {
 	return true
 }
 
+//给某个路径设置“自动上传默认值”的方法
 func (s *RuntimeState) setAutoDefault(path string) {
 	norm := normalizePath(path)
 	s.mu.Lock()
 	if _, ok := s.autoOn[norm]; !ok {
+		//如果这个路径还没记录过，就默认设为 true（开启自动上传）
 		s.autoOn[norm] = true
 	}
 	s.mu.Unlock()
 }
 
+//是否匹配目标后缀
 func (s *RuntimeState) isTargetFile(path string) bool {
 	ext := strings.TrimSpace(s.fileExt)
 	if ext == "" {
-		return true
+		return true		//所有文件都算目标
 	}
-	return strings.EqualFold(filepath.Ext(path), ext)
+	return strings.EqualFold(filepath.Ext(path), ext)	
 }
 
 type fileInfo struct {
@@ -805,6 +821,7 @@ func autoEnabledFromCopy(auto map[string]bool, path string) bool {
 	return true
 }
 
+//把字节数格式化成人类可读字符串的函数
 func formatSize(bytes int64) string {
 	const (
 		kb = 1024
@@ -833,6 +850,7 @@ func formatLatency(d time.Duration) string {
 	return fmt.Sprintf("%d ms", d.Milliseconds())
 }
 
+//初始化队列趋势图的“默认数据”
 func seedQueuePoints() []ChartPoint {
 	return []ChartPoint{
 		{Label: "00:00", Uploads: 0, Failures: 0, Queue: 0},

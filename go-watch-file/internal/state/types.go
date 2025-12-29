@@ -69,7 +69,7 @@ type ChartPoint struct {
 	Label    string `json:"label"`
 	Uploads  int    `json:"uploads"`
 	Failures int    `json:"failures"`
-	Queue    int    `json:"queue"`
+	Queue    int    `json:"queue"`			//队列长度
 }
 
 // UploadRecord 表示最近的上传记录
