@@ -12,7 +12,6 @@ import {
   metricCards,
   monitorNotes,
   monitorSummary,
-  routes,
   tailLines,
   timelineEvents,
   uploadRecords,
@@ -93,7 +92,6 @@ function App() {
   const [showMatchesOnly, setShowMatchesOnly] = useState(false);
   const [heroState, setHeroState] = useState(heroCopy);
   const [metricCardsState, setMetricCardsState] = useState(metricCards);
-  const [routesState, setRoutesState] = useState(routes);
   const [monitorNotesState, setMonitorNotesState] = useState(monitorNotes);
   const [uploadRecordsState, setUploadRecordsState] = useState(uploadRecords);
   const [monitorSummaryState, setMonitorSummaryState] = useState(monitorSummary);
@@ -130,7 +128,6 @@ function App() {
       const filesData = data.files ?? [];
       const heroData = data.heroCopy ?? heroCopy;
       const metrics = data.metricCards ?? metricCards;
-      const routesData = data.routes ?? routes;
       const notes = data.monitorNotes ?? monitorNotes;
       const uploads = data.uploadRecords ?? [];
       const summary = data.monitorSummary ?? monitorSummary;
@@ -155,7 +152,6 @@ function App() {
       setFiles(filesData);
       setHeroState(mergedHero);
       setMetricCardsState(metrics);
-      setRoutesState(routesData);
       setMonitorNotesState(notes);
       setUploadRecordsState(uploads);
       setMonitorSummaryState(summary);
@@ -286,8 +282,6 @@ function App() {
             return f.autoUpload;
           case "manual":
             return !f.autoUpload;
-          case "approval":
-            return !!f.requiresApproval;
           case "failed":
             return f.status === "failed";
           default:
@@ -359,7 +353,6 @@ function App() {
         fileExt: payloadConfig?.fileExt ?? fileExt,
         concurrency: payloadConfig?.concurrency ?? configForm.concurrency,
         silence: payloadConfig?.silence ?? silence ?? configForm.silence,
-        action: configForm.action,
       };
       lastSavedConfig.current = nextConfig;
       setConfigForm(nextConfig);
@@ -649,7 +642,7 @@ function App() {
                     <small>监听目录</small>
                     <div className="hero-tags">
                       {heroState.watchDirs.map((dir) => (
-                        <span className="hero-tag" key={dir}>
+                        <span className="hero-tag" key={dir} title={dir}>
                           {dir}
                         </span>
                       ))}
@@ -667,6 +660,10 @@ function App() {
                     <small>并发数量</small>
                     <strong>{heroState.concurrency}</strong>
                   </div>
+                  <div className="stat-compact">
+                    <small>队列数量</small>
+                    <strong>{heroState.queue}</strong>
+                  </div>
                 </div>
               </div>
             </div>
@@ -674,8 +671,7 @@ function App() {
 
           <section className="panel" id="config">
             <div className="section-title">
-              <h2>上传与路由配置（本机，可手动编辑）</h2>
-              <span>可手动填写 / 试算路由</span>
+              <h2>上传与路由配置</h2>
             </div>
             <div className="inputs">
               <div className="input">
@@ -710,39 +706,15 @@ function App() {
                   onChange={(e) => setConfigForm((prev) => ({ ...prev, concurrency: e.target.value }))}
                 />
               </div>
-              <div className="input">
-                <label>
-                  Action
-                  <small className="muted" style={{ marginLeft: 8 }}>说明：展示选中的上传动作/审批链描述</small>
-                </label>
-                <select value={configForm.action} onChange={(e) => setConfigForm((prev) => ({ ...prev, action: e.target.value }))}>
-                  <option>上传 + Webhook</option>
-                  <option>上传 + 队列</option>
-                  <option>隔离 + 审核</option>
-                </select>
-              </div>
             </div>
-            <div className="toolbar space-between">
-              <span className="badge">路径校验已启用 · 防穿越</span>
+            <div className="toolbar config-actions">
               <div className="toolbar-actions">
-                <button className="btn secondary" type="button" onClick={() => setConfigForm(configSnapshot)}>
-                  恢复演示值
-                </button>
                 <button className="btn" type="button" onClick={() => void handleSaveSnapshot()} disabled={saving}>
-                  {saving ? "保存中..." : "保存快照"}
+                  {saving ? "保存中..." : "保存配置"}
                 </button>
               </div>
             </div>
             {saveMessage ? <div className="badge">{saveMessage}</div> : null}
-            <div className="stack">
-              {routesState.map((r) => (
-                <div className="stack-item" key={r.name}>
-                  <strong>{r.name}</strong>
-                  <div className="meta">When: {r.cond}</div>
-                  <div className="meta">Action: {r.action}</div>
-                </div>
-              ))}
-            </div>
           </section>
 
           <section className="panel" id="directory">
@@ -820,7 +792,7 @@ function App() {
                   </div>
                   <div className="info-item">
                     <span className="muted">模式</span>
-                    <strong>{activeNode ? (activeNode.autoUpload ? "自动上传" : "需手动/审批") : "--"}</strong>
+                    <strong>{activeNode ? (activeNode.autoUpload ? "自动上传" : "手动上传") : "--"}</strong>
                   </div>
                   <div className="info-item">
                     <span className="muted">更新时间</span>
@@ -849,9 +821,6 @@ function App() {
               </div>
               <div className={`chip ${fileFilter === "manual" ? "active" : ""}`} onClick={() => setFileFilter("manual")}>
                 手动上传
-              </div>
-              <div className={`chip ${fileFilter === "approval" ? "active" : ""}`} onClick={() => setFileFilter("approval")}>
-                需审批
               </div>
               <div className={`chip ${fileFilter === "failed" ? "active" : ""}`} onClick={() => setFileFilter("failed")}>
                 失败
@@ -959,7 +928,7 @@ function App() {
           <section className="panel" id="failures">
             <div className="section-title">
               <h2>上传记录 / 最近动作</h2>
-              <span>成功 / 失败 / 等待审批</span>
+              <span>成功 / 失败 / 排队</span>
             </div>
             <table className="table">
               <thead>

@@ -23,7 +23,6 @@ export type FileItem = {
   status: "uploaded" | "queued" | "failed" | "existing";
   time: string;
   autoUpload: boolean;
-  requiresApproval?: boolean;
 };
 
 export type TimelineEvent = {
@@ -40,12 +39,6 @@ export type FailureItem = {
   next: string;
 };
 
-export type RoutePreview = {
-  name: string;
-  cond: string;
-  action: string;
-};
-
 export type MonitorNote = {
   title: string;
   detail: string;
@@ -56,7 +49,6 @@ export type ConfigSnapshot = {
   fileExt: string;
   silence: string;
   concurrency: string;
-  action: string;
 };
 
 export type HeroCopy = {
@@ -75,7 +67,7 @@ export type ChartPoint = {
   queue: number;
 };
 
-export type FileFilter = "all" | "auto" | "manual" | "approval" | "failed";
+export type FileFilter = "all" | "auto" | "manual" | "failed";
 
 export type UploadRecord = {
   file: string;
@@ -100,7 +92,6 @@ export type DashboardPayload = {
   files: FileItem[];
   tailLines: string[];
   timelineEvents: TimelineEvent[];
-  routes: RoutePreview[];
   monitorNotes: MonitorNote[];
   uploadRecords: UploadRecord[];
   monitorSummary: MonitorSummary[];

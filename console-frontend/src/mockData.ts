@@ -8,7 +8,6 @@ import type {
   MetricCard,
   MonitorNote,
   MonitorSummary,
-  RoutePreview,
   TimelineEvent,
   UploadRecord,
 } from "./types";
@@ -56,7 +55,7 @@ export const directoryTree: FileNode[] = [
         size: "1.2 GB",
         updated: "10:31:45",
         autoUpload: false,
-        content: `自动上传关闭 · 需审批
+        content: `自动上传关闭 · 手动触发
 size=1.2GB · md5 pending`,
       },
       {
@@ -124,7 +123,7 @@ lines=128`,
         size: "380 MB",
         updated: "10:30:02",
         autoUpload: false,
-        content: "自动上传关闭 · 手动审核后再入云",
+        content: "自动上传关闭 · 手动触发后再入云",
       },
     ],
   },
@@ -154,7 +153,6 @@ export const files: FileItem[] = [
     status: "queued",
     time: "10:31:45",
     autoUpload: false,
-    requiresApproval: true,
   },
   {
     name: "vid-2301.mp4",
@@ -171,7 +169,6 @@ export const files: FileItem[] = [
     status: "queued",
     time: "10:30:02",
     autoUpload: false,
-    requiresApproval: true,
   },
   {
     name: "model-v12.zip",
@@ -186,8 +183,8 @@ export const files: FileItem[] = [
 export const tailLines = [
   "[10:32:10] upload success key=logs/2024/12/26/app.log size=14.2MB latency=640ms",
   "[10:31:58] enqueue raw csv -> bucket=logs-warm",
-  "[10:31:50] auto-upload disabled for /data/logs/app/heap-2024-12-26.hprof (manual review)",
-  "[10:31:45] heap dump queued for quarantine size>1GB",
+  "[10:31:50] auto-upload disabled for /data/logs/app/heap-2024-12-26.hprof (manual trigger)",
+  "[10:31:45] heap dump queued for upload size>1GB",
   "[10:31:12] upload failed key=vid-2301.mp4 err=timeout",
   "[10:30:44] uploaded model-v12.zip latency=2.4s route=artifacts",
   "[10:30:31] gc-2024-12-26.txt uploaded latency=530ms",
@@ -197,20 +194,14 @@ export const tailLines = [
 export const timelineEvents: TimelineEvent[] = [
   { label: "检测新文件", time: "10:31:45", status: "info", host: "srv-01" },
   { label: "静默窗口通过", time: "10:31:48", status: "success", host: "srv-01" },
-  { label: "路由：隔离", time: "10:31:50", status: "warning", host: "srv-01" },
-  { label: "等待审批", time: "10:31:55", status: "danger", host: "srv-01" },
+  { label: "进入队列", time: "10:31:50", status: "warning", host: "srv-01" },
+  { label: "等待处理", time: "10:31:55", status: "danger", host: "srv-01" },
 ];
 
 export const failures: FailureItem[] = [
   { file: "vid-2301.mp4", reason: "S3 超时", attempts: 2, next: "1m 后重试" },
   { file: "2024-12-25-23.csv", reason: "MD5 不一致", attempts: 1, next: "排队" },
-  { file: "heap-2024-12-26.hprof", reason: "超阈值需审批", attempts: 0, next: "待审核" },
-];
-
-export const routes: RoutePreview[] = [
-  { name: "日志目录直传", cond: "path startsWith /data/logs/app", action: "直传 s3://logs-warm + Webhook" },
-  { name: "ETL 原始同步", cond: "path startsWith /data/etl/raw", action: "直传 s3://etl-raw + 校验" },
-  { name: "大文件隔离", cond: "size > 1GB 或 autoUpload=关闭", action: "断点续传 + 审批" },
+  { file: "heap-2024-12-26.hprof", reason: "超阈值需手动处理", attempts: 0, next: "待处理" },
 ];
 
 export const monitorNotes: MonitorNote[] = [
@@ -222,7 +213,7 @@ export const monitorNotes: MonitorNote[] = [
 export const uploadRecords: UploadRecord[] = [
   { file: "app-2024-12-26.log", target: "s3://logs-warm", size: "14.2 MB", result: "success", latency: "640 ms", time: "10:32:10", note: "自动上传" },
   { file: "etl-raw-2024-12-26-01.csv", target: "s3://etl-raw", size: "8.6 MB", result: "success", latency: "520 ms", time: "10:31:58", note: "校验通过" },
-  { file: "heap-2024-12-26.hprof", target: "隔离区 /data/quarantine", size: "1.2 GB", result: "pending", latency: "排队", time: "10:31:45", note: "等待审批" },
+  { file: "heap-2024-12-26.hprof", target: "隔离区 /data/quarantine", size: "1.2 GB", result: "pending", latency: "排队", time: "10:31:45", note: "排队中" },
   { file: "vid-2301.mp4", target: "s3://logs-warm", size: "92 MB", result: "failed", latency: "timeout", time: "10:31:12", note: "已触发告警" },
   { file: "model-v12.zip", target: "s3://artifacts", size: "482 MB", result: "success", latency: "2.4 s", time: "10:30:44", note: "断点续传" },
 ];
@@ -239,7 +230,6 @@ export const configSnapshot: ConfigSnapshot = {
   fileExt: "关闭 · 全量目录",
   silence: "4s",
   concurrency: "workers=8 / queue=200",
-  action: "上传 + Webhook",
 };
 
 export const chartPoints: ChartPoint[] = [

@@ -30,7 +30,6 @@ type FileItem struct {
 	Status           string `json:"status"` // 状态: uploaded | queued | failed | existing
 	Time             string `json:"time"`
 	AutoUpload       bool   `json:"autoUpload"`
-	RequiresApproval bool   `json:"requiresApproval,omitempty"`
 }
 
 // TimelineEvent 表示时间线中的一个事件
@@ -39,13 +38,6 @@ type TimelineEvent struct {
 	Time   string `json:"time"`
 	Status string `json:"status"` // 状态: info | success | warning | danger
 	Host   string `json:"host,omitempty"`
-}
-
-// RoutePreview 表示路由规则的快捷提示
-type RoutePreview struct {
-	Name   string `json:"name"`
-	Cond   string `json:"cond"`
-	Action string `json:"action"`
 }
 
 // MonitorNote 表示一个小型说明块
@@ -60,7 +52,6 @@ type ConfigSnapshot struct {
 	FileExt     string `json:"fileExt"`
 	Silence     string `json:"silence"`
 	Concurrency string `json:"concurrency"`
-	Action      string `json:"action"`
 }
 
 // HeroCopy 表示首页头部摘要信息
@@ -107,7 +98,6 @@ type DashboardData struct {
 	Files          []FileItem       `json:"files"`
 	TailLines      []string         `json:"tailLines"`
 	TimelineEvents []TimelineEvent  `json:"timelineEvents"`
-	Routes         []RoutePreview   `json:"routes"`
 	MonitorNotes   []MonitorNote    `json:"monitorNotes"`
 	UploadRecords  []UploadRecord   `json:"uploadRecords"`
 	MonitorSummary []MonitorSummary `json:"monitorSummary"`
