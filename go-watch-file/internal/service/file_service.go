@@ -182,24 +182,17 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	if err := newWatcher.Start(); err != nil {
 		_ = newPool.ShutdownGraceful(shutdownTimeout)
 		_ = newWatcher.Close()
-		// 尝试恢复旧配置，避免服务不可用
-		if oldCfg != nil {
-			if restoredPool, perr := newUploadPool(oldCfg, fs.processFile); perr == nil {
-				if restoredWatcher, werr := newFileWatcher(oldCfg, fs); werr == nil {
-					if serr := restoredWatcher.Start(); serr == nil {
-						fs.mu.Lock()
-						fs.config = oldCfg
-						fs.state = oldState
-						fs.uploadPool = restoredPool
-						fs.watcher = restoredWatcher
-						if fs.state != nil {
-							fs.state.SetQueueStats(fs.uploadPool.GetStats())
-						}
-						fs.mu.Unlock()
-					}
-				}
-			}
+		// 回滚到旧配置，避免留下已关闭的工作池
+		fs.mu.Lock()
+		fs.config = oldCfg
+		fs.state = oldState
+		fs.uploadPool = oldPool
+		fs.watcher = oldWatcher
+		fs.s3Client = oldS3
+		if fs.state != nil && fs.uploadPool != nil {
+			fs.state.SetQueueStats(fs.uploadPool.GetStats())
 		}
+		fs.mu.Unlock()
 		return nil, err
 	}
 
@@ -213,6 +206,14 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	if oldS3 != nil {
 		// aws sdk 无需显式关闭客户端，保留占位以示释放顺序
 	}
+
+	logger.Info("运行时配置已更新: watchDir=%s, fileExt=%s, silence=%s, workers=%d, queue=%d",
+		updated.WatchDir,
+		updated.FileExt,
+		updated.Silence,
+		updated.UploadWorkers,
+		updated.UploadQueueSize,
+	)
 
 	return fs.Config(), nil
 }
@@ -347,6 +348,8 @@ func (fs *FileService) sendDingTalk(ctx context.Context, downloadURL, fileName s
 
 // GetStats 获取服务统计信息。
 func (fs *FileService) GetStats() models.UploadStats {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
 	if fs.uploadPool != nil {
 		return fs.uploadPool.GetStats()
 	}
@@ -355,6 +358,8 @@ func (fs *FileService) GetStats() models.UploadStats {
 
 // State exposes runtime state for API server.
 func (fs *FileService) State() *state.RuntimeState {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
 	return fs.state
 }
 

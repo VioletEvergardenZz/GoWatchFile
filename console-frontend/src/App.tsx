@@ -21,6 +21,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 const SECTION_IDS = ["overview", "config", "directory", "files", "tail", "failures", "monitor"];
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 const UPLOAD_PAGE_SIZE = 5;
+const FILE_PAGE_SIZE = 10;
 const LOG_POLL_MS = 2000;
 
 const fmt = (t: string) => `${new Date().toISOString().split("T")[0]} ${t}`;
@@ -95,6 +96,7 @@ function App() {
   const [tailLinesState, setTailLinesState] = useState<string[]>([]);
   const [activeLogPath, setActiveLogPath] = useState<string | null>(null);
   const [uploadPage, setUploadPage] = useState(1);
+  const [filePage, setFilePage] = useState(1);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<"realtime" | "24h">("realtime");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
@@ -387,6 +389,19 @@ function App() {
     }
   }, [uploadPage, uploadPageSafe]);
 
+  const filePageCount = Math.max(1, Math.ceil(filteredFiles.length / FILE_PAGE_SIZE));
+  const filePageSafe = Math.min(filePage, filePageCount);
+  const filteredFilesPage = useMemo(() => {
+    const start = (filePageSafe - 1) * FILE_PAGE_SIZE;
+    return filteredFiles.slice(start, start + FILE_PAGE_SIZE);
+  }, [filteredFiles, filePageSafe]);
+
+  useEffect(() => {
+    if (filePage !== filePageSafe) {
+      setFilePage(filePageSafe);
+    }
+  }, [filePage, filePageSafe]);
+
   const handleClearTail = () => {
     setTailLinesState([]);
     setActiveLogPath(null);
@@ -429,6 +444,7 @@ function App() {
         config?: { watchDir: string; fileExt: string; concurrency?: string; silence?: string };
       };
       const payloadConfig = data.config;
+      const nextSuffix = fileExt ? `过滤 ${fileExt}` : "关闭 · 全量目录";
       const nextConfig: ConfigSnapshot = {
         watchDir: payloadConfig?.watchDir ?? watchDir,
         fileExt: payloadConfig?.fileExt ?? fileExt,
@@ -442,8 +458,9 @@ function App() {
         ...prev,
         watchDirs: nextConfig.watchDir ? nextConfig.watchDir.split(",").map((d) => d.trim()).filter(Boolean) : prev.watchDirs,
         silence: nextConfig.silence ?? prev.silence,
+        suffixFilter: nextSuffix,
       }));
-      setSaveMessage(`已保存当前表单（监控目录：${watchDir}），后端已应用`);
+      setSaveMessage(`已保存当前表单（监控目录：${watchDir}，后缀：${fileExt || "全量"}），后端已应用`);
       await refreshDashboard();
     } catch (err) {
       setError((err as Error).message);
@@ -530,7 +547,6 @@ function App() {
         <div className="tree-item" key={node.path}>
           <div
             className={`tree-row ${isActive ? "active" : ""}`}
-            style={{ paddingLeft: depth * 10 + 6 }}
             onClick={() => {
               if (node.type === "file") {
                 setActivePath(node.path);
@@ -559,7 +575,9 @@ function App() {
               <span className={`node-icon ${isFile ? "file" : "dir"}`} />
             </div>
             <div className="node-body">
-              <div className="node-title">{node.name}</div>
+              <div className="node-title" title={node.path}>
+                {node.name}
+              </div>
             </div>
             <div className="node-actions">
               <label className="switch mini" onClick={(e) => e.stopPropagation()}>
@@ -826,6 +844,11 @@ function App() {
                     全部展开
                   </button>
                 </div>
+                <div className="tree-meta">
+                  <span className="badge ghost">过滤: {heroState.suffixFilter}</span>
+                  <span className="badge ghost">匹配文件: {files.length}</span>
+                </div>
+                {files.length === 0 ? <div className="empty-state">当前过滤下暂无匹配文件</div> : null}
                 <div className="tree">{renderTree(rootNodes)}</div>
               </div>
 
@@ -912,42 +935,71 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {filteredFiles.map((f) => (
-                  <tr key={f.path}>
-                    <td>
-                      <div className="row-title">{f.name}</div>
-                      <div className="row-sub">{f.path}</div>
-                    </td>
-                    <td>{f.size}</td>
-                    <td>
-                      <span className={`pill table-pill ${f.autoUpload ? "success" : "warning"}`}>{f.autoUpload ? "开启" : "关闭"}</span>
-                    </td>
-                    <td>
-                      <span className="badge">
-                        {f.status === "uploaded"
-                          ? "已上传"
-                          : f.status === "queued"
-                            ? "队列中"
-                            : f.status === "existing"
-                              ? "已存在"
-                              : "失败"}
-                      </span>
-                    </td>
-                    <td>{fmt(f.time)}</td>
-                    <td>
-                      <div className="table-actions">
-                        <button className="btn secondary" type="button" onClick={() => handleViewLog(f)}>
-                          查看
-                        </button>
-                        <button className="btn secondary" type="button" onClick={() => void handleDownloadFile(f)}>
-                          下载
-                        </button>
-                      </div>
+                {filteredFilesPage.length ? (
+                  filteredFilesPage.map((f) => (
+                    <tr key={f.path}>
+                      <td>
+                        <div className="row-title">{f.name}</div>
+                        <div className="row-sub">{f.path}</div>
+                      </td>
+                      <td>{f.size}</td>
+                      <td>
+                        <span className={`pill table-pill ${f.autoUpload ? "success" : "warning"}`}>{f.autoUpload ? "开启" : "关闭"}</span>
+                      </td>
+                      <td>
+                        <span className="badge">
+                          {f.status === "uploaded"
+                            ? "已上传"
+                            : f.status === "queued"
+                              ? "队列中"
+                              : f.status === "existing"
+                                ? "已存在"
+                                : "失败"}
+                        </span>
+                      </td>
+                      <td>{fmt(f.time)}</td>
+                      <td>
+                        <div className="table-actions">
+                          <button className="btn secondary" type="button" onClick={() => handleViewLog(f)}>
+                            查看
+                          </button>
+                          <button className="btn secondary" type="button" onClick={() => void handleDownloadFile(f)}>
+                            下载
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="table-empty" colSpan={6}>
+                      暂无匹配文件
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
+            <div className="pagination">
+              <button
+                className="btn secondary"
+                type="button"
+                disabled={filePageSafe <= 1}
+                onClick={() => setFilePage((prev) => Math.max(1, prev - 1))}
+              >
+                上一页
+              </button>
+              <span className="badge ghost">
+                第 {filePageSafe} / {filePageCount} 页
+              </span>
+              <button
+                className="btn secondary"
+                type="button"
+                disabled={filePageSafe >= filePageCount}
+                onClick={() => setFilePage((prev) => Math.min(filePageCount, prev + 1))}
+              >
+                下一页
+              </button>
+            </div>
           </section>
 
           <section className="panel" id="tail">

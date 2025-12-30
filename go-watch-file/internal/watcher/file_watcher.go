@@ -2,6 +2,7 @@ package watcher
 
 import (
 	"context"
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -22,6 +24,8 @@ const (
 	logThrottleDuration   = 5 * time.Second  // 日志节流时间间隔（控制台或者程序日志文件输出频率）
 	defaultSilenceWindow  = 10 * time.Second // 文件写入完成检测超时时间（默认）
 )
+
+var errWatchLimitReached = errors.New("watch limit reached")
 
 // FileWatcher 文件监控器
 type FileWatcher struct {
@@ -71,8 +75,12 @@ func (fw *FileWatcher) Start() error {
 	//递归把目录都加入监听
 	err := fw.addWatchRecursively(fw.config.WatchDir)
 	if err != nil {
-		logger.Error("添加目录监控失败: %v", err)
-		return err
+		if errors.Is(err, errWatchLimitReached) {
+			logger.Warn("监控目录过大导致系统句柄不足，已降级为部分监控: %v", err)
+		} else {
+			logger.Error("添加目录监控失败: %v", err)
+			return err
+		}
 	}
 
 	// 启动事件处理协程
@@ -171,6 +179,16 @@ func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 
 	return filepath.WalkDir(dirPath, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
+			if path != dirPath {
+				if errors.Is(err, fs.ErrNotExist) || os.IsNotExist(err) {
+					logger.Warn("跳过不存在的路径(可能是断链): %s, 错误: %v", path, err)
+					return nil
+				}
+				if errors.Is(err, fs.ErrPermission) || os.IsPermission(err) {
+					logger.Warn("跳过无权限访问的路径: %s, 错误: %v", path, err)
+					return nil
+				}
+			}
 			logger.Warn("遍历目录失败: %s, 错误: %v", path, err)
 			return err
 		}
@@ -178,6 +196,20 @@ func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 			return nil
 		}
 		if err := fw.watcher.Add(path); err != nil {
+			if isTooManyOpenFiles(err) {
+				logger.Warn("监控句柄已达上限，停止递归监控: %s, 错误: %v", path, err)
+				return errWatchLimitReached
+			}
+			if path != dirPath {
+				if errors.Is(err, fs.ErrNotExist) || os.IsNotExist(err) {
+					logger.Warn("跳过不存在的目录(可能是断链): %s, 错误: %v", path, err)
+					return nil
+				}
+				if errors.Is(err, fs.ErrPermission) || os.IsPermission(err) {
+					logger.Warn("跳过无权限访问的目录: %s, 错误: %v", path, err)
+					return nil
+				}
+			}
 			logger.Warn("添加目录监控失败: %s, 错误: %v", path, err)
 			return err
 		}
@@ -284,4 +316,14 @@ func parseSilenceWindow(raw string) time.Duration {
 
 	logger.Warn("静默窗口解析失败，使用默认值: %s", trimmed)
 	return defaultSilenceWindow
+}
+
+func isTooManyOpenFiles(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, syscall.EMFILE) || errors.Is(err, syscall.ENFILE) {
+		return true
+	}
+	return strings.Contains(strings.ToLower(err.Error()), "too many open files")
 }
