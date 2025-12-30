@@ -37,7 +37,7 @@ const (
 //记录“被监控文件”的当前状态
 type fileState struct {
 	Status           FileStatus
-	Target           string				//上传目标
+	Target           string				//下载地址
 	Latency          time.Duration		//上传耗时
 	Note             string				//备注信息，如（“自动入队”“上传失败原因”）
 	AutoUpload       bool
@@ -237,7 +237,7 @@ func (s *RuntimeState) MarkSkipped(path string) {
 }
 
 // MarkUploaded 记录上传成功
-func (s *RuntimeState) MarkUploaded(path, target string, latency time.Duration) {
+func (s *RuntimeState) MarkUploaded(path, downloadURL string, latency time.Duration) {
 	norm := normalizePath(path)
 	info := s.statFile(path)
 	now := time.Now()
@@ -246,7 +246,7 @@ func (s *RuntimeState) MarkUploaded(path, target string, latency time.Duration) 
 	defer s.mu.Unlock()
 	st := s.fetchOrInitStateLocked(norm)
 	st.Status = StatusUploaded
-	st.Target = target
+	st.Target = downloadURL
 	st.Latency = latency
 	st.Note = "自动上传"
 	st.AutoUpload = s.autoUploadLocked(path)
@@ -256,7 +256,7 @@ func (s *RuntimeState) MarkUploaded(path, target string, latency time.Duration) 
 	s.appendTimelineLocked("上传成功", "success", s.host, now)
 	s.appendUploadLocked(uploadHistory{
 		File:    filepath.Base(norm),
-		Target:  target,
+		Target:  downloadURL,
 		Size:    formatSize(info.size),
 		Result:  "success",
 		Latency: formatLatency(latency),

@@ -873,6 +873,10 @@
   align-items: center;
 }
 
+.pill.table-pill {
+  margin-top: 4px;
+}
+
 .pill.info,
 .pill.success,
 .pill.warning,

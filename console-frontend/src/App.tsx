@@ -21,6 +21,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 const SECTION_IDS = ["overview", "config", "directory", "files", "tail", "failures", "monitor"];
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 const UPLOAD_PAGE_SIZE = 5;
+const LOG_POLL_MS = 2000;
 
 const fmt = (t: string) => `${new Date().toISOString().split("T")[0]} ${t}`;
 
@@ -92,13 +93,18 @@ function App() {
   const [monitorSummaryState, setMonitorSummaryState] = useState(monitorSummary);
   const [chartPointsState, setChartPointsState] = useState(chartPoints);
   const [tailLinesState, setTailLinesState] = useState<string[]>([]);
+  const [activeLogPath, setActiveLogPath] = useState<string | null>(null);
   const [uploadPage, setUploadPage] = useState(1);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<"realtime" | "24h">("realtime");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const lastSavedConfig = useRef<ConfigSnapshot | null>(null);
+  const actionTimerRef = useRef<number | undefined>(undefined);
+  const tailBoxRef = useRef<HTMLDivElement | null>(null);
+  const logFetchingRef = useRef(false);
 
   const rootNodes = useMemo(() => {
     const filtered = tree.filter((node) => !currentRoot || node.path === currentRoot);
@@ -191,6 +197,64 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (actionTimerRef.current) {
+        window.clearTimeout(actionTimerRef.current);
+      }
+    };
+  }, []);
+
+  const showActionMessage = useCallback((message: string) => {
+    if (actionTimerRef.current) {
+      window.clearTimeout(actionTimerRef.current);
+    }
+    setActionMessage(message);
+    actionTimerRef.current = window.setTimeout(() => {
+      setActionMessage(null);
+    }, 3000);
+  }, []);
+
+  const fetchLogLines = useCallback(async (path: string) => {
+    if (logFetchingRef.current) return;
+    logFetchingRef.current = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/file-log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `加载文件日志失败，状态码 ${res.status}`);
+      }
+      const data = (await res.json()) as { lines?: string[] };
+      setTailLinesState(data.lines ?? []);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      logFetchingRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!activeLogPath) return;
+    void fetchLogLines(activeLogPath);
+    const timer = window.setInterval(() => {
+      void fetchLogLines(activeLogPath);
+    }, LOG_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [activeLogPath, fetchLogLines]);
+
+  useEffect(() => {
+    if (!activeLogPath || !tailBoxRef.current) return;
+    const el = tailBoxRef.current;
+    window.requestAnimationFrame(() => {
+      el.scrollTop = el.scrollHeight;
+    });
+  }, [tailLinesState, activeLogPath]);
+
   const handleAutoToggle = async (path: string, value: boolean) => {
     const node = findNode(tree, path);
     const isDir = node?.type === "dir";
@@ -258,28 +322,14 @@ function App() {
     }
   };
 
-  const handleViewLog = async (file: FileItem) => {
+  const handleViewLog = (file: FileItem) => {
     if (!file.path) return;
     if (!file.path.toLowerCase().endsWith(".log")) {
       setError("仅支持 .log 文件查看");
       return;
     }
     setError(null);
-    try {
-      const res = await fetch(`${API_BASE}/api/file-log`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: file.path }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || `加载文件日志失败，状态码 ${res.status}`);
-      }
-      const data = (await res.json()) as { lines?: string[] };
-      setTailLinesState(data.lines ?? []);
-    } catch (err) {
-      setError((err as Error).message);
-    }
+    setActiveLogPath(file.path);
   };
 
   const handleDownloadFile = async (file: FileItem) => {
@@ -295,6 +345,7 @@ function App() {
         const text = await res.text();
         throw new Error(text || `触发上传失败，状态码 ${res.status}`);
       }
+      showActionMessage("已触发下载，请稍后在上传记录查看状态。");
     } catch (err) {
       setError((err as Error).message);
     }
@@ -324,18 +375,21 @@ function App() {
   }, [files, currentRoot, fileFilter, searchTerm]);
 
   const uploadPageCount = Math.max(1, Math.ceil(uploadRecordsState.length / UPLOAD_PAGE_SIZE));
+  const uploadPageSafe = Math.min(uploadPage, uploadPageCount);
   const uploadRecordsPage = useMemo(() => {
-    const safePage = Math.min(uploadPage, uploadPageCount);
-    const start = (safePage - 1) * UPLOAD_PAGE_SIZE;
+    const start = (uploadPageSafe - 1) * UPLOAD_PAGE_SIZE;
     return uploadRecordsState.slice(start, start + UPLOAD_PAGE_SIZE);
-  }, [uploadPage, uploadPageCount, uploadRecordsState]);
+  }, [uploadPageSafe, uploadRecordsState]);
 
   useEffect(() => {
-    setUploadPage((prev) => Math.min(prev, uploadPageCount));
-  }, [uploadPageCount]);
+    if (uploadPage !== uploadPageSafe) {
+      setUploadPage(uploadPageSafe);
+    }
+  }, [uploadPage, uploadPageSafe]);
 
   const handleClearTail = () => {
     setTailLinesState([]);
+    setActiveLogPath(null);
   };
 
   const handleSaveSnapshot = async () => {
@@ -844,6 +898,7 @@ function App() {
               <div className={`chip ${fileFilter === "failed" ? "active" : ""}`} onClick={() => setFileFilter("failed")}>
                 失败
               </div>
+              {actionMessage ? <span className="badge ghost">{actionMessage}</span> : null}
             </div>
             <table className="table">
               <thead>
@@ -865,7 +920,7 @@ function App() {
                     </td>
                     <td>{f.size}</td>
                     <td>
-                      <span className={`pill ${f.autoUpload ? "success" : "warning"}`}>{f.autoUpload ? "开启" : "关闭"}</span>
+                      <span className={`pill table-pill ${f.autoUpload ? "success" : "warning"}`}>{f.autoUpload ? "开启" : "关闭"}</span>
                     </td>
                     <td>
                       <span className="badge">
@@ -881,7 +936,7 @@ function App() {
                     <td>{fmt(f.time)}</td>
                     <td>
                       <div className="table-actions">
-                        <button className="btn secondary" type="button" onClick={() => void handleViewLog(f)}>
+                        <button className="btn secondary" type="button" onClick={() => handleViewLog(f)}>
                           查看
                         </button>
                         <button className="btn secondary" type="button" onClick={() => void handleDownloadFile(f)}>
@@ -905,7 +960,7 @@ function App() {
                 清除
               </button>
             </div>
-            <div className="tail-box">
+            <div className="tail-box" ref={tailBoxRef}>
               {tailLinesState.map((line, idx) => (
                 <div className="tail-line" key={`${line}-${idx}`}>
                   {line}
@@ -925,17 +980,17 @@ function App() {
                   <th>文件</th>
                   <th>状态</th>
                   <th>耗时</th>
-                  <th>目标</th>
+                  <th>下载地址</th>
                   <th>时间</th>
                   <th>备注</th>
                 </tr>
               </thead>
-              <tbody>
-              {uploadRecordsPage.map((item) => (
-                <tr key={`${item.file}-${item.time}`}>
-                  <td>
-                    <div className="row-title">{item.file}</div>
-                    <div className="row-sub">{item.size}</div>
+              <tbody key={uploadPageSafe}>
+                {uploadRecordsPage.map((item) => (
+                  <tr key={`${item.file}-${item.time}`}>
+                    <td>
+                      <div className="row-title">{item.file}</div>
+                      <div className="row-sub">{item.size}</div>
                     </td>
                     <td>
                       <span
@@ -945,7 +1000,7 @@ function App() {
                       </span>
                     </td>
                     <td>{item.latency}</td>
-                    <td>{item.target}</td>
+                    <td>{item.target || "--"}</td>
                     <td>{fmt(item.time)}</td>
                     <td>
                       <div className="row-sub">{item.note ?? "--"}</div>
@@ -958,18 +1013,18 @@ function App() {
               <button
                 className="btn secondary"
                 type="button"
-                disabled={uploadPage <= 1}
+                disabled={uploadPageSafe <= 1}
                 onClick={() => setUploadPage((prev) => Math.max(1, prev - 1))}
               >
                 上一页
               </button>
               <span className="badge ghost">
-                第 {uploadPage} / {uploadPageCount} 页
+                第 {uploadPageSafe} / {uploadPageCount} 页
               </span>
               <button
                 className="btn secondary"
                 type="button"
-                disabled={uploadPage >= uploadPageCount}
+                disabled={uploadPageSafe >= uploadPageCount}
                 onClick={() => setUploadPage((prev) => Math.min(uploadPageCount, prev + 1))}
               >
                 下一页

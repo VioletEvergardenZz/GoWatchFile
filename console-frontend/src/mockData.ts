@@ -210,11 +210,11 @@ export const monitorNotes: MonitorNote[] = [
 ];
 
 export const uploadRecords: UploadRecord[] = [
-  { file: "app-2024-12-26.log", target: "s3://logs-warm", size: "14.2 MB", result: "success", latency: "640 ms", time: "10:32:10", note: "自动上传" },
-  { file: "etl-raw-2024-12-26-01.csv", target: "s3://etl-raw", size: "8.6 MB", result: "success", latency: "520 ms", time: "10:31:58", note: "校验通过" },
-  { file: "heap-2024-12-26.hprof", target: "隔离区 /data/quarantine", size: "1.2 GB", result: "pending", latency: "排队", time: "10:31:45", note: "排队中" },
-  { file: "vid-2301.mp4", target: "s3://logs-warm", size: "92 MB", result: "failed", latency: "timeout", time: "10:31:12", note: "已触发告警" },
-  { file: "model-v12.zip", target: "s3://artifacts", size: "482 MB", result: "success", latency: "2.4 s", time: "10:30:44", note: "断点续传" },
+  { file: "app-2024-12-26.log", target: "https://minio.local/logs-warm/app-2024-12-26.log", size: "14.2 MB", result: "success", latency: "640 ms", time: "10:32:10", note: "自动上传" },
+  { file: "etl-raw-2024-12-26-01.csv", target: "https://minio.local/etl-raw/etl-raw-2024-12-26-01.csv", size: "8.6 MB", result: "success", latency: "520 ms", time: "10:31:58", note: "校验通过" },
+  { file: "heap-2024-12-26.hprof", target: "", size: "1.2 GB", result: "pending", latency: "排队", time: "10:31:45", note: "排队中" },
+  { file: "vid-2301.mp4", target: "", size: "92 MB", result: "failed", latency: "timeout", time: "10:31:12", note: "已触发告警" },
+  { file: "model-v12.zip", target: "https://minio.local/artifacts/model-v12.zip", size: "482 MB", result: "success", latency: "2.4 s", time: "10:30:44", note: "断点续传" },
 ];
 
 export const monitorSummary: MonitorSummary[] = [

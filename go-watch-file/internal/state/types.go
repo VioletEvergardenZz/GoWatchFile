@@ -75,7 +75,7 @@ type ChartPoint struct {
 // UploadRecord 表示最近的上传记录
 type UploadRecord struct {
 	File    string `json:"file"`
-	Target  string `json:"target"`
+	Target  string `json:"target"` // 下载地址
 	Size    string `json:"size"`
 	Result  string `json:"result"` // 结果: success | failed | pending
 	Latency string `json:"latency"`
