@@ -5,6 +5,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -101,7 +102,7 @@ func NewRuntimeState(cfg *models.Config) *RuntimeState {
 	watchDir := normalizePath(cfg.WatchDir)
 	auto := map[string]bool{}
 	if watchDir != "" {
-		auto[watchDir] = true
+		auto[normalizeKeyPath(watchDir)] = true
 	}
 	return &RuntimeState{
 		host:      host,
@@ -146,7 +147,6 @@ func (s *RuntimeState) BootstrapExisting() error {
 			return nil
 		}
 		if d.IsDir() {
-			s.setAutoDefault(path)
 			return nil
 		}
 		if !s.isTargetFile(path) {	//不符合目标后缀,跳过
@@ -186,15 +186,24 @@ func (s *RuntimeState) AutoUploadEnabled(path string) bool {
 
 // SetAutoUpload 为路径（文件或目录）切换自动上传，并联动更新已有状态
 func (s *RuntimeState) SetAutoUpload(path string, enabled bool) {
-	norm := normalizePath(path)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if norm == "" {
+	normPath := normalizePath(path)
+	if normPath == "" {
 		return
 	}
-	s.autoOn[norm] = enabled
+	keyPath := normalizeKeyPath(normPath)
+	isDir := isDirPath(normPath)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if isDir {
+		for p := range s.autoOn {
+			if p != keyPath && isSameOrChildPath(p, keyPath) {
+				delete(s.autoOn, p)
+			}
+		}
+	}
+	s.autoOn[keyPath] = enabled
 	for p, st := range s.fileState {
-		if strings.HasPrefix(p, norm) {
+		if (isDir && isSameOrChildPath(p, normPath)) || (!isDir && normalizeKeyPath(p) == keyPath) {
 			st.AutoUpload = enabled
 			s.fileState[p] = st
 		}
@@ -628,9 +637,6 @@ func (s *RuntimeState) collectFiles() []scannedFile {
 			return nil
 		}
 		if d.IsDir() {
-			if _, ok := autoCopy[normalizePath(path)]; !ok {
-				autoCopy[normalizePath(path)] = true
-			}
 			return nil
 		}
 		if !s.isTargetFile(path) {
@@ -746,7 +752,7 @@ func (s *RuntimeState) appendUploadLocked(record uploadHistory) {
 
 //判断某个路径是否“自动上传开启”
 func (s *RuntimeState) autoUploadLocked(path string) bool {
-	norm := normalizePath(path)
+	norm := normalizeKeyPath(path)
 	if norm == "" {
 		return true
 	}
@@ -761,17 +767,6 @@ func (s *RuntimeState) autoUploadLocked(path string) bool {
 		dir = filepath.Dir(dir)
 	}
 	return true
-}
-
-//给某个路径设置“自动上传默认值”的方法
-func (s *RuntimeState) setAutoDefault(path string) {
-	norm := normalizePath(path)
-	s.mu.Lock()
-	if _, ok := s.autoOn[norm]; !ok {
-		//如果这个路径还没记录过，就默认设为 true（开启自动上传）
-		s.autoOn[norm] = true
-	}
-	s.mu.Unlock()
 }
 
 //是否匹配目标后缀
@@ -803,8 +798,48 @@ func normalizePath(path string) string {
 	return filepath.ToSlash(filepath.Clean(path))
 }
 
-func autoEnabledFromCopy(auto map[string]bool, path string) bool {
+func normalizeKeyPath(path string) string {
 	norm := normalizePath(path)
+	if norm == "" {
+		return ""
+	}
+	if runtime.GOOS == "windows" {
+		return strings.ToLower(norm)
+	}
+	return norm
+}
+
+func isDirPath(path string) bool {
+	if path == "" {
+		return false
+	}
+	info, err := os.Stat(filepath.FromSlash(path))
+	if err != nil {
+		return false
+	}
+	return info.IsDir()
+}
+
+func isSameOrChildPath(path, root string) bool {
+	path = normalizeKeyPath(path)
+	root = normalizeKeyPath(root)
+	if root == "" {
+		return false
+	}
+	if path == root {
+		return true
+	}
+	if strings.HasSuffix(root, "/") {
+		return strings.HasPrefix(path, root)
+	}
+	if strings.HasPrefix(path, root) {
+		return strings.HasPrefix(path[len(root):], "/")
+	}
+	return false
+}
+
+func autoEnabledFromCopy(auto map[string]bool, path string) bool {
+	norm := normalizeKeyPath(path)
 	if norm == "" {
 		return true
 	}

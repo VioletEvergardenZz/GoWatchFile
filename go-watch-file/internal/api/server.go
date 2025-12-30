@@ -3,12 +3,16 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
-	"time"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"file-watch/internal/logger"
 	"file-watch/internal/models"
+	"file-watch/internal/pathutil"
 	"file-watch/internal/service"
 )
 
@@ -22,6 +26,11 @@ type handler struct {
 	fs  *service.FileService
 }
 
+const (
+	maxFileLogBytes = 512 * 1024
+	maxFileLogLines = 400
+)
+
 // NewServer builds the HTTP server for console/API consumption.
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	h := &handler{cfg: cfg, fs: fs}
@@ -29,6 +38,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/dashboard", h.dashboard)
 	mux.HandleFunc("/api/auto-upload", h.toggleAutoUpload)
 	mux.HandleFunc("/api/manual-upload", h.manualUpload)
+	mux.HandleFunc("/api/file-log", h.fileLog)
 	mux.HandleFunc("/api/config", h.updateConfig)
 	mux.HandleFunc("/api/health", h.health)
 
@@ -132,6 +142,59 @@ func (h *handler) manualUpload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func (h *handler) fileLog(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Path) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+		return
+	}
+	cleanedPath := filepath.Clean(filepath.FromSlash(strings.TrimSpace(req.Path)))
+	if !strings.EqualFold(filepath.Ext(cleanedPath), ".log") {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "only .log files are supported"})
+		return
+	}
+	cfg := h.fs.Config()
+	if cfg == nil {
+		cfg = h.cfg
+	}
+	if cfg == nil || strings.TrimSpace(cfg.WatchDir) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "watch dir not configured"})
+		return
+	}
+	if _, err := pathutil.RelativePath(cfg.WatchDir, cleanedPath); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	info, err := os.Stat(cleanedPath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if info.IsDir() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is a directory"})
+		return
+	}
+	lines, err := readFileLogLines(cleanedPath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":    true,
+		"lines": lines,
+	})
+}
+
 func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -194,4 +257,53 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func readFileLogLines(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	size := info.Size()
+	var data []byte
+	if size > maxFileLogBytes {
+		start := size - maxFileLogBytes
+		buf := make([]byte, maxFileLogBytes)
+		n, err := file.ReadAt(buf, start)
+		if err != nil && err != io.EOF {
+			return nil, err
+		}
+		data = buf[:n]
+	} else {
+		data, err = io.ReadAll(file)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(data) == 0 {
+		return []string{}, nil
+	}
+
+	lines := strings.Split(string(data), "\n")
+	if size > maxFileLogBytes && len(lines) > 0 {
+		lines = lines[1:]
+	}
+	if len(lines) > 0 && lines[len(lines)-1] == "" {
+		lines = lines[:len(lines)-1]
+	}
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, "\r")
+	}
+	if maxFileLogLines > 0 && len(lines) > maxFileLogLines {
+		lines = lines[len(lines)-maxFileLogLines:]
+	}
+	return lines, nil
 }

@@ -27,7 +27,6 @@ export const metricCards: MetricCard[] = [
   { label: "失败率", value: "1.4%", trend: "-0.3%", tone: "down" },
   { label: "队列深度", value: "32", trend: "背压监控", tone: "warning" },
   { label: "平均耗时", value: "820 ms", trend: "-90 ms", tone: "up" },
-  { label: "通知发送", value: "9", trend: "全部成功", tone: "up" },
 ];
 
 export const directoryTree: FileNode[] = [

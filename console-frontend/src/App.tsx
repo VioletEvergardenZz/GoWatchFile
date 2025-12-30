@@ -12,8 +12,6 @@ import {
   metricCards,
   monitorNotes,
   monitorSummary,
-  tailLines,
-  timelineEvents,
   uploadRecords,
 } from "./mockData";
 import type { ConfigSnapshot, DashboardPayload, FileFilter, FileItem, FileNode } from "./types";
@@ -22,6 +20,7 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip,
 
 const SECTION_IDS = ["overview", "config", "directory", "files", "tail", "failures", "monitor"];
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
+const UPLOAD_PAGE_SIZE = 5;
 
 const fmt = (t: string) => `${new Date().toISOString().split("T")[0]} ${t}`;
 
@@ -46,8 +45,6 @@ const findNode = (nodes: FileNode[], path: string): FileNode | undefined => {
   }
   return undefined;
 };
-
-const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const propagateAuto = (children: FileNode[] | undefined, value: boolean): FileNode[] | undefined => {
   if (!children) return children;
@@ -88,16 +85,14 @@ function App() {
   const [manualUploadMap, setManualUploadMap] = useState<Record<string, string>>({});
   const [activeSection, setActiveSection] = useState<string>(SECTION_IDS[0]);
   const [configForm, setConfigForm] = useState(configSnapshot);
-  const [keyword, setKeyword] = useState("");
-  const [showMatchesOnly, setShowMatchesOnly] = useState(false);
   const [heroState, setHeroState] = useState(heroCopy);
   const [metricCardsState, setMetricCardsState] = useState(metricCards);
   const [monitorNotesState, setMonitorNotesState] = useState(monitorNotes);
   const [uploadRecordsState, setUploadRecordsState] = useState(uploadRecords);
   const [monitorSummaryState, setMonitorSummaryState] = useState(monitorSummary);
   const [chartPointsState, setChartPointsState] = useState(chartPoints);
-  const [tailLinesState, setTailLinesState] = useState(tailLines);
-  const [timelineEventsState, setTimelineEventsState] = useState(timelineEvents);
+  const [tailLinesState, setTailLinesState] = useState<string[]>([]);
+  const [uploadPage, setUploadPage] = useState(1);
   const [timeframe, setTimeframe] = useState<"realtime" | "24h">("realtime");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -132,8 +127,6 @@ function App() {
       const uploads = data.uploadRecords ?? [];
       const summary = data.monitorSummary ?? monitorSummary;
       const chartPointsData = data.chartPoints ?? [];
-      const tails = data.tailLines ?? [];
-      const timeline = data.timelineEvents ?? [];
 
       let configData = (data.configSnapshot as ConfigSnapshot | undefined) ?? configSnapshot;
       if (lastSavedConfig.current) {
@@ -157,8 +150,6 @@ function App() {
       setMonitorSummaryState(summary);
       setConfigForm(configData);
       setChartPointsState(chartPointsData);
-      setTailLinesState(tails);
-      setTimelineEventsState(timeline);
       setCurrentRoot((prev) => directoryTree[0]?.path ?? mergedHero.watchDirs[0] ?? prev);
       setActivePath((prev) => {
         const nextActive = findFirstFile(directoryTree)?.path ?? filesData[0]?.path ?? prev;
@@ -267,6 +258,48 @@ function App() {
     }
   };
 
+  const handleViewLog = async (file: FileItem) => {
+    if (!file.path) return;
+    if (!file.path.toLowerCase().endsWith(".log")) {
+      setError("仅支持 .log 文件查看");
+      return;
+    }
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/file-log`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: file.path }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `加载文件日志失败，状态码 ${res.status}`);
+      }
+      const data = (await res.json()) as { lines?: string[] };
+      setTailLinesState(data.lines ?? []);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
+  const handleDownloadFile = async (file: FileItem) => {
+    if (!file.path) return;
+    setError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/manual-upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: file.path }),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `触发上传失败，状态码 ${res.status}`);
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  };
+
   const filteredFiles = useMemo(() => {
     return files
       .filter((f) => (currentRoot ? f.path.startsWith(currentRoot) : true))
@@ -290,25 +323,19 @@ function App() {
       });
   }, [files, currentRoot, fileFilter, searchTerm]);
 
-  const keywordNormalized = keyword.trim().toLowerCase();
+  const uploadPageCount = Math.max(1, Math.ceil(uploadRecordsState.length / UPLOAD_PAGE_SIZE));
+  const uploadRecordsPage = useMemo(() => {
+    const safePage = Math.min(uploadPage, uploadPageCount);
+    const start = (safePage - 1) * UPLOAD_PAGE_SIZE;
+    return uploadRecordsState.slice(start, start + UPLOAD_PAGE_SIZE);
+  }, [uploadPage, uploadPageCount, uploadRecordsState]);
 
-  const tailDisplayLines = useMemo(() => {
-    if (!keywordNormalized) return tailLinesState;
-    const matched = tailLinesState.filter((line) => line.toLowerCase().includes(keywordNormalized));
-    return showMatchesOnly ? matched : tailLinesState;
-  }, [keywordNormalized, showMatchesOnly, tailLinesState]);
+  useEffect(() => {
+    setUploadPage((prev) => Math.min(prev, uploadPageCount));
+  }, [uploadPageCount]);
 
-  const highlightTailLine = (line: string) => {
-    if (!keywordNormalized) return line;
-    const regex = new RegExp(escapeRegExp(keywordNormalized), "gi");
-    const segments = line.split(regex);
-    const matches = line.match(regex);
-    return segments.flatMap((segment, idx) => {
-      const match = matches?.[idx];
-      return match
-        ? [segment, <mark className="highlight" key={`${line}-${idx}`}>{match}</mark>]
-        : [segment];
-    });
+  const handleClearTail = () => {
+    setTailLinesState([]);
   };
 
   const handleSaveSnapshot = async () => {
@@ -476,17 +503,11 @@ function App() {
                 <span className="chevron placeholder">•</span>
               )}
               <span className={`node-icon ${isFile ? "file" : "dir"}`} />
-              <span className={`pill ${isFile ? "info" : "success"} mini-pill`}>{isFile ? "FILE" : "DIR"}</span>
             </div>
             <div className="node-body">
               <div className="node-title">{node.name}</div>
-              <div className="node-sub">{node.path}</div>
-              <div className="node-sub" style={{ opacity: 0.9 }}>
-                {isFile ? `${node.size ?? "--"} · 更新 ${node.updated ?? "--"}` : `${node.children?.length ?? 0} 项 · 层级 ${depth + 1}`}
-              </div>
             </div>
             <div className="node-actions">
-              <span className={`pill ${node.autoUpload ? "success" : "warning"}`}>{node.autoUpload ? "自动" : "手动"}</span>
               <label className="switch mini" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
@@ -508,7 +529,13 @@ function App() {
     : activeNode?.updated
     ? `更新 ${fmt(activeNode.updated)}`
     : "更新时间未知";
+  const updatedTime = manualUploadTime
+    ? fmt(manualUploadTime)
+    : activeNode?.updated
+    ? fmt(activeNode.updated)
+    : "--";
   const silenceValue = useMemo(() => heroState.silence?.replace(/静默/gi, "").trim() ?? "", [heroState.silence]);
+  const watchDirsLabel = heroState.watchDirs.length ? heroState.watchDirs.join(", ") : "--";
 
   return (
     <div className="page-shell">
@@ -532,7 +559,7 @@ function App() {
                   : id === "files"
                   ? "文件列表"
                   : id === "tail"
-                  ? "Tail / 关键字"
+                  ? "文件日志"
                   : id === "failures"
                   ? "上传记录"
                   : "监控";
@@ -546,7 +573,7 @@ function App() {
                   : id === "files"
                   ? "基础信息"
                   : id === "tail"
-                  ? "实时匹配"
+                  ? "文件日志"
                   : id === "failures"
                   ? "最近上传"
                   : "吞吐 / 队列";
@@ -588,7 +615,7 @@ function App() {
                 <h1>文件监控 Agent 控制台</h1>
                 <div className="title-meta">
                   <span className="badge ghost">主机 {heroState.agent}</span>
-                  <span className="badge ghost">监听目录 {heroState.watchDirs.length}</span>
+                  <span className="badge ghost">监听目录 {watchDirsLabel}</span>
                   <span className="badge ghost">{heroState.queue}</span>
                 </div>
               </div>
@@ -720,7 +747,6 @@ function App() {
           <section className="panel" id="directory">
             <div className="section-title">
               <h2>目录浏览 / 自动上传控制</h2>
-              <span>单个目录可展开/收起 · 右侧展示基础信息</span>
             </div>
             <div className="workspace">
               <div className="tree-panel">
@@ -739,9 +765,6 @@ function App() {
                       </option>
                     ))}
                   </select>
-                  <div className="chip active">递归监听</div>
-                  <div className="chip">仅新文件</div>
-                  <span className="badge">自动刷新</span>
                   <button className="btn secondary" type="button" onClick={() => handleCollapseAll(true)}>
                     全部收起
                   </button>
@@ -754,8 +777,8 @@ function App() {
 
               <div className="file-preview">
                 <div className="preview-header">
-                  <div>
-                    <span className={`pill ${activeNode?.autoUpload ? "success" : "warning"}`} id="previewState">
+                  <div className="preview-main">
+                    <span className={`pill compact ${activeNode?.autoUpload ? "success" : "warning"}`} id="previewState">
                       {activeNode ? (activeNode.autoUpload ? "自动上传开启" : "自动上传关闭") : "选择一个文件"}
                     </span>
                     <div className="preview-title" id="previewTitle">
@@ -796,11 +819,8 @@ function App() {
                   </div>
                   <div className="info-item">
                     <span className="muted">更新时间</span>
-                    <strong>{activeNode ? updatedSegment : "--"}</strong>
+                    <strong>{updatedTime}</strong>
                   </div>
-                </div>
-                <div className="preview-content" id="previewContent">
-                  {activeNode ? activeNode.content ?? "文件内容预览" : "点击左侧目录树中的文件预览内容。"}
                 </div>
               </div>
             </div>
@@ -808,8 +828,7 @@ function App() {
 
           <section className="panel" id="files">
             <div className="section-title">
-              <h2>文件列表（基础信息）</h2>
-              <span>轻量查看 · 下载 · 删除</span>
+              <h2>文件列表</h2>
             </div>
             <div className="toolbar">
               <input className="search" placeholder="搜索文件名 / 路径" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
@@ -825,10 +844,6 @@ function App() {
               <div className={`chip ${fileFilter === "failed" ? "active" : ""}`} onClick={() => setFileFilter("failed")}>
                 失败
               </div>
-              <span className="badge">后缀过滤已关闭 · 按目录控制</span>
-              <button className="btn secondary" type="button">
-                批量删除
-              </button>
             </div>
             <table className="table">
               <thead>
@@ -866,14 +881,11 @@ function App() {
                     <td>{fmt(f.time)}</td>
                     <td>
                       <div className="table-actions">
-                        <button className="btn secondary" type="button">
+                        <button className="btn secondary" type="button" onClick={() => void handleViewLog(f)}>
                           查看
                         </button>
-                        <button className="btn secondary" type="button">
+                        <button className="btn secondary" type="button" onClick={() => void handleDownloadFile(f)}>
                           下载
-                        </button>
-                        <button className="btn secondary" type="button">
-                          删除
                         </button>
                       </div>
                     </td>
@@ -885,41 +897,18 @@ function App() {
 
           <section className="panel" id="tail">
             <div className="section-title">
-              <h2>日志快速处理 / 关键字匹配</h2>
-              <span>针对已打开的日志做关键词匹配与截取</span>
+              <h2>文件日志</h2>
             </div>
             <div className="toolbar">
               <div className="chip active">实时</div>
-              <div className="chip">最近 200 行</div>
-              <input
-                className="search"
-                placeholder="匹配关键字 / TraceId / 错误码"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-              />
-              <label className="switch mini">
-                <input type="checkbox" checked={showMatchesOnly} onChange={(e) => setShowMatchesOnly(e.target.checked)} />
-                <span className="slider" />
-              </label>
-              <span className="muted">只看匹配</span>
-              <span className="badge ghost">当前：{activeNode?.name ?? "未选择"}</span>
-              <button className="btn secondary" type="button" onClick={() => setKeyword("")}>
+              <button className="btn secondary" type="button" onClick={handleClearTail}>
                 清除
               </button>
             </div>
             <div className="tail-box">
-              {tailDisplayLines.map((line, idx) => (
+              {tailLinesState.map((line, idx) => (
                 <div className="tail-line" key={`${line}-${idx}`}>
-                  {highlightTailLine(line)}
-                </div>
-              ))}
-            </div>
-            <div className="timeline">
-              {timelineEventsState.map((ev) => (
-                <div className="timeline-item" key={`${ev.label}-${ev.time}`}>
-                  <span className={`pill ${ev.status}`}>{ev.label}</span>
-                  <div className="timeline-text">{fmt(ev.time)}</div>
-                  <div className="timeline-text right">{ev.host ?? "srv-01"}</div>
+                  {line}
                 </div>
               ))}
             </div>
@@ -942,11 +931,11 @@ function App() {
                 </tr>
               </thead>
               <tbody>
-                {uploadRecordsState.map((item) => (
-                  <tr key={`${item.file}-${item.time}`}>
-                    <td>
-                      <div className="row-title">{item.file}</div>
-                      <div className="row-sub">{item.size}</div>
+              {uploadRecordsPage.map((item) => (
+                <tr key={`${item.file}-${item.time}`}>
+                  <td>
+                    <div className="row-title">{item.file}</div>
+                    <div className="row-sub">{item.size}</div>
                     </td>
                     <td>
                       <span
@@ -965,6 +954,27 @@ function App() {
                 ))}
               </tbody>
             </table>
+            <div className="pagination">
+              <button
+                className="btn secondary"
+                type="button"
+                disabled={uploadPage <= 1}
+                onClick={() => setUploadPage((prev) => Math.max(1, prev - 1))}
+              >
+                上一页
+              </button>
+              <span className="badge ghost">
+                第 {uploadPage} / {uploadPageCount} 页
+              </span>
+              <button
+                className="btn secondary"
+                type="button"
+                disabled={uploadPage >= uploadPageCount}
+                onClick={() => setUploadPage((prev) => Math.min(uploadPageCount, prev + 1))}
+              >
+                下一页
+              </button>
+            </div>
           </section>
 
           <section className="panel" id="monitor">
