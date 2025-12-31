@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"file-watch/internal/logger"
@@ -18,10 +19,12 @@ import (
 type WorkerPool struct {
 	uploadQueue chan string	     					    //任务队列，每个元素是待处理文件路径 
 	workers     int
+	inFlight    int64
 	wg          sync.WaitGroup
 	ctx         context.Context
 	cancel      context.CancelFunc
 	uploadFunc  func(context.Context, string) error		// 外部注入的实际上传逻辑，Worker 从队列取路径后调用
+	onStats     func(models.UploadStats)
 
 	mu     sync.Mutex									//保护关闭状态，避免重复关闭或在关闭后入队
 	closed bool
@@ -35,7 +38,7 @@ var (
 )
 
 // NewWorkerPool 构造函数，创建并启动 worker goroutine
-func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, string) error) (*WorkerPool, error) {
+func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, string) error, onStats func(models.UploadStats)) (*WorkerPool, error) {
 	if workers <= 0 {
 		workers = 3
 	}
@@ -53,6 +56,7 @@ func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, stri
 		ctx:         ctx,
 		cancel:      cancel,
 		uploadFunc:  uploadFunc,
+		onStats:     onStats,
 	}
 
 	// 启动工作协程
@@ -77,6 +81,7 @@ func (p *WorkerPool) worker(id int) {
 				return
 			}
 			logger.Info("工作协程 %d 开始处理文件: %s", id, filePath)
+			atomic.AddInt64(&p.inFlight, 1)
 			startTime := time.Now()
 			// 执行文件上传
 			if err := p.uploadFunc(p.ctx, filePath); err != nil {
@@ -84,6 +89,10 @@ func (p *WorkerPool) worker(id int) {
 			} else {
 				elapsed := time.Since(startTime)
 				logger.Info("工作协程 %d 处理文件完成: %s, 耗时: %v", id, filePath, elapsed)
+			}
+			atomic.AddInt64(&p.inFlight, -1)
+			if p.onStats != nil {
+				p.onStats(p.GetStats())
 			}
 		case <-p.ctx.Done():
 			logger.Info("上传工作协程 %d 已停止", id)
@@ -177,5 +186,6 @@ func (p *WorkerPool) GetStats() models.UploadStats {
 	return models.UploadStats{
 		QueueLength: len(p.uploadQueue),
 		Workers:     p.workers,
+		InFlight:    int(atomic.LoadInt64(&p.inFlight)),
 	}
 }

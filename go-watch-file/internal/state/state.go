@@ -310,14 +310,15 @@ func (s *RuntimeState) SetQueueStats(stats models.UploadStats) {
 	now := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.queueLen = stats.QueueLength
+	total := stats.QueueLength + stats.InFlight
+	s.queueLen = total
 	s.workers = stats.Workers
 	label := now.Format("15:04")
 	s.queue = append(s.queue, ChartPoint{
 		Label:    label,
 		Uploads:  s.successes,
 		Failures: s.failures,
-		Queue:    stats.QueueLength,
+		Queue:    total,
 	})
 	if len(s.queue) > maxQueuePoints {
 		s.queue = s.queue[len(s.queue)-maxQueuePoints:]

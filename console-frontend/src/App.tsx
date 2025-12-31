@@ -23,6 +23,7 @@ const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 const UPLOAD_PAGE_SIZE = 5;
 const FILE_PAGE_SIZE = 10;
 const LOG_POLL_MS = 2000;
+const DASHBOARD_POLL_MS = 3000;
 
 const fmt = (t: string) => `${new Date().toISOString().split("T")[0]} ${t}`;
 
@@ -108,6 +109,7 @@ function App() {
   const actionTimerRef = useRef<number | undefined>(undefined);
   const tailBoxRef = useRef<HTMLDivElement | null>(null);
   const logFetchingRef = useRef(false);
+  const dashboardFetchingRef = useRef(false);
 
   const rootNodes = useMemo(() => {
     const filtered = tree.filter((node) => !currentRoot || node.path === currentRoot);
@@ -120,6 +122,8 @@ function App() {
   }, [activePath, rootNodes]);
 
   const refreshDashboard = useCallback(async () => {
+    if (dashboardFetchingRef.current) return;
+    dashboardFetchingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -167,13 +171,59 @@ function App() {
     } catch (err) {
       setError((err as Error).message);
     } finally {
+      dashboardFetchingRef.current = false;
       setLoading(false);
+    }
+  }, []);
+
+  const refreshLiveData = useCallback(async () => {
+    if (dashboardFetchingRef.current) return;
+    dashboardFetchingRef.current = true;
+    try {
+      const res = await fetch(`${API_BASE}/api/dashboard`);
+      if (!res.ok) {
+        throw new Error(`加载数据失败，状态码 ${res.status}`);
+      }
+      const data = (await res.json()) as Partial<DashboardPayload>;
+      const heroData = data.heroCopy ?? heroCopy;
+      const metrics = data.metricCards ?? metricCards;
+      const notes = data.monitorNotes ?? monitorNotes;
+      const uploads = data.uploadRecords ?? [];
+      const summary = data.monitorSummary ?? monitorSummary;
+      const chartPointsData = data.chartPoints ?? [];
+
+      const mergedHero = {
+        ...heroData,
+        silence: lastSavedConfig.current?.silence ?? heroData.silence,
+        watchDirs: lastSavedConfig.current?.watchDir
+          ? lastSavedConfig.current.watchDir.split(",").map((d) => d.trim()).filter(Boolean)
+          : heroData.watchDirs,
+      };
+
+      setHeroState(mergedHero);
+      setMetricCardsState(metrics);
+      setMonitorNotesState(notes);
+      setUploadRecordsState(uploads);
+      setMonitorSummaryState(summary);
+      setChartPointsState(chartPointsData);
+      setError(null);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      dashboardFetchingRef.current = false;
     }
   }, []);
 
   useEffect(() => {
     void refreshDashboard();
   }, [refreshDashboard]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      void refreshLiveData();
+    }, DASHBOARD_POLL_MS);
+    return () => window.clearInterval(timer);
+  }, [refreshLiveData]);
 
   useEffect(() => {
     const hasActiveUnderRoot = activePath && activePath.startsWith(currentRoot);

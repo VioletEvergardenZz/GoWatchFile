@@ -30,13 +30,14 @@ type Config struct {
 
 // FileEvent 文件事件结构体
 type FileEvent struct {
-	FilePath string
-	Op       string
-	Time     time.Time
+	FilePath string    // 文件路径
+	Op       string    // 事件类型
+	Time     time.Time // 事件时间
 }
 
 // UploadStats 上传统计信息
 type UploadStats struct {
-	QueueLength int
-	Workers     int
+	QueueLength int // 上传队列长度
+	Workers     int // 上传 worker 数量
+	InFlight    int // 正在上传的数量
 }

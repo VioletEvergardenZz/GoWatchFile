@@ -52,7 +52,7 @@ func NewFileService(config *models.Config) (*FileService, error) {
 		manualOnce:    make(map[string]bool),
 	}
 
-	uploadPool, err := newUploadPool(config, fileService.processFile)
+	uploadPool, err := newUploadPool(config, fileService.processFile, fileService.handlePoolStats)
 	if err != nil {
 		return nil, err
 	}
@@ -83,8 +83,14 @@ func newDingTalkRobot(config *models.Config) *dingtalk.Robot {
 	return dingtalk.NewRobot(config.DingTalkWebhook, config.DingTalkSecret)
 }
 
-func newUploadPool(config *models.Config, handler func(context.Context, string) error) (*upload.WorkerPool, error) {
-	return upload.NewWorkerPool(config.UploadWorkers, config.UploadQueueSize, handler)
+func newUploadPool(config *models.Config, handler func(context.Context, string) error, onStats func(models.UploadStats)) (*upload.WorkerPool, error) {
+	return upload.NewWorkerPool(config.UploadWorkers, config.UploadQueueSize, handler, onStats)
+}
+
+func (fs *FileService) handlePoolStats(stats models.UploadStats) {
+	if fs.state != nil {
+		fs.state.SetQueueStats(stats)
+	}
 }
 
 func newFileWatcher(config *models.Config, uploadPool watcher.UploadPool) (*watcher.FileWatcher, error) {
@@ -153,7 +159,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 		return nil, err
 	}
 
-	newPool, err := newUploadPool(&updated, fs.processFile)
+	newPool, err := newUploadPool(&updated, fs.processFile, fs.handlePoolStats)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +294,6 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	if err != nil {
 		if fs.state != nil {
 			fs.state.MarkFailed(filePath, err)
-			fs.state.SetQueueStats(fs.uploadPool.GetStats())
 		}
 		return fmt.Errorf("上传文件到S3失败: %w", err)
 	}
@@ -298,7 +303,6 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 
 	if fs.state != nil {
 		fs.state.MarkUploaded(filePath, downloadURL, time.Since(start))
-		fs.state.SetQueueStats(fs.uploadPool.GetStats())
 	}
 
 	fullPath := filepath.Clean(filePath)
@@ -307,6 +311,7 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	logger.Info("文件处理完成: %s", filePath)
 	return nil
 }
+
 
 func (fs *FileService) consumeManualOnce(path string) bool {
 	norm := normalizeManualPath(path)

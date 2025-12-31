@@ -296,8 +296,8 @@ func readFileLogLines(path string) ([]string, error) {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	if size > maxFileLogBytes && len(lines) > 0 {
-		lines = lines[1:]										//如果是截断读取的，去掉第一行，防止出现不完整的行
+	if size > maxFileLogBytes && len(lines) > 1 {		        //文件超过 512KB 且大于 1 行
+		lines = lines[1:]										
 	}
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
 		lines = lines[:len(lines)-1]					    	//去掉最后一个空行

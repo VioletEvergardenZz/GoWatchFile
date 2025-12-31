@@ -20,20 +20,21 @@
 - **目录监控**：基于 fsnotify 递归监听，自动发现子目录，按后缀过滤。  
 - **写入完成判定**：静默窗口确认写入结束，避免半截文件。  
 - **异步上传**：工作池并发 + 队列背压，上传至 S3 兼容存储（AWS/OSS/MinIO/COS）。  
-- **通知告警**：企业微信/钉钉机器人推送成功/异常。  
+- **通知告警**：钉钉机器人推送成功/异常（企业微信字段保留）。  
 - **路径与安全**：相对路径校验，统一对象 Key/下载 URL 生成，防止目录穿越。  
 - **配置管理**：`config.yaml` + `.env` + 环境变量覆盖，严格校验与默认值。  
-- **观测（当前）**：上传队列与 worker 统计；控制台概览卡片基于“当日”上传/失败/通知次数。Prometheus 指标规划中。  
+- **控制台 API**：Dashboard 数据、自动上传开关、手动上传、日志 Tail、运行时配置更新。  
+- **观测（当前）**：上传队列与 worker 统计；控制台概览卡片基于“当日”上传/失败/通知次数与队列趋势。Prometheus 指标规划中。  
 
 ## 快速开始（go-watch-file Agent）
-1) 环境：Go 1.21+；可访问 S3 兼容存储；可选 企微/钉钉机器人。  
+1) 环境：Go 1.23+；可访问 S3 兼容存储；可选钉钉机器人。  
 2) 配置  
    ```bash
    cd go-watch-file
    cp .env.example .env
    # 填写 watch_dir、file_ext、S3、通知等
    ```
-   关键字段：`watch_dir`、`file_ext`（单后缀）、`silence`/`SILENCE_WINDOW`（写入完成静默窗口，默认 10s，可填 `5s` 等），S3 凭证与 endpoint、通知 Webhook、`UPLOAD_WORKERS`、`UPLOAD_QUEUE_SIZE`。  
+   关键字段：`watch_dir`、`file_ext`（可留空表示不过滤）、`silence`/`SILENCE_WINDOW`（写入完成静默窗口，默认 10s，可填 `5s` 等），S3 凭证与 endpoint、钉钉 Webhook、`UPLOAD_WORKERS`、`UPLOAD_QUEUE_SIZE`。  
 3) 运行  
    ```bash
    go build -o bin/file-watch cmd/main.go
@@ -41,14 +42,13 @@
    # Ctrl+C 优雅退出，等待队列 drain
    ```
 4) 测试：`cd go-watch-file && go test ./...`。  
-5) 容器化：`./docker-build.sh` 或自定义 Dockerfile/Helm，挂载 `config.yaml` 与 `.env`。  
 
 配置优先级：环境变量 > `.env` > `config.yaml` 占位符 > 内置默认值。  
 
 ## 前后端联调（Console）
 1) 启动 `go-watch-file`（默认 API 监听 `:8080`，可用 `API_BIND` 覆盖）。  
 2) 前端：`cd console-frontend && npm install && npm run dev`，Vite 将 `/api` 代理到 `http://localhost:8080`；若后端地址不同可设置 `VITE_API_BASE`。  
-3) 访问 `http://localhost:5173`，目录树/文件列表/上传记录/图表等数据来自后端 API，切换自动上传或手动上传会实时调用接口并刷新视图。  
+3) 访问 `http://localhost:5173`，目录树/文件列表/上传记录/日志 Tail/队列图表等数据来自后端 API，支持自动上传开关、手动上传与运行时配置更新。  
 
 ## 仓库结构
 - `go-watch-file/`：Go Agent 源码、配置模板与脚本。  
