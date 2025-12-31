@@ -513,7 +513,7 @@
 
 .workspace {
   display: grid;
-  grid-template-columns: minmax(360px, 0.9fr) 1.1fr;
+  grid-template-rows: auto auto;
   gap: 12px;
   align-items: stretch;
 }
@@ -940,6 +940,13 @@
 .row-sub {
   color: var(--muted);
   font-size: 12px;
+}
+
+.upload-target {
+  max-width: 260px;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
 }
 
 .table-empty {

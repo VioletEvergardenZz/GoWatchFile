@@ -95,6 +95,7 @@ function App() {
   const [chartPointsState, setChartPointsState] = useState(chartPoints);
   const [tailLinesState, setTailLinesState] = useState<string[]>([]);
   const [activeLogPath, setActiveLogPath] = useState<string | null>(null);
+  const [followTail, setFollowTail] = useState(true);
   const [uploadPage, setUploadPage] = useState(1);
   const [filePage, setFilePage] = useState(1);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -240,6 +241,14 @@ function App() {
     }
   }, []);
 
+  const handleTailScroll = useCallback(() => {
+    const el = tailBoxRef.current;
+    if (!el) return;
+    const threshold = 24;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+    setFollowTail((prev) => (prev === atBottom ? prev : atBottom));
+  }, []);
+
   useEffect(() => {
     if (!activeLogPath) return;
     void fetchLogLines(activeLogPath);
@@ -250,12 +259,17 @@ function App() {
   }, [activeLogPath, fetchLogLines]);
 
   useEffect(() => {
-    if (!activeLogPath || !tailBoxRef.current) return;
+    if (!activeLogPath) return;
+    setFollowTail(true);
+  }, [activeLogPath]);
+
+  useEffect(() => {
+    if (!activeLogPath || !tailBoxRef.current || !followTail) return;
     const el = tailBoxRef.current;
     window.requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight;
     });
-  }, [tailLinesState, activeLogPath]);
+  }, [tailLinesState, activeLogPath, followTail]);
 
   const handleAutoToggle = async (path: string, value: boolean) => {
     const node = findNode(tree, path);
@@ -326,11 +340,8 @@ function App() {
 
   const handleViewLog = (file: FileItem) => {
     if (!file.path) return;
-    if (!file.path.toLowerCase().endsWith(".log")) {
-      setError("仅支持 .log 文件查看");
-      return;
-    }
     setError(null);
+    setFollowTail(true);
     setActiveLogPath(file.path);
   };
 
@@ -596,11 +607,6 @@ function App() {
     });
 
   const manualUploadTime = manualUploadMap[activePath];
-  const updatedSegment = manualUploadTime
-    ? `手动上传 ${fmt(manualUploadTime)}`
-    : activeNode?.updated
-    ? `更新 ${fmt(activeNode.updated)}`
-    : "更新时间未知";
   const updatedTime = manualUploadTime
     ? fmt(manualUploadTime)
     : activeNode?.updated
@@ -881,22 +887,18 @@ function App() {
                     </button>
                   </div>
                 </div>
-                <div className="preview-meta" id="previewMeta">
-                  {activeNode ? `${updatedSegment} · 路径信息收敛在此，适合做基础确认` : "目录树展示全部文件，可切换自动上传"}
-                </div>
-                <div className="preview-hint">用于展示当前选中文件的基础信息、状态与上传策略，避免占用列表区域。</div>
                 <div className="info-grid">
                   <div className="info-item">
                     <span className="muted">大小</span>
                     <strong>{activeNode?.size ?? "--"}</strong>
                   </div>
                   <div className="info-item">
-                    <span className="muted">模式</span>
-                    <strong>{activeNode ? (activeNode.autoUpload ? "自动上传" : "手动上传") : "--"}</strong>
-                  </div>
-                  <div className="info-item">
                     <span className="muted">更新时间</span>
                     <strong>{updatedTime}</strong>
+                  </div>
+                  <div className="info-item">
+                    <span className="muted">模式</span>
+                    <strong>{activeNode ? (activeNode.autoUpload ? "自动上传" : "手动上传") : "--"}</strong>
                   </div>
                 </div>
               </div>
@@ -1012,7 +1014,7 @@ function App() {
                 清除
               </button>
             </div>
-            <div className="tail-box" ref={tailBoxRef}>
+            <div className="tail-box" ref={tailBoxRef} onScroll={handleTailScroll}>
               {tailLinesState.map((line, idx) => (
                 <div className="tail-line" key={`${line}-${idx}`}>
                   {line}
@@ -1026,7 +1028,7 @@ function App() {
               <h2>上传记录 / 最近动作</h2>
               <span>成功 / 失败 / 排队</span>
             </div>
-            <table className="table">
+            <table className="table upload-table">
               <thead>
                 <tr>
                   <th>文件</th>
@@ -1052,7 +1054,7 @@ function App() {
                       </span>
                     </td>
                     <td>{item.latency}</td>
-                    <td>{item.target || "--"}</td>
+                    <td className="upload-target" title={item.target ?? ""}>{item.target || "--"}</td>
                     <td>{fmt(item.time)}</td>
                     <td>
                       <div className="row-sub">{item.note ?? "--"}</div>
