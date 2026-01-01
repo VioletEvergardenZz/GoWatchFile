@@ -1,72 +1,64 @@
-﻿# 通用文件监控与处理平台（File Watch & Processing）
+# 通用文件监控与处理平台（Go Watch File / GWF）
 
-> 面向 SRE/运维的多应用、多目录“文件入云 + 路由 + 自动处理”平台。当前核心为 Go Agent（`go-watch-file`），负责监听/过滤/上传与通知；控制面、路由编排、可视化与分析按路线图演进。旧版 OOM 材料归档于 `legacy/oom/`。
+> 面向 SRE/运维的本地文件监控与入云平台。当前版本聚焦 Go Agent + 本地 API + 控制台；路由/编排/多 Agent 等能力在路线图中。
 
-## 目标与场景
-- 多主机/多应用：日志、转储、归档/媒体文件自动入云与集中管理  
-- 自动处理：上传后可扩展 Webhook/队列等后续流程（当前不使用 Jenkins）  
-- 观测与管理：事件时间线、成功率/滞留、告警、日志检索（规划中）  
+## 当前能力
+- 递归监控目录，自动发现新增子目录（fsnotify）。
+- 单一后缀过滤，可为空表示全量目录。
+- 写入完成判定（silence window，默认 10s，支持 `10s` / `10秒` / `10`）。
+- 内存队列 + worker pool 并发上传到 S3 兼容存储。
+- 钉钉机器人通知（可选）。
+- 控制台 API：仪表盘、目录树、文件列表、自动上传开关、手动上传、文件 Tail、运行时配置更新。
+- 路径安全：相对路径校验、防止目录穿越、对象 Key 归一化。
+- 控制台前端：目录树、上传历史、队列趋势、Tail 查看、运行时配置。
 
-## 模块与职责（蓝图）
-- **Agent 采集**：inotify/轮询，过滤后缀/路径，检测写入完成并推送事件与内容。  
-- **控制与配置**：集中配置/下发，多 Agent 注册与分组，目标存储/策略管理。  
-- **文件路由与处理**：策略引擎分流到不同桶/队列/动作；支持解压、预处理、脚本/Webhook。  
-- **上传传输**：并发控制、重试/断点、进度与错误监控，失败可重传。  
-- **存储与索引**：对象存储承载原始文件；元数据/事件/任务落库并可检索报表。  
-- **可视化界面**：仪表盘、事件时间线、失败/滞留列表、日志查看（tail/全文检索）。  
-- **报警与通知**：失败/滞留/SLA 告警，邮件/钉钉/Webhook，支持重试与抑制。  
+## 快速开始
 
-## 当前交付（Agent）
-- **目录监控**：基于 fsnotify 递归监听，自动发现子目录，按后缀过滤。  
-- **写入完成判定**：静默窗口确认写入结束，避免半截文件。  
-- **异步上传**：工作池并发 + 队列背压，上传至 S3 兼容存储（AWS/OSS/MinIO/COS）。  
-- **通知告警**：钉钉机器人推送成功/异常（企业微信字段保留）。  
-- **路径与安全**：相对路径校验，统一对象 Key/下载 URL 生成，防止目录穿越。  
-- **配置管理**：`config.yaml` + `.env` + 环境变量覆盖，严格校验与默认值。  
-- **控制台 API**：Dashboard 数据、自动上传开关、手动上传、日志 Tail、运行时配置更新。  
-- **观测（当前）**：上传队列与 worker 统计；控制台概览卡片基于“当日”上传/失败/通知次数与队列趋势。Prometheus 指标规划中。  
-
-## 快速开始（go-watch-file Agent）
-1) 环境：Go 1.23+；可访问 S3 兼容存储；可选钉钉机器人。  
-2) 配置  
+### 后端（go-watch-file）
+1) 环境：Go 1.23+（`go.mod` 含 `toolchain go1.24.3`，支持自动下载）。
+2) 配置：
    ```bash
    cd go-watch-file
    cp .env.example .env
-   # 填写 watch_dir、file_ext、S3、通知等
+   # 填写 WATCH_DIR、FILE_EXT、S3、DINGTALK 等
    ```
-   关键字段：`watch_dir`、`file_ext`（可留空表示不过滤）、`silence`/`SILENCE_WINDOW`（写入完成静默窗口，默认 10s，可填 `5s` 等），S3 凭证与 endpoint、钉钉 Webhook、`UPLOAD_WORKERS`、`UPLOAD_QUEUE_SIZE`。  
-3) 运行  
+   `config.yaml` 使用环境变量占位符，实际值来自 `.env` 或系统环境变量。
+3) 启动：
    ```bash
    go build -o bin/file-watch cmd/main.go
    ./bin/file-watch -config config.yaml
-   # Ctrl+C 优雅退出，等待队列 drain
    ```
-4) 测试：`cd go-watch-file && go test ./...`。  
 
-配置优先级：环境变量 > `.env` > `config.yaml` 占位符 > 内置默认值。  
+### 前端（console-frontend）
+```bash
+cd console-frontend
+npm install
+npm run dev
+```
 
-## 前后端联调（Console）
-1) 启动 `go-watch-file`（默认 API 监听 `:8080`，可用 `API_BIND` 覆盖）。  
-2) 前端：`cd console-frontend && npm install && npm run dev`，Vite 将 `/api` 代理到 `http://localhost:8080`；若后端地址不同可设置 `VITE_API_BASE`。  
-3) 访问 `http://localhost:5173`，目录树/文件列表/上传记录/日志 Tail/队列图表等数据来自后端 API，支持自动上传开关、手动上传与运行时配置更新。  
+默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。若后端地址不同，可设置 `VITE_API_BASE`。
 
 ## 仓库结构
-- `go-watch-file/`：Go Agent 源码、配置模板与脚本。  
-- `console-frontend/`：File Watch 控制台前端（React + TS + Vite），基于 `docs/prototype` 原型。  
-- `docs/`：概述、流程图、开发指南、FAQ。  
-- `legacy/`：旧版 OOM 方案归档。  
-- `大纲.md`：平台蓝图与模块说明。  
+- `go-watch-file/`：Go Agent 源码、配置模板与脚本。
+- `console-frontend/`：控制台前端（React + TS + Vite）。
+- `docs/`：概述、流程图、开发指南、FAQ、数据结构说明。
+- `legacy/`：旧版 OOM 方案归档。
+- `todo.md` / `大纲.md`：路线图与蓝图说明。
 
-## 迭代路径（与大纲对齐）
-- **MVP**：单目录/单后缀 → 上传 → 通知（当前阶段无 Jenkins 触发）。  
-- **多源/多 Agent**：多后缀与忽略规则，Agent 分组与配置中心下发，上传可靠性增强。  
-- **可视化与告警**：仪表盘、事件时间线、失败/滞留列表、SLA 告警、日志查看/检索。  
-- **编排与路由**：规则/工作流驱动的多桶/多队列分流与处理链路。  
-- **分析与报表**：日/周趋势、容量/成本预测、异常检测与报表。  
+## 文档入口
+- 平台概述：`docs/overview.md`
+- 开发指南：`docs/dev-guide.md`
+- 前后端联动：`docs/frontend-backend-linkage.md`
+- 队列与 worker：`docs/queue-worker-flow.md`
+- DTO 结构：`docs/state-types-visual.md`
+- FAQ：`docs/faq.md`
 
-## 运维与排障
-- 日志：默认写入 `logs/`（或按 `LOG_FILE`），`LOG_LEVEL=debug` 便于排查。  
-- 常见问题：`docs/faq.md`。  
-- 建议：先稳固 Agent（可靠性、观测、配置），再逐步补齐控制面、编排与可视化。  
+## 现阶段限制（与代码一致）
+- 单一监控目录与单一后缀（`file_ext`），暂无多后缀/忽略规则。
+- 上传队列在内存中，重启会清空；没有自动重试与断点续传。
+- 仅支持钉钉通知，企业微信等仅保留配置字段。
+- 控制面为本地 API + 前端，不包含多 Agent 管理与路由/编排。
 
-维护：运维团队；旧版材料参考 `legacy/oom/`。
+如需了解规划内容，参考 `todo.md` 与 `大纲.md`。
+
+维护：运维团队；旧版材料参考 `legacy/`。

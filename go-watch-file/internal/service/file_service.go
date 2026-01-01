@@ -302,7 +302,7 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	logger.Info("文件信息 - 文件名: %s", fileName)
 
 	if fs.state != nil {
-		fs.state.MarkUploaded(filePath, downloadURL, time.Since(start))
+		fs.state.MarkUploaded(filePath, downloadURL, time.Since(start), manual)
 	}
 
 	fullPath := filepath.Clean(filePath)

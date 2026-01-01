@@ -67,7 +67,7 @@ export type ChartPoint = {
   queue: number;
 };
 
-export type FileFilter = "all" | "auto" | "manual" | "failed";
+export type FileFilter = "all" | "auto" | "manual";
 
 export type UploadRecord = {
   file: string;

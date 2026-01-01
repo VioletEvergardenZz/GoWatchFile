@@ -1,26 +1,36 @@
-﻿# 常见问题（FAQ）
+# 常见问题（FAQ）
 
 ## 1. 文件创建后没有触发上传
 - 确认 `watch_dir` 存在且 Agent 有权限。
-- 确认文件后缀与 `file_ext` 完全一致（区分大小写）。
-- 写入完成判定需要等待约 10 秒静默窗口。
+- 确认文件后缀与 `file_ext` 完全一致（大小写敏感）。
+- 写入完成判定需要等待静默窗口（默认约 10 秒）。
+- 控制台中该目录是否关闭了“自动上传”。
 
 ## 2. 支持多个后缀吗？
-- 当前仅支持单一后缀（如 `.log`）。多后缀与忽略规则属于后续版本规划。
+当前仅支持单一后缀（如 `.log`）。多后缀与忽略规则属于后续规划。
 
-## 3. 上传失败或 Endpoint 校验报错
-- `S3_ENDPOINT` 可写域名或带协议的地址（如 `https://s3.example.com`）。
-- MinIO 等场景请设置 `S3_FORCE_PATH_STYLE=true`。
+## 3. 上传队列提示满了或任务堆积
+- `UPLOAD_QUEUE_SIZE` 是容量上限，不是当前数量。
+- 队列满会返回 `upload queue full`，建议增大 `UPLOAD_QUEUE_SIZE` 或提高 `UPLOAD_WORKERS`。
+- 查看控制台“队列深度/monitor”判断 backlog。
 
-## 4. 通知不生效
-- 企业微信：检查 `ROBOT_KEY` 是否有效。
-- 钉钉：确认 `DINGTALK_WEBHOOK`/`DINGTALK_SECRET` 配置正确且允许当前 IP。
+## 4. 上传失败或 Endpoint 报错
+- `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com`）。
+- MinIO 场景请设置 `S3_FORCE_PATH_STYLE=true`，必要时 `S3_DISABLE_SSL=true`。
+- 检查 `S3_AK/S3_SK/S3_BUCKET` 是否有效。
 
-## 5. 日志过少/排查困难
-- 设置 `LOG_LEVEL=debug`，并确认 `LOG_TO_STD=true` 或 `LOG_FILE` 可写。
+## 5. 自动上传关闭后如何上传？
+可在控制台选择文件，点击“手动上传/触发上传”；系统会为该文件执行一次上传。
 
-## 6. 上传压力过大
-- 调整 `UPLOAD_WORKERS` 与 `UPLOAD_QUEUE_SIZE`，并观察队列堆积情况。
+## 6. 文件 Tail 报错或无内容
+- `/api/file-log` 仅支持文本文件（遇到二进制会报错）。
+- 只返回最后 512KB / 500 行。
+- `path` 必须位于 `watch_dir` 下，否则会被拒绝。
 
-## 7. Windows 环境路径问题
-- `watch_dir` 需填写系统真实目录；对象 Key 会自动归一化为 `/` 分隔。
+## 7. 目录很多时监控不完整
+- fsnotify 依赖系统文件句柄，目录数量过多可能触发 “too many open files”。
+- 日志中会提示监控降级，可考虑提高系统 `ulimit` 或缩小监控范围。
+
+## 8. Windows 路径问题
+- `watch_dir` 需填写系统真实目录。
+- 后端会将路径归一化为 `/` 分隔，前端展示时保持一致。

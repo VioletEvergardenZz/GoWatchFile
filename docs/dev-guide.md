@@ -1,26 +1,48 @@
-﻿# 开发指南
+# 开发指南
 
 ## 环境准备
-- Go 1.21+。
-- S3 兼容对象存储（本地可用 MinIO）。
-- 企业微信/钉钉机器人（可选）。
+- Go 1.23+（`go.mod` 含 `toolchain go1.24.3`）。
+- Node.js 18+（前端开发）。
+- S3 兼容对象存储（本地可用 MinIO/OSS/COS）。
+- 钉钉机器人（可选）。
 
-## 本地启动
+## 本地启动（后端）
 ```bash
 cd go-watch-file
 cp .env.example .env
 # 根据注释填写 WATCH_DIR、FILE_EXT、S3、通知等配置
 
-# 构建并运行
 go build -o bin/file-watch cmd/main.go
 ./bin/file-watch -config config.yaml
 ```
 
-## 配置要点
+### 配置要点
 - `watch_dir` 必须存在且为目录。
-- `file_ext` 仅支持单一后缀（如 `.log` / `.txt` / `.zip`）。
-- 写入完成判定依赖静默窗口，`silence`/`SILENCE_WINDOW` 默认 `10s`，可填 `5s` 等；若填示例/空值会回退默认。
-- 配置优先级：环境变量 > `.env` > `config.yaml` 占位符 > 默认值。
+- `file_ext` 仅支持单一后缀（如 `.log` / `.txt` / `.zip`），可留空表示不过滤。
+- `silence`/`SILENCE_WINDOW` 默认 `10s`，支持 `10s` / `10秒` / `10`。
+- `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
+- `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
+
+### 本地 MinIO 示例（示意）
+- `S3_ENDPOINT=127.0.0.1:9000`
+- `S3_FORCE_PATH_STYLE=true`
+- `S3_DISABLE_SSL=true`
+
+## 启动前端
+```bash
+cd console-frontend
+npm install
+npm run dev
+```
+
+前端默认通过 Vite 代理 `/api` 到 `http://localhost:8080`；若后端地址不同可设置 `VITE_API_BASE`。
+
+## 运行时配置更新
+控制台保存配置会调用 `/api/config`，仅更新：
+- `watchDir` / `fileExt` / `silence`
+- `uploadWorkers` / `uploadQueueSize`
+
+S3 与通知配置需要修改 `.env`/`config.yaml` 并重启后端。
 
 ## 运行测试
 ```bash
@@ -28,21 +50,7 @@ cd go-watch-file
 go test ./...
 ```
 
-## 单机端到端验证（上传 + 通知）
-1) 准备对象存储
-- 本地 MinIO 示例：创建 Bucket，并记录 `S3_ENDPOINT`/`S3_BUCKET`。
-- 若使用 MinIO：`S3_FORCE_PATH_STYLE=true`，必要时 `S3_DISABLE_SSL=true`。
-
-2) 启动 Agent
-- `WATCH_DIR` 指向本地测试目录（确保可写）。
-
-3) 写入测试文件
-```bash
-# 在 watch_dir 下创建匹配后缀的文件
-cp sample.log <watch_dir>/app-a/sample.log
-```
-
-4) 验证结果
-- 日志出现“文件写入完成 / 上传成功”。
-- 对象存储中出现对应对象 Key。
-- 若配置机器人，收到通知消息。
+## 常见开发验证
+- 新建文件后等待静默窗口结束，再观察上传与通知。
+- 通过 `/api/dashboard` 验证目录树、上传记录与队列趋势。
+- `LOG_LEVEL=debug` 便于追踪 watcher 与 queue 行为。

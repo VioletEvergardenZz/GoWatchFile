@@ -25,7 +25,23 @@ const FILE_PAGE_SIZE = 10;
 const LOG_POLL_MS = 2000;
 const DASHBOARD_POLL_MS = 3000;
 
-const fmt = (t: string) => `${new Date().toISOString().split("T")[0]} ${t}`;
+const hasDatePrefix = (value: string) => /\d{4}-\d{2}-\d{2}/.test(value);
+const localDatePrefix = () => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+};
+const fmt = (t: string) => {
+  if (!t || t === "--") return t || "--";
+  if (hasDatePrefix(t)) return t;
+  return `${localDatePrefix()} ${t}`;
+};
+
+const resolveRecordTimestamp = (value: string) => {
+  if (!value || value === "--") return 0;
+  const normalized = hasDatePrefix(value) ? value.replace(" ", "T") : `${localDatePrefix()}T${value}`;
+  const parsed = Date.parse(normalized);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
 
 const findFirstFile = (nodes: FileNode[]): FileNode | undefined => {
   for (const node of nodes) {
@@ -279,7 +295,18 @@ function App() {
       });
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || `加载文件日志失败，状态码 ${res.status}`);
+        let message = text;
+        try {
+          const payload = JSON.parse(text) as { error?: string };
+          if (payload?.error) message = payload.error;
+        } catch {}
+        if (message.includes("仅支持文本文件")) {
+          setTailLinesState(["当前文件为二进制，无法展示日志。"]);
+          setActiveLogPath(null);
+          setError(null);
+          return;
+        }
+        throw new Error(message || `加载文件日志失败，状态码 ${res.status}`);
       }
       const data = (await res.json()) as { lines?: string[] };
       setTailLinesState(data.lines ?? []);
@@ -429,20 +456,29 @@ function App() {
             return f.autoUpload;
           case "manual":
             return !f.autoUpload;
-          case "failed":
-            return f.status === "failed";
           default:
             return true;
         }
       });
   }, [files, currentRoot, fileFilter, searchTerm]);
 
-  const uploadPageCount = Math.max(1, Math.ceil(uploadRecordsState.length / UPLOAD_PAGE_SIZE));
+  const sortedUploadRecords = useMemo(() => {
+    return uploadRecordsState
+      .map((record, index) => ({ record, index }))
+      .sort((a, b) => {
+        const timeDelta = resolveRecordTimestamp(b.record.time) - resolveRecordTimestamp(a.record.time);
+        if (timeDelta !== 0) return timeDelta;
+        return a.index - b.index;
+      })
+      .map(({ record }) => record);
+  }, [uploadRecordsState]);
+
+  const uploadPageCount = Math.max(1, Math.ceil(sortedUploadRecords.length / UPLOAD_PAGE_SIZE));
   const uploadPageSafe = Math.min(uploadPage, uploadPageCount);
   const uploadRecordsPage = useMemo(() => {
     const start = (uploadPageSafe - 1) * UPLOAD_PAGE_SIZE;
-    return uploadRecordsState.slice(start, start + UPLOAD_PAGE_SIZE);
-  }, [uploadPageSafe, uploadRecordsState]);
+    return sortedUploadRecords.slice(start, start + UPLOAD_PAGE_SIZE);
+  }, [uploadPageSafe, sortedUploadRecords]);
 
   useEffect(() => {
     if (uploadPage !== uploadPageSafe) {
@@ -743,13 +779,11 @@ function App() {
                 <h1>文件监控 Agent 控制台</h1>
                 <div className="title-meta">
                   <span className="badge ghost">主机 {heroState.agent}</span>
-                  <span className="badge ghost">监听目录 {watchDirsLabel}</span>
-                  <span className="badge ghost">{heroState.queue}</span>
                 </div>
               </div>
             </div>
             <div className="controls">
-              {loading ? <span className="badge">刷新中</span> : <span className="badge ghost">{timeframe === "realtime" ? "最新数据" : "最近 24h"}</span>}
+              {loading ? <span className="badge">刷新中</span> : null}
               {error ? (
                 <>
                   <span className="pill danger">接口异常</span>
@@ -758,9 +792,6 @@ function App() {
               ) : null}
               <div className={`chip ${timeframe === "realtime" ? "active" : ""}`} onClick={() => setTimeframe("realtime")}>
                 实时
-              </div>
-              <div className={`chip ${timeframe === "24h" ? "active" : ""}`} onClick={() => setTimeframe("24h")}>
-                最近 24h
               </div>
             </div>
           </header>
@@ -814,10 +845,6 @@ function App() {
                   <div className="stat-compact">
                     <small>并发数量</small>
                     <strong>{heroState.concurrency}</strong>
-                  </div>
-                  <div className="stat-compact">
-                    <small>队列数量</small>
-                    <strong>{heroState.queue}</strong>
                   </div>
                 </div>
               </div>
@@ -970,12 +997,9 @@ function App() {
               <div className={`chip ${fileFilter === "manual" ? "active" : ""}`} onClick={() => setFileFilter("manual")}>
                 手动上传
               </div>
-              <div className={`chip ${fileFilter === "failed" ? "active" : ""}`} onClick={() => setFileFilter("failed")}>
-                失败
-              </div>
               {actionMessage ? <span className="badge ghost">{actionMessage}</span> : null}
             </div>
-            <table className="table">
+            <table className="table files-table">
               <thead>
                 <tr>
                   <th>文件</th>
@@ -992,7 +1016,9 @@ function App() {
                     <tr key={f.path}>
                       <td>
                         <div className="row-title">{f.name}</div>
-                        <div className="row-sub">{f.path}</div>
+                        <div className="row-sub" title={f.path}>
+                          {f.path}
+                        </div>
                       </td>
                       <td>{f.size}</td>
                       <td>
@@ -1090,8 +1116,8 @@ function App() {
                 </tr>
               </thead>
               <tbody key={uploadPageSafe}>
-                {uploadRecordsPage.map((item) => (
-                  <tr key={`${item.file}-${item.time}`}>
+                {uploadRecordsPage.map((item, index) => (
+                  <tr key={`${item.file}-${item.time}-${item.result}-${index}`}>
                     <td>
                       <div className="row-title">{item.file}</div>
                       <div className="row-sub">{item.size}</div>
@@ -1106,7 +1132,7 @@ function App() {
                     <td>{item.latency}</td>
                     <td className="upload-target" title={item.target ?? ""}>{item.target || "--"}</td>
                     <td>{fmt(item.time)}</td>
-                    <td>
+                    <td className="upload-note">
                       <div className="row-sub">{item.note ?? "--"}</div>
                     </td>
                   </tr>

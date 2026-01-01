@@ -168,7 +168,7 @@ func (s *RuntimeState) BootstrapExisting() error {
 			Size:    formatSize(stat.Size()),
 			Result:  "success",
 			Latency: "--",
-			Time:    stat.ModTime(),
+			Time:    time.Time{},
 			Note:    "历史文件",
 		})
 		s.mu.Unlock()
@@ -237,7 +237,7 @@ func (s *RuntimeState) MarkSkipped(path string) {
 }
 
 // MarkUploaded 记录上传成功
-func (s *RuntimeState) MarkUploaded(path, downloadURL string, latency time.Duration) {
+func (s *RuntimeState) MarkUploaded(path, downloadURL string, latency time.Duration, manual bool) {
 	norm := normalizePath(path)
 	info := s.statFile(path)
 	now := time.Now()
@@ -248,7 +248,11 @@ func (s *RuntimeState) MarkUploaded(path, downloadURL string, latency time.Durat
 	st.Status = StatusUploaded
 	st.Target = downloadURL
 	st.Latency = latency
-	st.Note = "自动上传"
+	if manual {
+		st.Note = "手动上传"
+	} else {
+		st.Note = "自动上传"
+	}
 	st.AutoUpload = s.autoUploadLocked(path)
 	s.fileState[norm] = st
 
@@ -351,17 +355,20 @@ func (s *RuntimeState) TimelineEvents() []TimelineEvent {
 // UploadRecords 返回按时间倒序的上传历史
 func (s *RuntimeState) UploadRecords() []UploadRecord {
 	s.mu.RLock()
-	defer s.mu.RUnlock()
-	out := make([]UploadRecord, len(s.uploads))
-	for i := range s.uploads {
-		item := s.uploads[len(s.uploads)-1-i]
+	records := append([]uploadHistory(nil), s.uploads...)
+	s.mu.RUnlock()
+	sort.SliceStable(records, func(i, j int) bool {
+		return records[i].Time.After(records[j].Time)
+	})
+	out := make([]UploadRecord, len(records))
+	for i, item := range records {
 		out[i] = UploadRecord{
 			File:    item.File,
 			Target:  item.Target,
 			Size:    item.Size,
 			Result:  item.Result,
 			Latency: item.Latency,
-			Time:    item.Time.Format("15:04:05"),
+			Time:    formatDateTime(item.Time),
 			Note:    item.Note,
 		}
 	}
@@ -378,7 +385,7 @@ func (s *RuntimeState) FileItems() []FileItem {
 			Path:             normalizePath(f.path),
 			Size:             formatSize(f.size),
 			Status:           fileStatusLabel(f.state.Status),
-			Time:             f.modTime.Format("15:04:05"),
+			Time:             formatDateTime(f.modTime),
 			AutoUpload:       f.state.AutoUpload,
 		})
 	}
@@ -436,7 +443,7 @@ func (s *RuntimeState) DirectoryTree() []FileNode {
 			Type:       "file",
 			AutoUpload: f.state.AutoUpload,
 			Size:       formatSize(f.size),
-			Updated:    f.modTime.Format("15:04:05"),
+			Updated:    formatDateTime(f.modTime),
 			Content:    f.state.Note,
 		})
 	}
@@ -489,18 +496,32 @@ func sortChildren(node *FileNode) {
 
 // MonitorSummary 构建摘要卡片
 func (s *RuntimeState) MonitorSummary() []MonitorSummary {
+	now := time.Now()
+	windowStart := now.Add(-1 * time.Minute)
 	s.mu.RLock()
-	defer s.mu.RUnlock()
+	recentProcessed := 0
+	for _, up := range s.uploads {
+		if up.Time.IsZero() || up.Time.Before(windowStart) {
+			continue
+		}
+		if up.Result == "success" || up.Result == "failed" {
+			recentProcessed++
+		}
+	}
 	total := s.successes + s.failures
 	failRate := 0.0
 	if total > 0 {
 		failRate = (float64(s.failures) / float64(total)) * 100
 	}
+	queueLen := s.queueLen
+	workers := s.workers
+	failures := s.failures
+	s.mu.RUnlock()
 	return []MonitorSummary{
-		{Label: "当前吞吐", Value: fmt.Sprintf("%d/min", s.successes+int(s.queueLen)), Desc: "队列中 + 已上传"},
-		{Label: "成功率", Value: fmt.Sprintf("%.1f%%", 100-failRate), Desc: fmt.Sprintf("失败 %d", s.failures)},
-		{Label: "队列 backlog", Value: fmt.Sprintf("%d", s.queueLen), Desc: fmt.Sprintf("workers=%d", s.workers)},
-		{Label: "失败累计", Value: fmt.Sprintf("%d", s.failures), Desc: "含告警和重试"},
+		{Label: "当前吞吐", Value: fmt.Sprintf("%d/min", recentProcessed), Desc: "近1分钟处理数"},
+		{Label: "成功率", Value: fmt.Sprintf("%.1f%%", 100-failRate), Desc: fmt.Sprintf("失败 %d", failures)},
+		{Label: "队列 backlog", Value: fmt.Sprintf("%d", queueLen), Desc: fmt.Sprintf("workers=%d", workers)},
+		{Label: "失败累计", Value: fmt.Sprintf("%d", failures), Desc: "含告警和重试"},
 	}
 }
 
@@ -510,6 +531,7 @@ func (s *RuntimeState) MetricCards() []MetricCard {
 	defer s.mu.RUnlock()
 	now := time.Now()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	todayRange := fmt.Sprintf("%s 00:00-现在", now.Format("01-02"))
 	successesToday := 0
 	failuresToday := 0
 	notifiesToday := 0
@@ -539,10 +561,10 @@ func (s *RuntimeState) MetricCards() []MetricCard {
 		failRate = (float64(failuresToday) / float64(totalToday)) * 100
 	}
 	return []MetricCard{
-		{Label: "今日上传", Value: fmt.Sprintf("%d", successesToday), Trend: "今日成功", Tone: "up"},
-		{Label: "通知次数", Value: fmt.Sprintf("%d", notifiesToday), Trend: "钉钉", Tone: "up"},
-		{Label: "失败累计", Value: fmt.Sprintf("%d", s.failures), Trend: "重试/隔离", Tone: "muted"},
-		{Label: "失败率", Value: fmt.Sprintf("%.1f%%", failRate), Trend: "今日统计", Tone: "warning"},
+		{Label: "今日上传", Value: fmt.Sprintf("%d", successesToday), Trend: todayRange, Tone: "up"},
+		{Label: "通知次数", Value: fmt.Sprintf("%d", notifiesToday), Trend: todayRange, Tone: "up"},
+		{Label: "今日失败", Value: fmt.Sprintf("%d", failuresToday), Trend: todayRange, Tone: "muted"},
+		{Label: "失败率", Value: fmt.Sprintf("%.1f%%", failRate), Trend: todayRange, Tone: "warning"},
 		{Label: "队列深度", Value: fmt.Sprintf("%d", s.queueLen), Trend: "背压监控", Tone: "warning"},
 	}
 }
@@ -884,6 +906,13 @@ func formatLatency(d time.Duration) string {
 		return "--"
 	}
 	return fmt.Sprintf("%d ms", d.Milliseconds())
+}
+
+func formatDateTime(t time.Time) string {
+	if t.IsZero() {
+		return "--"
+	}
+	return t.Format("2006-01-02 15:04:05")
 }
 
 //初始化队列趋势图的“默认数据”

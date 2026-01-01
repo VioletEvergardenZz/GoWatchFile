@@ -1,41 +1,46 @@
-﻿# 通用文件监控平台流程图
+# 通用文件监控平台流程图
 
-## 整体流程
+## 整体流程（当前实现）
 
 ```mermaid
 graph TD
-    A[文件源系统] --> B[本地落盘/共享盘]
-    B --> C[go-watch-file Agent]
-    C --> D{后缀匹配?}
-    D -->|否| C
-    D -->|是| E[写入完成判定]
-    E --> F[上传至对象存储]
-    F --> G[触发处理动作
-(Webhook/脚本/队列)]
-    F --> H[通知推送
-(企微/钉钉)]
-    G --> I[处理结果/下游消费]
+    A[业务系统写入文件] --> B[FileWatcher 递归监听]
+    B --> C{后缀匹配?}
+    C -->|否| B
+    C -->|是| D[静默窗口判定写入完成]
+    D --> E[入队 uploadQueue]
+    E --> F[WorkerPool 并发上传]
+    F --> G[S3 兼容对象存储]
+    F --> H[RuntimeState 更新状态]
+    H --> I[/api/dashboard]
+    F --> J[钉钉通知(可选)]
 ```
 
-## 组件交互时序
+## 控制台与 API 交互
 
 ```mermaid
 sequenceDiagram
-    participant App as 业务系统
-    participant Agent as Agent
-    participant S3 as 对象存储
-    participant Action as 处理动作
-    participant Notify as 通知渠道
+    participant UI as Console Frontend
+    participant API as API Server
+    participant FS as FileService
+    participant WP as WorkerPool
+    participant ST as RuntimeState
 
-    App->>Agent: 文件写入
-    Agent->>Agent: 静默窗口检测
-    Agent->>S3: 上传文件
-    S3-->>Agent: 返回下载链接
-    Agent->>Action: 触发任务（规划中）
-    Agent->>Notify: 发送通知
+    UI->>API: GET /api/dashboard
+    API->>FS: State()
+    FS->>ST: Dashboard(cfg)
+    ST-->>API: DashboardData
+    API-->>UI: 渲染页面
+
+    UI->>API: POST /api/manual-upload {path}
+    API->>FS: EnqueueManualUpload
+    FS->>ST: MarkManualQueued + SetQueueStats
+    FS->>WP: AddFile
+    WP->>FS: processFile
+    FS->>ST: MarkUploaded/MarkFailed
 ```
 
-## 关键校验与保护
-- 只处理目标后缀文件，减少噪声事件。
-- 通过相对路径校验与对象 Key 归一化，避免路径穿越。
-- 上传失败会记录日志，后续可引入重试与补偿机制。
+## 说明
+- 自动上传开关通过 `/api/auto-upload` 修改运行态，并影响目录/文件的自动上传策略。
+- 文件 Tail 通过 `/api/file-log` 按需读取文件尾部内容，不走 Dashboard 数据。
+- S3 与通知配置变更需重启服务，运行时配置仅包含目录/后缀/并发/静默窗口。
