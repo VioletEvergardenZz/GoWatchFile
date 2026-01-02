@@ -17,26 +17,26 @@ import (
 	"file-watch/internal/service"
 )
 
-// Server wraps the HTTP API server.
+// 统一启动/停止 HTTP 服务
 type Server struct {
-	httpServer *http.Server
+	httpServer *http.Server		//负责监听端口、接收请求、管理超时/连接等
 }
 
+// 请求处理器
 type handler struct {
 	cfg *models.Config
 	fs  *service.FileService
 }
 
-//日志读取的限制常量
+// 日志读取的限制常量
 const (
-	maxFileLogBytes = 512 * 1024		//最多读取 512KB 的内容
-	maxFileLogLines = 500			    //最多返回 500 行内容	
+	maxFileLogBytes = 512 * 1024 //最多读取 512KB 的内容
+	maxFileLogLines = 500        //最多返回 500 行内容
 )
 
-// NewServer builds the HTTP server for console/API consumption.
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	h := &handler{cfg: cfg, fs: fs}
-	mux := http.NewServeMux()
+	mux := http.NewServeMux()		//创建一个路由器（根据 URL 路径分发请求）
 	mux.HandleFunc("/api/dashboard", h.dashboard)
 	mux.HandleFunc("/api/auto-upload", h.toggleAutoUpload)
 	mux.HandleFunc("/api/manual-upload", h.manualUpload)
@@ -53,17 +53,17 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	return &Server{httpServer: srv}
 }
 
-// Start boots the API server asynchronously.
 func (s *Server) Start() {
 	go func() {
 		logger.Info("API 服务监听 %s", s.httpServer.Addr)
+		//过滤掉“正常关闭”，只记录真正的异常
 		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("API 服务异常退出: %v", err)
 		}
 	}()
 }
 
-// Shutdown gracefully stops the API server.
+
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.httpServer == nil {
 		return nil
@@ -80,12 +80,18 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	if cfg == nil {
 		cfg = h.cfg
 	}
-	state := h.fs.State()
-	if state == nil {
+	runtimeState := h.fs.State()
+	if runtimeState == nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "runtime state not ready"})
 		return
 	}
-	writeJSON(w, http.StatusOK, state.Dashboard(cfg))
+	//从 ?mode=... 里取值
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mode")))
+	if mode == "light" || mode == "lite" {
+		writeJSON(w, http.StatusOK, runtimeState.DashboardLite(cfg))
+		return
+	}
+	writeJSON(w, http.StatusOK, runtimeState.Dashboard(cfg))
 }
 
 func (h *handler) toggleAutoUpload(w http.ResponseWriter, r *http.Request) {
@@ -238,10 +244,12 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+
+//统一返回 JSON 响应
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	_ = json.NewEncoder(w).Encode(payload)		//编码成 JSON，直接写进响应体里（这里不处理错误）
 }
 
 func withCORS(next http.Handler) http.Handler {
@@ -257,8 +265,7 @@ func withCORS(next http.Handler) http.Handler {
 	})
 }
 
-
-//读取目标文件内容
+// 读取目标文件内容
 func readFileLogLines(path string) ([]string, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -272,17 +279,17 @@ func readFileLogLines(path string) ([]string, error) {
 	}
 
 	size := info.Size()
-	var data []byte								//用来存储读取到的文件内容(字节形式)
-	if size > maxFileLogBytes {					
-		start := size - maxFileLogBytes		    //计算从文件的哪个位置开始读取(只保留最后 512KB)
-		buf := make([]byte, maxFileLogBytes)	//创建一个长度为 maxFileLogBytes 的 []byte
-		n, err := file.ReadAt(buf, start)		//从文件第 start 个字节位置读取内容到 buf 中,返回实际读到的字节数 n
-		if err != nil && err != io.EOF {		//读取过程中出现错误，且不是读到文件末尾的错误
+	var data []byte //用来存储读取到的文件内容(字节形式)
+	if size > maxFileLogBytes {
+		start := size - maxFileLogBytes      //计算从文件的哪个位置开始读取(只保留最后 512KB)
+		buf := make([]byte, maxFileLogBytes) //创建一个长度为 maxFileLogBytes 的 []byte
+		n, err := file.ReadAt(buf, start)    //从文件第 start 个字节位置读取内容到 buf 中,返回实际读到的字节数 n
+		if err != nil && err != io.EOF {     //读取过程中出现错误，且不是读到文件末尾的错误
 			return nil, err
-		}		
-		data = buf[:n]							//防止“读不满时包含无效字节”
+		}
+		data = buf[:n] //防止“读不满时包含无效字节”
 	} else {
-		data, err = io.ReadAll(file)			//文件较小，直接全部读取
+		data, err = io.ReadAll(file) //文件较小，直接全部读取
 		if err != nil {
 			return nil, err
 		}
@@ -296,25 +303,25 @@ func readFileLogLines(path string) ([]string, error) {
 	}
 
 	lines := strings.Split(string(data), "\n")
-	if size > maxFileLogBytes && len(lines) > 1 {		        //文件超过 512KB 且大于 1 行
-		lines = lines[1:]										
+	if size > maxFileLogBytes && len(lines) > 1 { //文件超过 512KB 且大于 1 行
+		lines = lines[1:]
 	}
 	if len(lines) > 0 && lines[len(lines)-1] == "" {
-		lines = lines[:len(lines)-1]					    	//去掉最后一个空行
+		lines = lines[:len(lines)-1] //去掉最后一个空行
 	}
 	for i, line := range lines {
-		lines[i] = strings.TrimRight(line, "\r")				//处理 Windows 换行 \r\n，把每行末尾的 \r 去掉
+		lines[i] = strings.TrimRight(line, "\r") //处理 Windows 换行 \r\n，把每行末尾的 \r 去掉
 	}
 	if maxFileLogLines > 0 && len(lines) > maxFileLogLines {
-		lines = lines[len(lines)-maxFileLogLines:]				//只保留最后 maxFileLogLines 行
+		lines = lines[len(lines)-maxFileLogLines:] //只保留最后 maxFileLogLines 行
 	}
 	return lines, nil
 }
 
-//简单判断是否是文本数据
+// 简单判断是否是文本数据
 func isTextData(data []byte) bool {
 	for _, b := range data {
-		if b == 0 {				//如果包含空字节，则认为不是文本数据
+		if b == 0 { //如果包含空字节，则认为不是文本数据
 			return false
 		}
 	}

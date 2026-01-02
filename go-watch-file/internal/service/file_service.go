@@ -119,8 +119,12 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 		fs.mu.Unlock()
 		return nil, fmt.Errorf("配置未初始化")
 	}
-	current := *fs.config
-	prevState := fs.state
+	oldCfg := fs.config
+	oldState := fs.state
+	oldWatcher := fs.watcher
+	oldPool := fs.uploadPool
+	oldS3 := fs.s3Client
+	current := *oldCfg
 	fs.mu.Unlock()
 
 	updated := current
@@ -152,7 +156,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	if err := newState.BootstrapExisting(); err != nil {
 		logger.Warn("预加载历史文件失败: %v", err)
 	}
-	newState.CarryOverFrom(prevState)
+	newState.CarryOverFrom(oldState)
 
 	newS3, err := newS3Client(&updated)
 	if err != nil {
@@ -163,49 +167,62 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	if err != nil {
 		return nil, err
 	}
-	newWatcher, err := newFileWatcher(&updated, fs)
-	if err != nil {
-		_ = newPool.ShutdownGraceful(shutdownTimeout)
-		return nil, err
+
+	activeWatcher := oldWatcher
+	if activeWatcher == nil {
+		created, createErr := newFileWatcher(&updated, fs)
+		if createErr != nil {
+			_ = newPool.ShutdownGraceful(shutdownTimeout)
+			return nil, createErr
+		}
+		activeWatcher = created
 	}
 
 	fs.mu.Lock()
-	oldCfg := fs.config
-	oldState := fs.state
-	oldWatcher := fs.watcher
-	oldPool := fs.uploadPool
-	oldS3 := fs.s3Client
-
 	fs.config = &updated
 	fs.state = newState
 	fs.uploadPool = newPool
-	fs.watcher = newWatcher
+	fs.watcher = activeWatcher
 	fs.s3Client = newS3
 	fs.state.SetQueueStats(fs.uploadPool.GetStats())
 	fs.mu.Unlock()
 
-	// Start new watcher with updated state
-	if err := newWatcher.Start(); err != nil {
-		_ = newPool.ShutdownGraceful(shutdownTimeout)
-		_ = newWatcher.Close()
-		// 回滚到旧配置，避免留下已关闭的工作池
-		fs.mu.Lock()
-		fs.config = oldCfg
-		fs.state = oldState
-		fs.uploadPool = oldPool
-		fs.watcher = oldWatcher
-		fs.s3Client = oldS3
-		if fs.state != nil && fs.uploadPool != nil {
-			fs.state.SetQueueStats(fs.uploadPool.GetStats())
+	if oldWatcher == nil {
+		// Start new watcher with updated state
+		if err := activeWatcher.Start(); err != nil {
+			_ = newPool.ShutdownGraceful(shutdownTimeout)
+			_ = activeWatcher.Close()
+			// 回滚到旧配置，避免留下已关闭的工作池
+			fs.mu.Lock()
+			fs.config = oldCfg
+			fs.state = oldState
+			fs.uploadPool = oldPool
+			fs.watcher = oldWatcher
+			fs.s3Client = oldS3
+			if fs.state != nil && fs.uploadPool != nil {
+				fs.state.SetQueueStats(fs.uploadPool.GetStats())
+			}
+			fs.mu.Unlock()
+			return nil, err
 		}
-		fs.mu.Unlock()
-		return nil, err
+	} else {
+		if err := activeWatcher.Reset(&updated); err != nil {
+			_ = newPool.ShutdownGraceful(shutdownTimeout)
+			fs.mu.Lock()
+			fs.config = oldCfg
+			fs.state = oldState
+			fs.uploadPool = oldPool
+			fs.watcher = oldWatcher
+			fs.s3Client = oldS3
+			if fs.state != nil && fs.uploadPool != nil {
+				fs.state.SetQueueStats(fs.uploadPool.GetStats())
+			}
+			fs.mu.Unlock()
+			return nil, err
+		}
 	}
 
 	// shutdown old components after new watcher is up
-	if oldWatcher != nil {
-		_ = oldWatcher.Close()
-	}
 	if oldPool != nil {
 		_ = oldPool.ShutdownGraceful(shutdownTimeout)
 	}
@@ -311,7 +328,6 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	logger.Info("文件处理完成: %s", filePath)
 	return nil
 }
-
 
 func (fs *FileService) consumeManualOnce(path string) bool {
 	norm := normalizeManualPath(path)

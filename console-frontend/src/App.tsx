@@ -14,12 +14,25 @@ import {
   monitorSummary,
   uploadRecords,
 } from "./mockData";
-import type { ConfigSnapshot, DashboardPayload, FileFilter, FileItem, FileNode } from "./types";
+import type {
+  ChartPoint,
+  ConfigSnapshot,
+  DashboardPayload,
+  FileFilter,
+  FileItem,
+  FileNode,
+  HeroCopy,
+  MetricCard,
+  MonitorNote,
+  MonitorSummary,
+  UploadRecord,
+} from "./types";
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler, Legend);
 
 const SECTION_IDS = ["overview", "config", "directory", "files", "tail", "failures", "monitor"];
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
+const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
 const UPLOAD_PAGE_SIZE = 5;
 const FILE_PAGE_SIZE = 10;
 const LOG_POLL_MS = 2000;
@@ -42,6 +55,30 @@ const resolveRecordTimestamp = (value: string) => {
   const parsed = Date.parse(normalized);
   return Number.isNaN(parsed) ? 0 : parsed;
 };
+
+const emptyHero: HeroCopy = {
+  agent: "--",
+  watchDirs: [],
+  suffixFilter: "--",
+  silence: "--",
+  queue: "--",
+  concurrency: "--",
+};
+
+const emptyConfig: ConfigSnapshot = {
+  watchDir: "",
+  fileExt: "",
+  silence: "",
+  concurrency: "",
+};
+
+const emptyMetricCards: MetricCard[] = [];
+const emptyMonitorNotes: MonitorNote[] = [];
+const emptyUploadRecords: UploadRecord[] = [];
+const emptyMonitorSummary: MonitorSummary[] = [];
+const emptyChartPoints: ChartPoint[] = [];
+const emptyTree: FileNode[] = [];
+const emptyFiles: FileItem[] = [];
 
 const findFirstFile = (nodes: FileNode[]): FileNode | undefined => {
   for (const node of nodes) {
@@ -94,22 +131,22 @@ const updateAutoUpload = (nodes: FileNode[], path: string, value: boolean): File
 };
 
 function App() {
-  const [tree, setTree] = useState<FileNode[]>(treeSeed);
-  const [files, setFiles] = useState<FileItem[]>(fileSeed);
-  const [currentRoot, setCurrentRoot] = useState<string>(treeSeed[0]?.path ?? "");
-  const [activePath, setActivePath] = useState<string>(findFirstFile(treeSeed)?.path ?? "");
+  const [tree, setTree] = useState<FileNode[]>(USE_MOCK ? treeSeed : emptyTree);
+  const [files, setFiles] = useState<FileItem[]>(USE_MOCK ? fileSeed : emptyFiles);
+  const [currentRoot, setCurrentRoot] = useState<string>(USE_MOCK ? treeSeed[0]?.path ?? "" : "");
+  const [activePath, setActivePath] = useState<string>(USE_MOCK ? findFirstFile(treeSeed)?.path ?? "" : "");
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [fileFilter, setFileFilter] = useState<FileFilter>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [manualUploadMap, setManualUploadMap] = useState<Record<string, string>>({});
   const [activeSection, setActiveSection] = useState<string>(SECTION_IDS[0]);
-  const [configForm, setConfigForm] = useState(configSnapshot);
-  const [heroState, setHeroState] = useState(heroCopy);
-  const [metricCardsState, setMetricCardsState] = useState(metricCards);
-  const [monitorNotesState, setMonitorNotesState] = useState(monitorNotes);
-  const [uploadRecordsState, setUploadRecordsState] = useState(uploadRecords);
-  const [monitorSummaryState, setMonitorSummaryState] = useState(monitorSummary);
-  const [chartPointsState, setChartPointsState] = useState(chartPoints);
+  const [configForm, setConfigForm] = useState(USE_MOCK ? configSnapshot : emptyConfig);
+  const [heroState, setHeroState] = useState(USE_MOCK ? heroCopy : emptyHero);
+  const [metricCardsState, setMetricCardsState] = useState(USE_MOCK ? metricCards : emptyMetricCards);
+  const [monitorNotesState, setMonitorNotesState] = useState(USE_MOCK ? monitorNotes : emptyMonitorNotes);
+  const [uploadRecordsState, setUploadRecordsState] = useState(USE_MOCK ? uploadRecords : emptyUploadRecords);
+  const [monitorSummaryState, setMonitorSummaryState] = useState(USE_MOCK ? monitorSummary : emptyMonitorSummary);
+  const [chartPointsState, setChartPointsState] = useState(USE_MOCK ? chartPoints : emptyChartPoints);
   const [tailLinesState, setTailLinesState] = useState<string[]>([]);
   const [activeLogPath, setActiveLogPath] = useState<string | null>(null);
   const [followTail, setFollowTail] = useState(true);
@@ -118,14 +155,16 @@ function App() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<"realtime" | "24h">("realtime");
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(!USE_MOCK);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bootstrapped, setBootstrapped] = useState(USE_MOCK);
   const lastSavedConfig = useRef<ConfigSnapshot | null>(null);
   const actionTimerRef = useRef<number | undefined>(undefined);
   const tailBoxRef = useRef<HTMLDivElement | null>(null);
   const logFetchingRef = useRef(false);
   const dashboardFetchingRef = useRef(false);
+  const visibleSectionsRef = useRef<Map<string, IntersectionObserverEntry>>(new Map());
 
   const rootNodes = useMemo(() => {
     const filtered = tree.filter((node) => !currentRoot || node.path === currentRoot);
@@ -138,6 +177,10 @@ function App() {
   }, [activePath, rootNodes]);
 
   const refreshDashboard = useCallback(async () => {
+    if (USE_MOCK) {
+      setBootstrapped(true);
+      return;
+    }
     if (dashboardFetchingRef.current) return;
     dashboardFetchingRef.current = true;
     setLoading(true);
@@ -150,14 +193,14 @@ function App() {
       const data = (await res.json()) as Partial<DashboardPayload>;
       const directoryTree = data.directoryTree ?? [];
       const filesData = data.files ?? [];
-      const heroData = data.heroCopy ?? heroCopy;
-      const metrics = data.metricCards ?? metricCards;
-      const notes = data.monitorNotes ?? monitorNotes;
+      const heroData = data.heroCopy ?? emptyHero;
+      const metrics = data.metricCards ?? emptyMetricCards;
+      const notes = data.monitorNotes ?? emptyMonitorNotes;
       const uploads = data.uploadRecords ?? [];
-      const summary = data.monitorSummary ?? monitorSummary;
-      const chartPointsData = data.chartPoints ?? [];
+      const summary = data.monitorSummary ?? emptyMonitorSummary;
+      const chartPointsData = data.chartPoints ?? emptyChartPoints;
 
-      let configData = (data.configSnapshot as ConfigSnapshot | undefined) ?? configSnapshot;
+      let configData = (data.configSnapshot as ConfigSnapshot | undefined) ?? emptyConfig;
       if (lastSavedConfig.current) {
         configData = { ...configData, ...lastSavedConfig.current };
       }
@@ -189,24 +232,26 @@ function App() {
     } finally {
       dashboardFetchingRef.current = false;
       setLoading(false);
+      setBootstrapped(true);
     }
   }, []);
 
   const refreshLiveData = useCallback(async () => {
+    if (USE_MOCK) return;
     if (dashboardFetchingRef.current) return;
     dashboardFetchingRef.current = true;
     try {
-      const res = await fetch(`${API_BASE}/api/dashboard`);
+      const res = await fetch(`${API_BASE}/api/dashboard?mode=light`);
       if (!res.ok) {
         throw new Error(`加载数据失败，状态码 ${res.status}`);
       }
       const data = (await res.json()) as Partial<DashboardPayload>;
-      const heroData = data.heroCopy ?? heroCopy;
-      const metrics = data.metricCards ?? metricCards;
-      const notes = data.monitorNotes ?? monitorNotes;
+      const heroData = data.heroCopy ?? emptyHero;
+      const metrics = data.metricCards ?? emptyMetricCards;
+      const notes = data.monitorNotes ?? emptyMonitorNotes;
       const uploads = data.uploadRecords ?? [];
-      const summary = data.monitorSummary ?? monitorSummary;
-      const chartPointsData = data.chartPoints ?? [];
+      const summary = data.monitorSummary ?? emptyMonitorSummary;
+      const chartPointsData = data.chartPoints ?? emptyChartPoints;
 
       const mergedHero = {
         ...heroData,
@@ -231,10 +276,12 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (USE_MOCK) return;
     void refreshDashboard();
   }, [refreshDashboard]);
 
   useEffect(() => {
+    if (USE_MOCK) return;
     const timer = window.setInterval(() => {
       void refreshLiveData();
     }, DASHBOARD_POLL_MS);
@@ -249,22 +296,36 @@ function App() {
   }, [currentRoot, rootNodes, activePath]);
 
   useEffect(() => {
+    if (!bootstrapped) return;
+    visibleSectionsRef.current.clear();
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = entries
-          .filter((entry) => entry.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-        if (visible[0]?.target?.id) {
-          setActiveSection(visible[0].target.id);
-        }
+        entries.forEach((entry) => {
+          const id = entry.target.id;
+          if (!id) return;
+          if (entry.isIntersecting) {
+            visibleSectionsRef.current.set(id, entry);
+          } else {
+            visibleSectionsRef.current.delete(id);
+          }
+        });
+        const visibleEntries = Array.from(visibleSectionsRef.current.values());
+        if (!visibleEntries.length) return;
+        const sorted = visibleEntries.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+        const firstBelow = sorted.find((entry) => entry.boundingClientRect.top >= 0);
+        const next = (firstBelow ?? sorted[sorted.length - 1]).target.id;
+        if (next) setActiveSection(next);
       },
       { threshold: [0.25, 0.5], rootMargin: "-30% 0px -30% 0px" }
     );
 
     const targets = SECTION_IDS.map((id) => document.getElementById(id)).filter(Boolean) as Element[];
     targets.forEach((el) => observer.observe(el));
-    return () => observer.disconnect();
-  }, []);
+    return () => {
+      observer.disconnect();
+      visibleSectionsRef.current.clear();
+    };
+  }, [bootstrapped]);
 
   useEffect(() => {
     return () => {
@@ -302,6 +363,12 @@ function App() {
         } catch {}
         if (message.includes("仅支持文本文件")) {
           setTailLinesState(["当前文件为二进制，无法展示日志。"]);
+          setActiveLogPath(null);
+          setError(null);
+          return;
+        }
+        if (message.includes("文件路径不在监控目录下")) {
+          setTailLinesState(["当前文件已不在监控目录，已停止日志拉取。"]);
           setActiveLogPath(null);
           setError(null);
           return;
@@ -551,6 +618,9 @@ function App() {
       lastSavedConfig.current = nextConfig;
       setConfigForm(nextConfig);
       setCurrentRoot(nextConfig.watchDir);
+      setActiveLogPath(null);
+      setTailLinesState([]);
+      setError(null);
       setHeroState((prev) => ({
         ...prev,
         watchDirs: nextConfig.watchDir ? nextConfig.watchDir.split(",").map((d) => d.trim()).filter(Boolean) : prev.watchDirs,
@@ -613,6 +683,7 @@ function App() {
 
   const chartOptions: ChartOptions<"line"> = useMemo(
     () => ({
+      animation: false,
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
@@ -700,6 +771,21 @@ function App() {
     : "--";
   const silenceValue = useMemo(() => heroState.silence?.replace(/静默/gi, "").trim() ?? "", [heroState.silence]);
   const watchDirsLabel = heroState.watchDirs.length ? heroState.watchDirs.join(", ") : "--";
+  const booting = !bootstrapped;
+
+  if (booting) {
+    return (
+      <div className="page-shell booting">
+        <div className="boot-overlay">
+          <div className="boot-card">
+            <div className="boot-title">正在加载实时数据</div>
+            <div className="boot-sub">首次同步目录与指标可能需要几秒</div>
+            <div className="boot-spinner" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-shell">

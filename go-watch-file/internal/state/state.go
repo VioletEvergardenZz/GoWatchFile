@@ -14,18 +14,16 @@ import (
 	"file-watch/internal/models"
 )
 
-//“内存中保留数量的上限”常量，用来限制运行态数据列表的长度
+// “内存中保留数量的上限”常量，用来限制运行态数据列表的长度
 const (
-	maxTailLines      = 200
-	maxTimelineEvents = 120
-	maxUploadRecords  = 200
-	maxQueuePoints    = 32		//队列趋势图点的最大数量
-	maxNotifications  = 200		//通知事件的最大数量
+	maxUploadRecords = 200
+	maxQueuePoints   = 32  //队列趋势图点的最大数量
+	maxNotifications = 200 //通知事件的最大数量
 )
 
 type FileStatus int
 
-//枚举类型（整型），表示文件的处理状态
+// 枚举类型（整型），表示文件的处理状态
 const (
 	StatusUnknown FileStatus = iota
 	StatusQueued
@@ -34,24 +32,14 @@ const (
 	StatusExisting
 )
 
-//记录“被监控文件”的当前状态
+// 记录“被监控文件”的当前状态
 type fileState struct {
-	Status           FileStatus
-	Target           string				//下载地址
-	Latency          time.Duration		//上传耗时
-	Note             string				//备注信息，如（“自动入队”“上传失败原因”）
-	AutoUpload       bool
+	Status     FileStatus
+	Note       string //备注信息，如（“自动入队”“上传失败原因”）
+	AutoUpload bool
 }
 
-//时间线事件条目
-type timelineEntry struct {
-	Label  string
-	Time   time.Time
-	Status string
-	Host   string
-}
-
-//上传历史记录条目
+// 上传历史记录条目
 type uploadHistory struct {
 	File    string
 	Target  string
@@ -62,35 +50,33 @@ type uploadHistory struct {
 	Note    string
 }
 
-//通知事件记录结构
+// 通知事件记录结构
 type notificationEvent struct {
-	Time    time.Time		//通知发送时间
-	Channel string			//通知渠道，如“钉钉”“企业微信”等
+	Time    time.Time //通知发送时间
+	Channel string    //通知渠道，如“钉钉”“企业微信”等
 }
 
 // RuntimeState 保存接口与界面所需的内存运行态数据
 type RuntimeState struct {
 	//并发控制
-	mu sync.RWMutex					//读多写少，读用 RLock，写用 Lock
+	mu sync.RWMutex //读多写少，读用 RLock，写用 Lock
 
 	//配置/环境
-	host      string
-	watchDir  string
-	fileExt   string
+	host     string
+	watchDir string
+	fileExt  string
 
 	//文件状态
 	fileState map[string]fileState
 	autoOn    map[string]bool
 
 	//UI 面板数据（环形缓存式）
-	tailLines []string
-	timeline  []timelineEntry
-	uploads   []uploadHistory
-	queue     []ChartPoint			//队列/上传统计的趋势点
+	uploads       []uploadHistory
+	queue         []ChartPoint //队列/上传统计的趋势点
 	notifications []notificationEvent
 
 	//计数器/指标
-	successes int					//累计成功上传数
+	successes int //累计成功上传数
 	failures  int
 	workers   int
 	queueLen  int
@@ -120,7 +106,7 @@ func (s *RuntimeState) CarryOverFrom(old *RuntimeState) {
 	if old == nil {
 		return
 	}
-	old.mu.RLock()			//加读锁
+	old.mu.RLock() //加读锁
 	defer old.mu.RUnlock()
 
 	s.successes = old.successes
@@ -128,8 +114,6 @@ func (s *RuntimeState) CarryOverFrom(old *RuntimeState) {
 	s.queueLen = old.queueLen
 
 	//把旧状态里的几组切片“拷贝一份”到新状态里
-	s.timeline = append([]timelineEntry(nil), old.timeline...)
-	s.tailLines = append([]string(nil), old.tailLines...)
 	s.uploads = append([]uploadHistory(nil), old.uploads...)
 	s.notifications = append([]notificationEvent(nil), old.notifications...)
 	s.queue = append([]ChartPoint(nil), old.queue...)
@@ -149,11 +133,7 @@ func (s *RuntimeState) BootstrapExisting() error {
 		if d.IsDir() {
 			return nil
 		}
-		if !s.isTargetFile(path) {	//不符合目标后缀,跳过
-			return nil
-		}
-		stat, statErr := d.Info()
-		if statErr != nil {
+		if !s.isTargetFile(path) { //不符合目标后缀,跳过
 			return nil
 		}
 		s.mu.Lock()
@@ -162,15 +142,6 @@ func (s *RuntimeState) BootstrapExisting() error {
 			AutoUpload: s.autoUploadLocked(path),
 			Note:       "历史文件",
 		}
-		s.appendUploadLocked(uploadHistory{
-			File:    filepath.Base(path),		//取路径的“最后一段”，也就是文件名
-			Target:  "",
-			Size:    formatSize(stat.Size()),
-			Result:  "success",
-			Latency: "--",
-			Time:    time.Time{},
-			Note:    "历史文件",
-		})
 		s.mu.Unlock()
 		return nil
 	})
@@ -208,7 +179,6 @@ func (s *RuntimeState) SetAutoUpload(path string, enabled bool) {
 			s.fileState[p] = st
 		}
 	}
-	s.appendTimelineLocked("调整自动上传", "info", s.host, time.Now())
 }
 
 // MarkQueued 记录文件自动进入队列
@@ -226,14 +196,11 @@ func (s *RuntimeState) MarkSkipped(path string) {
 	norm := normalizePath(path)
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	now := time.Now()
 	st := s.fetchOrInitStateLocked(norm)
 	st.Status = StatusQueued
 	st.Note = "自动上传关闭，待手动触发"
 	st.AutoUpload = false
 	s.fileState[norm] = st
-	s.appendTailLocked(fmt.Sprintf("[%s] 跳过 %s: 自动上传关闭", now.Format("15:04:05"), norm))
-	s.appendTimelineLocked("自动上传关闭，跳过", "warning", s.host, now)
 }
 
 // MarkUploaded 记录上传成功
@@ -246,8 +213,6 @@ func (s *RuntimeState) MarkUploaded(path, downloadURL string, latency time.Durat
 	defer s.mu.Unlock()
 	st := s.fetchOrInitStateLocked(norm)
 	st.Status = StatusUploaded
-	st.Target = downloadURL
-	st.Latency = latency
 	if manual {
 		st.Note = "手动上传"
 	} else {
@@ -256,8 +221,6 @@ func (s *RuntimeState) MarkUploaded(path, downloadURL string, latency time.Durat
 	st.AutoUpload = s.autoUploadLocked(path)
 	s.fileState[norm] = st
 
-	s.appendTailLocked(fmt.Sprintf("[%s] 上传成功 %s", now.Format("15:04:05"), norm))
-	s.appendTimelineLocked("上传成功", "success", s.host, now)
 	s.appendUploadLocked(uploadHistory{
 		File:    filepath.Base(norm),
 		Target:  downloadURL,
@@ -284,11 +247,9 @@ func (s *RuntimeState) MarkFailed(path string, reason error) {
 	st.AutoUpload = s.autoUploadLocked(path)
 	s.fileState[norm] = st
 
-	s.appendTailLocked(fmt.Sprintf("[%s] 上传失败 %s err=%v", now.Format("15:04:05"), norm, reason))
-	s.appendTimelineLocked("上传失败", "danger", s.host, now)
 	s.appendUploadLocked(uploadHistory{
 		File:    filepath.Base(norm),
-		Target:  info.target,
+		Target:  "",
 		Size:    formatSize(info.size),
 		Result:  "failed",
 		Latency: "--",
@@ -329,29 +290,6 @@ func (s *RuntimeState) SetQueueStats(stats models.UploadStats) {
 	}
 }
 
-// TailLines 返回近期尾部日志的副本
-func (s *RuntimeState) TailLines() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return append([]string(nil), s.tailLines...)
-}
-
-// TimelineEvents 返回可直接用于控制台展示的时间线事件
-func (s *RuntimeState) TimelineEvents() []TimelineEvent {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	events := make([]TimelineEvent, 0, len(s.timeline))
-	for _, ev := range s.timeline {
-		events = append(events, TimelineEvent{
-			Label:  ev.Label,
-			Time:   ev.Time.Format("15:04:05"),
-			Status: ev.Status,
-			Host:   ev.Host,
-		})
-	}
-	return events
-}
-
 // UploadRecords 返回按时间倒序的上传历史
 func (s *RuntimeState) UploadRecords() []UploadRecord {
 	s.mu.RLock()
@@ -375,18 +313,16 @@ func (s *RuntimeState) UploadRecords() []UploadRecord {
 	return out
 }
 
-// FileItems 扫描磁盘并合并运行态，生成文件表数据
-func (s *RuntimeState) FileItems() []FileItem {
-	files := s.collectFiles()
+func (s *RuntimeState) buildFileItems(files []scannedFile) []FileItem {
 	items := make([]FileItem, 0, len(files))
 	for _, f := range files {
 		items = append(items, FileItem{
-			Name:             filepath.Base(f.path),
-			Path:             normalizePath(f.path),
-			Size:             formatSize(f.size),
-			Status:           fileStatusLabel(f.state.Status),
-			Time:             formatDateTime(f.modTime),
-			AutoUpload:       f.state.AutoUpload,
+			Name:       filepath.Base(f.path),
+			Path:       normalizePath(f.path),
+			Size:       formatSize(f.size),
+			Status:     fileStatusLabel(f.state.Status),
+			Time:       formatDateTime(f.modTime),
+			AutoUpload: f.state.AutoUpload,
 		})
 	}
 	sort.Slice(items, func(i, j int) bool {
@@ -395,9 +331,17 @@ func (s *RuntimeState) FileItems() []FileItem {
 	return items
 }
 
+// FileItems 扫描磁盘并合并运行态，生成文件表数据
+func (s *RuntimeState) FileItems() []FileItem {
+	return s.buildFileItems(s.collectFiles())
+}
+
 // DirectoryTree 构建用于界面的目录树
 func (s *RuntimeState) DirectoryTree() []FileNode {
-	files := s.collectFiles()
+	return s.buildDirectoryTree(s.collectFiles())
+}
+
+func (s *RuntimeState) buildDirectoryTree(files []scannedFile) []FileNode {
 	dirMap := make(map[string]*FileNode)
 	rootPath := normalizePath(s.watchDir)
 	if rootPath != "" {
@@ -444,7 +388,6 @@ func (s *RuntimeState) DirectoryTree() []FileNode {
 			AutoUpload: f.state.AutoUpload,
 			Size:       formatSize(f.size),
 			Updated:    formatDateTime(f.modTime),
-			Content:    f.state.Note,
 		})
 	}
 
@@ -605,7 +548,7 @@ func (s *RuntimeState) ConfigSnapshot(cfg *models.Config) ConfigSnapshot {
 		FileExt:     cfg.FileExt,
 		Silence:     cfg.Silence,
 		Concurrency: fmt.Sprintf("workers=%d / queue=%d", cfg.UploadWorkers, cfg.UploadQueueSize),
- 	}
+	}
 }
 
 // MonitorNotes 返回配置驱动的说明信息
@@ -617,15 +560,29 @@ func (s *RuntimeState) MonitorNotes(cfg *models.Config) []MonitorNote {
 	}
 }
 
-// Dashboard 聚合所有板块，生成接口返回结构
-func (s *RuntimeState) Dashboard(cfg *models.Config) DashboardData {
+// DashboardLite 返回轻量级的实时数据（不包含目录与文件列表）
+func (s *RuntimeState) DashboardLite(cfg *models.Config) DashboardData {
 	return DashboardData{
 		HeroCopy:       s.HeroCopy(cfg),
 		MetricCards:    s.MetricCards(),
-		DirectoryTree:  s.DirectoryTree(),
-		Files:          s.FileItems(),
-		TailLines:      s.TailLines(),
-		TimelineEvents: s.TimelineEvents(),
+		DirectoryTree:  []FileNode{},
+		Files:          []FileItem{},
+		MonitorNotes:   s.MonitorNotes(cfg),
+		UploadRecords:  s.UploadRecords(),
+		MonitorSummary: s.MonitorSummary(),
+		ConfigSnapshot: s.ConfigSnapshot(cfg),
+		ChartPoints:    s.ChartPoints(),
+	}
+}
+
+// Dashboard 聚合所有板块，生成接口返回结构
+func (s *RuntimeState) Dashboard(cfg *models.Config) DashboardData {
+	files := s.collectFiles()
+	return DashboardData{
+		HeroCopy:       s.HeroCopy(cfg),
+		MetricCards:    s.MetricCards(),
+		DirectoryTree:  s.buildDirectoryTree(files),
+		Files:          s.buildFileItems(files),
 		MonitorNotes:   s.MonitorNotes(cfg),
 		UploadRecords:  s.UploadRecords(),
 		MonitorSummary: s.MonitorSummary(),
@@ -708,11 +665,9 @@ func (s *RuntimeState) recordState(path string, status FileStatus, manual bool, 
 		st.Note = note
 	}
 	s.fileState[norm] = st
-	s.appendTailLocked(fmt.Sprintf("[%s] 入队 %s", now.Format("15:04:05"), norm))
-	s.appendTimelineLocked("检测到目标文件", "info", s.host, now)
 	s.appendUploadLocked(uploadHistory{
 		File:    filepath.Base(norm),
-		Target:  info.target,
+		Target:  "",
 		Size:    formatSize(info.size),
 		Result:  "pending",
 		Latency: "--",
@@ -746,34 +701,15 @@ func fileStatusLabel(status FileStatus) string {
 	}
 }
 
-func (s *RuntimeState) appendTailLocked(line string) {
-	s.tailLines = append(s.tailLines, line)
-	if len(s.tailLines) > maxTailLines {
-		s.tailLines = s.tailLines[len(s.tailLines)-maxTailLines:]
-	}
-}
-
-func (s *RuntimeState) appendTimelineLocked(label, status, host string, t time.Time) {
-	s.timeline = append(s.timeline, timelineEntry{
-		Label:  label,
-		Status: status,
-		Time:   t,
-		Host:   host,
-	})
-	if len(s.timeline) > maxTimelineEvents {
-		s.timeline = s.timeline[len(s.timeline)-maxTimelineEvents:]
-	}
-}
-
-//追加上传记录
+// 追加上传记录
 func (s *RuntimeState) appendUploadLocked(record uploadHistory) {
 	s.uploads = append(s.uploads, record)
-	if len(s.uploads) > maxUploadRecords {  //如果超过 maxUploadRecords，就把前面旧的裁掉，只保留最新的 N 条
+	if len(s.uploads) > maxUploadRecords { //如果超过 maxUploadRecords，就把前面旧的裁掉，只保留最新的 N 条
 		s.uploads = s.uploads[len(s.uploads)-maxUploadRecords:]
 	}
 }
 
-//判断某个路径是否“自动上传开启”
+// 判断某个路径是否“自动上传开启”
 func (s *RuntimeState) autoUploadLocked(path string) bool {
 	norm := normalizeKeyPath(path)
 	if norm == "" {
@@ -784,7 +720,7 @@ func (s *RuntimeState) autoUploadLocked(path string) bool {
 	}
 	dir := filepath.Dir(norm)
 	for dir != "." && dir != "/" && dir != norm {
-		if v, ok := s.autoOn[dir]; ok {		//找到上级目录的设置
+		if v, ok := s.autoOn[dir]; ok { //找到上级目录的设置
 			return v
 		}
 		dir = filepath.Dir(dir)
@@ -792,18 +728,17 @@ func (s *RuntimeState) autoUploadLocked(path string) bool {
 	return true
 }
 
-//是否匹配目标后缀
+// 是否匹配目标后缀
 func (s *RuntimeState) isTargetFile(path string) bool {
 	ext := strings.TrimSpace(s.fileExt)
 	if ext == "" {
-		return true		//所有文件都算目标
+		return true //所有文件都算目标
 	}
-	return strings.EqualFold(filepath.Ext(path), ext)	
+	return strings.EqualFold(filepath.Ext(path), ext)
 }
 
 type fileInfo struct {
-	size   int64
-	target string
+	size int64
 }
 
 func (s *RuntimeState) statFile(path string) fileInfo {
@@ -879,7 +814,7 @@ func autoEnabledFromCopy(auto map[string]bool, path string) bool {
 	return true
 }
 
-//把字节数格式化成人类可读字符串的函数
+// 把字节数格式化成人类可读字符串的函数
 func formatSize(bytes int64) string {
 	const (
 		kb = 1024
@@ -915,7 +850,7 @@ func formatDateTime(t time.Time) string {
 	return t.Format("2006-01-02 15:04:05")
 }
 
-//初始化队列趋势图的“默认数据”
+// 初始化队列趋势图的“默认数据”
 func seedQueuePoints() []ChartPoint {
 	return []ChartPoint{
 		{Label: "00:00", Uploads: 0, Failures: 0, Queue: 0},

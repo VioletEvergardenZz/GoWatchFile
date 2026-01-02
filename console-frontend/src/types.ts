@@ -5,7 +5,6 @@ export type FileNode = {
   autoUpload: boolean;
   size?: string;
   updated?: string;
-  content?: string;
   children?: FileNode[];
 };
 
@@ -23,20 +22,6 @@ export type FileItem = {
   status: "uploaded" | "queued" | "failed" | "existing";
   time: string;
   autoUpload: boolean;
-};
-
-export type TimelineEvent = {
-  label: string;
-  time: string;
-  status: "info" | "success" | "warning" | "danger";
-  host?: string;
-};
-
-export type FailureItem = {
-  file: string;
-  reason: string;
-  attempts: number;
-  next: string;
 };
 
 export type MonitorNote = {
@@ -90,8 +75,6 @@ export type DashboardPayload = {
   metricCards: MetricCard[];
   directoryTree: FileNode[];
   files: FileItem[];
-  tailLines: string[];
-  timelineEvents: TimelineEvent[];
   monitorNotes: MonitorNote[];
   uploadRecords: UploadRecord[];
   monitorSummary: MonitorSummary[];

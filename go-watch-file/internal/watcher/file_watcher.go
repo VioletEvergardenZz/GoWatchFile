@@ -21,8 +21,8 @@ import (
 
 const (
 	// throttleDuration     = 120 * time.Second
-	logThrottleDuration   = 5 * time.Second  // 日志节流时间间隔（控制台或者程序日志文件输出频率）
-	defaultSilenceWindow  = 10 * time.Second // 文件写入完成检测超时时间（默认）
+	logThrottleDuration  = 5 * time.Second  // 日志节流时间间隔（控制台或者程序日志文件输出频率）
+	defaultSilenceWindow = 10 * time.Second // 文件写入完成检测超时时间（默认）
 )
 
 var errWatchLimitReached = errors.New("watch limit reached")
@@ -34,10 +34,13 @@ type FileWatcher struct {
 	uploadPool    UploadPool
 	ctx           context.Context
 	cancel        context.CancelFunc
+	eventsDone    chan struct{}
 	stateMutex    sync.Mutex
+	watchMutex    sync.Mutex
 	lastLogged    map[string]time.Time
 	lastWriteTime map[string]time.Time
 	writeTimers   map[string]*time.Timer
+	watchedDirs   map[string]struct{}
 	silenceWindow time.Duration
 }
 
@@ -52,17 +55,15 @@ func NewFileWatcher(config *models.Config, uploadPool UploadPool) (*FileWatcher,
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 
 	return &FileWatcher{
 		watcher:       watcher,
 		config:        config,
 		uploadPool:    uploadPool,
-		ctx:           ctx,
-		cancel:        cancel,
 		lastLogged:    make(map[string]time.Time),
 		lastWriteTime: make(map[string]time.Time),
 		writeTimers:   make(map[string]*time.Timer),
+		watchedDirs:   make(map[string]struct{}),
 		silenceWindow: parseSilenceWindow(config.Silence),
 	}, nil
 }
@@ -84,34 +85,113 @@ func (fw *FileWatcher) Start() error {
 	}
 
 	// 启动事件处理协程
-	go fw.handleEvents()
+	fw.startEventLoop()
 
 	logger.Info("文件监控服务启动成功，等待文件变化...")
 	return nil
 }
 
+// Reset 重新加载监控配置并重启监听
+func (fw *FileWatcher) Reset(config *models.Config) error {
+	if config == nil {
+		return errors.New("config is nil")
+	}
+	if fw.watcher == nil {
+		return errors.New("watcher is nil")
+	}
+
+	prevConfig := fw.config
+	fw.stopEventLoop()
+	fw.resetFileState()
+	fw.removeAllWatches()
+
+	fw.config = config
+	fw.silenceWindow = parseSilenceWindow(config.Silence)
+
+	logger.Info("开始监控目录: %s", fw.config.WatchDir)
+	err := fw.addWatchRecursively(fw.config.WatchDir)
+	if err != nil && !errors.Is(err, errWatchLimitReached) {
+		logger.Error("添加目录监控失败: %v", err)
+		if prevConfig != nil {
+			fw.removeAllWatches()
+			fw.config = prevConfig
+			fw.silenceWindow = parseSilenceWindow(prevConfig.Silence)
+			restoreErr := fw.addWatchRecursively(prevConfig.WatchDir)
+			if restoreErr != nil {
+				if errors.Is(restoreErr, errWatchLimitReached) {
+					logger.Warn("恢复旧目录监控降级为部分监控: %v", restoreErr)
+				} else {
+					logger.Error("恢复旧目录监控失败: %v", restoreErr)
+				}
+			}
+		}
+		fw.startEventLoop()
+		return err
+	}
+	if errors.Is(err, errWatchLimitReached) {
+		logger.Warn("监控目录过大导致系统句柄不足，已降级为部分监控: %v", err)
+	}
+	fw.startEventLoop()
+	logger.Info("文件监控服务重置完成")
+	return nil
+}
+
 // Close 关闭文件监控器
 func (fw *FileWatcher) Close() error {
-	fw.cancel()
+	fw.stopEventLoop()
+	fw.resetFileState()
+	fw.resetWatchState()
+	return fw.watcher.Close()
+}
 
-	// 停止并清理所有写入完成检测定时器
+func (fw *FileWatcher) startEventLoop() {
+	ctx, cancel := context.WithCancel(context.Background())
+	fw.ctx = ctx
+	fw.cancel = cancel
+	done := make(chan struct{})
+	fw.eventsDone = done
+	go fw.handleEvents(ctx, done)
+}
+
+func (fw *FileWatcher) stopEventLoop() {
+	if fw.cancel != nil {
+		fw.cancel()
+	}
+	if fw.eventsDone == nil {
+		return
+	}
+	select {
+	case <-fw.eventsDone:
+	case <-time.After(2 * time.Second):
+		logger.Warn("停止文件事件循环超时")
+	}
+}
+
+func (fw *FileWatcher) resetFileState() {
 	fw.stateMutex.Lock()
 	for _, t := range fw.writeTimers {
 		if t != nil {
 			t.Stop()
 		}
 	}
+	fw.lastLogged = make(map[string]time.Time)
+	fw.lastWriteTime = make(map[string]time.Time)
 	fw.writeTimers = make(map[string]*time.Timer)
 	fw.stateMutex.Unlock()
+}
 
-	return fw.watcher.Close()
+func (fw *FileWatcher) resetWatchState() {
+	fw.watchMutex.Lock()
+	fw.watchedDirs = make(map[string]struct{})
+	fw.watchMutex.Unlock()
 }
 
 // handleEvents 处理文件事件
-func (fw *FileWatcher) handleEvents() {
+func (fw *FileWatcher) handleEvents(ctx context.Context, done chan struct{}) {
+	defer close(done)
 	for {
 		select {
-		case <-fw.ctx.Done():
+		case <-ctx.Done():
 			return
 		case event, ok := <-fw.watcher.Events:
 			if !ok {
@@ -140,14 +220,16 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 	//文件被删除/改名时，清理 lastWriteTime/lastLogged/writeTimers，避免 map 堆积
 	if event.Op&(fsnotify.Remove|fsnotify.Rename) != 0 {
 		fw.cleanupFileState(event.Name)
+		if fw.isWatchedDir(event.Name) {
+			fw.removeWatchTree(event.Name)
+		}
 	}
 }
 
 func (fw *FileWatcher) isTargetFileEvent(event fsnotify.Event) bool {
-	if strings.TrimSpace(fw.config.FileExt) != "" {
-		if filepath.Ext(event.Name) != fw.config.FileExt {
-			return false
-		}
+	ext := strings.TrimSpace(fw.config.FileExt)
+	if ext != "" && !strings.EqualFold(filepath.Ext(event.Name), ext) {
+		return false
 	}
 	//把 event.Op 当成一个装了很多开关的面板，fsnotify.Write 是其中一个开关。event.Op & fsnotify.Write 就是在检查“Write 这个开关是不是开着”
 	return event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create
@@ -173,6 +255,58 @@ func (fw *FileWatcher) handleCreatedPath(path string) {
 	logger.Info("添加目录监控: %s", path)
 }
 
+func (fw *FileWatcher) addWatch(path string) (bool, error) {
+	fw.watchMutex.Lock()
+	defer fw.watchMutex.Unlock()
+	if _, exists := fw.watchedDirs[path]; exists {
+		return false, nil
+	}
+	if err := fw.watcher.Add(path); err != nil {
+		return false, err
+	}
+	fw.watchedDirs[path] = struct{}{}
+	return true, nil
+}
+
+func (fw *FileWatcher) removeAllWatches() {
+	fw.watchMutex.Lock()
+	for path := range fw.watchedDirs {
+		_ = fw.watcher.Remove(path)
+	}
+	fw.watchedDirs = make(map[string]struct{})
+	fw.watchMutex.Unlock()
+}
+
+func (fw *FileWatcher) removeWatchTree(root string) {
+	root = filepath.Clean(root)
+	sep := string(filepath.Separator)
+
+	fw.watchMutex.Lock()
+	if root == sep {
+		for path := range fw.watchedDirs {
+			_ = fw.watcher.Remove(path)
+			delete(fw.watchedDirs, path)
+		}
+		fw.watchMutex.Unlock()
+		return
+	}
+	prefix := root + sep
+	for path := range fw.watchedDirs {
+		if path == root || strings.HasPrefix(path, prefix) {
+			_ = fw.watcher.Remove(path)
+			delete(fw.watchedDirs, path)
+		}
+	}
+	fw.watchMutex.Unlock()
+}
+
+func (fw *FileWatcher) isWatchedDir(path string) bool {
+	fw.watchMutex.Lock()
+	_, exists := fw.watchedDirs[path]
+	fw.watchMutex.Unlock()
+	return exists
+}
+
 // addWatchRecursively 递归监控指定目录及子目录的文件变化
 func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 	logger.Debug("递归添加目录监控: %s", dirPath)
@@ -195,7 +329,8 @@ func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 		if !d.IsDir() {
 			return nil
 		}
-		if err := fw.watcher.Add(path); err != nil {
+		added, err := fw.addWatch(path)
+		if err != nil {
 			if isTooManyOpenFiles(err) {
 				logger.Warn("监控句柄已达上限，停止递归监控: %s, 错误: %v", path, err)
 				return errWatchLimitReached
@@ -213,7 +348,9 @@ func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 			logger.Warn("添加目录监控失败: %s, 错误: %v", path, err)
 			return err
 		}
-		logger.Debug("添加目录监控: %s", path)
+		if added {
+			logger.Debug("添加目录监控: %s", path)
+		}
 		return nil
 	})
 }

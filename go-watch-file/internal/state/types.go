@@ -10,7 +10,6 @@ type FileNode struct {
 	AutoUpload bool       `json:"autoUpload"`
 	Size       string     `json:"size,omitempty"`
 	Updated    string     `json:"updated,omitempty"`
-	Content    string     `json:"content,omitempty"`
 	Children   []FileNode `json:"children,omitempty"`
 }
 
@@ -30,14 +29,6 @@ type FileItem struct {
 	Status           string `json:"status"` // 状态: uploaded | queued | failed | existing
 	Time             string `json:"time"`
 	AutoUpload       bool   `json:"autoUpload"`
-}
-
-// TimelineEvent 表示时间线中的一个事件
-type TimelineEvent struct {
-	Label  string `json:"label"`
-	Time   string `json:"time"`
-	Status string `json:"status"` // 状态: info | success | warning | danger
-	Host   string `json:"host,omitempty"`
 }
 
 // MonitorNote 表示一个小型说明块
@@ -96,8 +87,6 @@ type DashboardData struct {
 	MetricCards    []MetricCard     `json:"metricCards"`
 	DirectoryTree  []FileNode       `json:"directoryTree"`
 	Files          []FileItem       `json:"files"`
-	TailLines      []string         `json:"tailLines"`
-	TimelineEvents []TimelineEvent  `json:"timelineEvents"`
 	MonitorNotes   []MonitorNote    `json:"monitorNotes"`
 	UploadRecords  []UploadRecord   `json:"uploadRecords"`
 	MonitorSummary []MonitorSummary `json:"monitorSummary"`
