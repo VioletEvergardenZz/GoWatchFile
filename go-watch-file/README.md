@@ -1,6 +1,6 @@
 # File Watch Service（go-watch-file）
 
-一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到 S3 兼容存储，并通过钉钉机器人通知。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail 与运行时配置。
+一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到 S3 兼容存储，并支持钉钉机器人通知与邮件通知。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail 与运行时配置。
 
 ## 工作方式（按实际代码）
 1) fsnotify 递归监听 `watch_dir`（运行中自动发现新建子目录）。
@@ -8,7 +8,7 @@
 3) 文件写入完成判定：在静默窗口内无新写入才入队（默认 10s）。
 4) 入队后由 WorkerPool 并发上传至 S3 兼容存储。
 5) 写入状态与上传结果写入运行态（Dashboard/时间线/上传记录）。
-6) 钉钉机器人可选通知（若配置 webhook）。
+6) 钉钉机器人可选通知，支持邮件通知（需配置 SMTP）。
 
 ## 快速上手
 1) 环境：Go 1.23+（`go.mod` 含 `toolchain go1.24.3`）。
@@ -45,6 +45,7 @@
 - `upload_workers` / `upload_queue_size`：上传并发与队列容量。
 - `force_path_style` / `disable_ssl`：S3 兼容性开关。
 - `dingtalk_webhook` / `dingtalk_secret`：钉钉机器人（可选）。
+- `email_host` / `email_port` / `email_user` / `email_pass` / `email_from` / `email_to` / `email_use_tls`：SMTP 邮件通知（与钉钉同内容，可选）。
 - `robot_key`：预留字段，当前代码未使用。
 - `log_file` / `log_to_std` / `log_show_caller`：日志输出配置。
 
@@ -57,6 +58,13 @@ file_ext: "${FILE_EXT}"
 robot_key: "${ROBOT_KEY}"
 dingtalk_webhook: "${DINGTALK_WEBHOOK}"
 dingtalk_secret: "${DINGTALK_SECRET}"
+email_host: "${EMAIL_HOST}"
+email_user: "${EMAIL_USER}"
+email_pass: "${EMAIL_PASS}"
+email_from: "${EMAIL_FROM}"
+email_to: "${EMAIL_TO}"
+email_port: 587
+email_use_tls: true
 
 bucket: "${S3_BUCKET}"
 ak: "${S3_AK}"
@@ -129,7 +137,7 @@ api_bind: "${API_BIND}"
 - 仅支持单一监控目录与单一后缀。
 - 上传队列为内存队列，重启会清空。
 - 上传失败没有自动重试（需手动触发）。
-- 仅实现钉钉通知，企业微信未接入。
+- 已实现钉钉通知与邮件通知，企业微信未接入。
 
 ## 相关文档
 - 平台概述：`../docs/overview.md`

@@ -8,6 +8,15 @@ robot_key: "${ROBOT_KEY}"
 dingtalk_webhook: "${DINGTALK_WEBHOOK}"
 dingtalk_secret: "${DINGTALK_SECRET}"
 
+# 邮件通知配置（可选）
+email_host: "${EMAIL_HOST}"
+email_user: "${EMAIL_USER}"
+email_pass: "${EMAIL_PASS}"
+email_from: "${EMAIL_FROM}"
+email_to: "${EMAIL_TO}"
+email_port: 587
+email_use_tls: true
+
 # S3兼容对象存储配置
 bucket: "${S3_BUCKET}"
 ak: "${S3_AK}"

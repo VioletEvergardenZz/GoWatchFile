@@ -13,7 +13,7 @@ graph TD
     F --> G[S3 兼容对象存储]
     F --> H[RuntimeState 更新状态]
     H --> I[/api/dashboard]
-    F --> J[钉钉通知(可选)]
+    F --> J[通知: 钉钉/邮件(可选)]
 ```
 
 ## 控制台与 API 交互

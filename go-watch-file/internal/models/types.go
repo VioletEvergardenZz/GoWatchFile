@@ -12,6 +12,13 @@ type Config struct {
 	RobotKey        string `yaml:"robot_key"`
 	DingTalkWebhook string `yaml:"dingtalk_webhook"`
 	DingTalkSecret  string `yaml:"dingtalk_secret"`
+	EmailHost       string `yaml:"email_host"`
+	EmailPort       int    `yaml:"email_port"`
+	EmailUser       string `yaml:"email_user"`
+	EmailPass       string `yaml:"email_pass"`
+	EmailFrom       string `yaml:"email_from"`
+	EmailTo         string `yaml:"email_to"`
+	EmailUseTLS     bool   `yaml:"email_use_tls"`
 	Bucket          string `yaml:"bucket"`
 	AK              string `yaml:"ak"`
 	SK              string `yaml:"sk"`

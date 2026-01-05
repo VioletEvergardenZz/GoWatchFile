@@ -18,6 +18,13 @@ file_ext: ".hprof"
 robot_key: "test-key"
 dingtalk_webhook: "https://oapi.dingtalk.com/robot/send?access_token=test-token"
 dingtalk_secret: "test-secret"
+email_host: "smtp.example.com"
+email_port: 587
+email_user: "user@example.com"
+email_pass: "passw0rd"
+email_from: "alerts@example.com"
+email_to: "ops@example.com,dev@example.com"
+email_use_tls: true
 bucket: "test-bucket"
 ak: "test-ak"
 sk: "test-sk"
@@ -52,6 +59,27 @@ api_bind: ":9000"
 	}
 	if config.DingTalkSecret != "test-secret" {
 		t.Errorf("DingTalkSecret 期望 test-secret, 实际 %s", config.DingTalkSecret)
+	}
+	if config.EmailHost != "smtp.example.com" {
+		t.Errorf("EmailHost 期望 smtp.example.com, 实际 %s", config.EmailHost)
+	}
+	if config.EmailPort != 587 {
+		t.Errorf("EmailPort 期望 587, 实际 %d", config.EmailPort)
+	}
+	if config.EmailUser != "user@example.com" {
+		t.Errorf("EmailUser 期望 user@example.com, 实际 %s", config.EmailUser)
+	}
+	if config.EmailPass != "passw0rd" {
+		t.Errorf("EmailPass 期望 passw0rd, 实际 %s", config.EmailPass)
+	}
+	if config.EmailFrom != "alerts@example.com" {
+		t.Errorf("EmailFrom 期望 alerts@example.com, 实际 %s", config.EmailFrom)
+	}
+	if config.EmailTo != "ops@example.com,dev@example.com" {
+		t.Errorf("EmailTo 期望 ops@example.com,dev@example.com, 实际 %s", config.EmailTo)
+	}
+	if config.EmailUseTLS != true {
+		t.Errorf("EmailUseTLS 期望 true, 实际 %v", config.EmailUseTLS)
 	}
 	if config.LogLevel != "debug" {
 		t.Errorf("LogLevel 期望 debug, 实际 %s", config.LogLevel)

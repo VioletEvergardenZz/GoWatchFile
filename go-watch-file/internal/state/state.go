@@ -556,7 +556,7 @@ func (s *RuntimeState) MonitorNotes(cfg *models.Config) []MonitorNote {
 	return []MonitorNote{
 		{Title: "S3 连接", Detail: fmt.Sprintf("endpoint=%s · region=%s", cfg.Endpoint, cfg.Region)},
 		{Title: "上传工作池", Detail: fmt.Sprintf("workers=%d · queue=%d · 当前 backlog=%d", cfg.UploadWorkers, cfg.UploadQueueSize, s.queueLen)},
-		{Title: "通知", Detail: "企业微信/钉钉可选 · 失败自动告警"},
+		{Title: "通知", Detail: "钉钉通知 / 邮件通知"},
 	}
 }
 

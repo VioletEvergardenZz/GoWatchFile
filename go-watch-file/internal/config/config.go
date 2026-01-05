@@ -98,6 +98,21 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.RobotKey = stringFromEnv("ROBOT_KEY", cfg.RobotKey)
 	cfg.DingTalkWebhook = stringFromEnv("DINGTALK_WEBHOOK", cfg.DingTalkWebhook)
 	cfg.DingTalkSecret = stringFromEnv("DINGTALK_SECRET", cfg.DingTalkSecret)
+	cfg.EmailHost = stringFromEnv("EMAIL_HOST", cfg.EmailHost)
+	if parsed, ok, err := intFromEnv("EMAIL_PORT"); err != nil {
+		return err
+	} else if ok {
+		cfg.EmailPort = parsed
+	}
+	cfg.EmailUser = stringFromEnv("EMAIL_USER", cfg.EmailUser)
+	cfg.EmailPass = stringFromEnv("EMAIL_PASS", cfg.EmailPass)
+	cfg.EmailFrom = stringFromEnv("EMAIL_FROM", cfg.EmailFrom)
+	cfg.EmailTo = stringFromEnv("EMAIL_TO", cfg.EmailTo)
+	if parsed, ok, err := boolFromEnv("EMAIL_USE_TLS"); err != nil {
+		return err
+	} else if ok {
+		cfg.EmailUseTLS = parsed
+	}
 	cfg.Bucket = stringFromEnv("S3_BUCKET", cfg.Bucket)
 	cfg.AK = stringFromEnv("S3_AK", cfg.AK)
 	cfg.SK = stringFromEnv("S3_SK", cfg.SK)
@@ -308,13 +323,13 @@ func loadEnvFile(path string) error {
 	}
 	defer f.Close()
 
-	scanner := bufio.NewScanner(f)					    //按行读取的扫描器
+	scanner := bufio.NewScanner(f) //按行读取的扫描器
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())		//在 Scan() 成功返回 true 后，取出刚刚读到的那一行内容（字符串）
+		line := strings.TrimSpace(scanner.Text()) //在 Scan() 成功返回 true 后，取出刚刚读到的那一行内容（字符串）
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		parts := strings.SplitN(line, "=", 2)		    //只按第一个 = 拆成两段：parts[0] 是键，parts[1] 是值（后面允许值里再出现 = 也不会被继续拆）
+		parts := strings.SplitN(line, "=", 2) //只按第一个 = 拆成两段：parts[0] 是键，parts[1] 是值（后面允许值里再出现 = 也不会被继续拆）
 		if len(parts) != 2 {
 			return fmt.Errorf("env 文件 %s 中存在无效行: %s", path, line)
 		}
@@ -328,10 +343,10 @@ func loadEnvFile(path string) error {
 			val = unquoted
 		}
 
-		if _, exists := os.LookupEnv(key); exists {	    //检查进程里是否已存在同名环境变量
+		if _, exists := os.LookupEnv(key); exists { //检查进程里是否已存在同名环境变量
 			continue
 		}
-		if err := os.Setenv(key, val); err != nil {		//设置进当前进程的环境变量 .env 不会覆盖现有值
+		if err := os.Setenv(key, val); err != nil { //设置进当前进程的环境变量 .env 不会覆盖现有值
 			return fmt.Errorf("设置环境变量 %s 来自 %s 失败: %w", key, path, err)
 		}
 	}
