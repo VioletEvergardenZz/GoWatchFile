@@ -208,6 +208,7 @@ function App() {
   const tailBoxRef = useRef<HTMLDivElement | null>(null);
   const logRequestIdRef = useRef(0);
   const collapseInitRef = useRef(USE_MOCK);
+  const lastSuffixFilterRef = useRef<string | null>(USE_MOCK ? heroCopy.suffixFilter : null);
   const dashboardFetchingRef = useRef(false);
   const visibleSectionsRef = useRef<Map<string, IntersectionObserverEntry>>(new Map());
 
@@ -229,6 +230,20 @@ function App() {
     setCollapsed(new Set(collectDirPaths(scopedNodes)));
     collapseInitRef.current = true;
   }, [tree, currentRoot]);
+
+  useEffect(() => {
+    if (!tree.length) return;
+    const current = heroState.suffixFilter ?? "";
+    const last = lastSuffixFilterRef.current;
+    if (last === null) {
+      lastSuffixFilterRef.current = current;
+      return;
+    }
+    if (last === current) return;
+    const scopedNodes = tree.filter((node) => !currentRoot || node.path === currentRoot);
+    setCollapsed(new Set(collectDirPaths(scopedNodes)));
+    lastSuffixFilterRef.current = current;
+  }, [heroState.suffixFilter, tree, currentRoot]);
 
   const refreshDashboard = useCallback(async () => {
     if (USE_MOCK) {
