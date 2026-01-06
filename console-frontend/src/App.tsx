@@ -126,6 +126,19 @@ const findNode = (nodes: FileNode[], path: string): FileNode | undefined => {
   return undefined;
 };
 
+const collectDirPaths = (nodes: FileNode[]): string[] => {
+  const paths: string[] = [];
+  const walk = (items: FileNode[]) => {
+    items.forEach((node) => {
+      if (node.type !== "dir") return;
+      paths.push(node.path);
+      if (node.children) walk(node.children);
+    });
+  };
+  walk(nodes);
+  return paths;
+};
+
 const propagateAuto = (children: FileNode[] | undefined, value: boolean): FileNode[] | undefined => {
   if (!children) return children;
   return children.map((child) => ({
@@ -159,7 +172,9 @@ function App() {
   const [files, setFiles] = useState<FileItem[]>(USE_MOCK ? fileSeed : emptyFiles);
   const [currentRoot, setCurrentRoot] = useState<string>(USE_MOCK ? treeSeed[0]?.path ?? "" : "");
   const [activePath, setActivePath] = useState<string>(USE_MOCK ? findFirstFile(treeSeed)?.path ?? "" : "");
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [collapsed, setCollapsed] = useState<Set<string>>(() =>
+    USE_MOCK ? new Set(collectDirPaths(treeSeed)) : new Set()
+  );
   const [fileFilter, setFileFilter] = useState<FileFilter>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [manualUploadMap, setManualUploadMap] = useState<Record<string, string>>({});
@@ -192,6 +207,7 @@ function App() {
   const actionTimerRef = useRef<number | undefined>(undefined);
   const tailBoxRef = useRef<HTMLDivElement | null>(null);
   const logRequestIdRef = useRef(0);
+  const collapseInitRef = useRef(USE_MOCK);
   const dashboardFetchingRef = useRef(false);
   const visibleSectionsRef = useRef<Map<string, IntersectionObserverEntry>>(new Map());
 
@@ -204,6 +220,15 @@ function App() {
     if (!activePath) return undefined;
     return findNode(rootNodes, activePath);
   }, [activePath, rootNodes]);
+
+  useEffect(() => {
+    if (collapseInitRef.current) return;
+    if (!tree.length) return;
+    const scopedNodes = tree.filter((node) => !currentRoot || node.path === currentRoot);
+    if (!scopedNodes.length) return;
+    setCollapsed(new Set(collectDirPaths(scopedNodes)));
+    collapseInitRef.current = true;
+  }, [tree, currentRoot]);
 
   const refreshDashboard = useCallback(async () => {
     if (USE_MOCK) {
@@ -547,15 +572,7 @@ function App() {
       setCollapsed(new Set());
       return;
     }
-    const dirPaths: string[] = [];
-    const walk = (nodes: FileNode[]) => {
-      nodes.forEach((n) => {
-        if (n.type === "dir") dirPaths.push(n.path);
-        if (n.children) walk(n.children);
-      });
-    };
-    walk(rootNodes);
-    setCollapsed(new Set(dirPaths));
+    setCollapsed(new Set(collectDirPaths(rootNodes)));
   };
 
   const handleManualUpload = async () => {
@@ -1130,8 +1147,10 @@ function App() {
                     className="select"
                     value={currentRoot}
                     onChange={(e) => {
-                      setCollapsed(new Set());
-                      setCurrentRoot(e.target.value);
+                      const nextRoot = e.target.value;
+                      const nextNodes = tree.filter((node) => !nextRoot || node.path === nextRoot);
+                      setCollapsed(new Set(collectDirPaths(nextNodes)));
+                      setCurrentRoot(nextRoot);
                     }}
                   >
                     {tree.map((node) => (
