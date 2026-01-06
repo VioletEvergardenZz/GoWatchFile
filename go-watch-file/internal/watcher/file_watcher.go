@@ -16,6 +16,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 
 	"file-watch/internal/logger"
+	"file-watch/internal/match"
 	"file-watch/internal/models"
 )
 
@@ -32,6 +33,7 @@ type FileWatcher struct {
 	watcher       *fsnotify.Watcher //实际的文件监听器对象
 	config        *models.Config
 	uploadPool    UploadPool
+	matcher       *match.Matcher
 	ctx           context.Context
 	cancel        context.CancelFunc
 	eventsDone    chan struct{}
@@ -56,10 +58,14 @@ func NewFileWatcher(config *models.Config, uploadPool UploadPool) (*FileWatcher,
 		return nil, err
 	}
 
+	// 初始化匹配器用于后缀过滤
+	matcher := match.NewMatcher(config.FileExt)
+
 	return &FileWatcher{
 		watcher:       watcher,
 		config:        config,
 		uploadPool:    uploadPool,
+		matcher:       matcher,
 		lastLogged:    make(map[string]time.Time),
 		lastWriteTime: make(map[string]time.Time),
 		writeTimers:   make(map[string]*time.Timer),
@@ -107,6 +113,8 @@ func (fw *FileWatcher) Reset(config *models.Config) error {
 
 	fw.config = config
 	fw.silenceWindow = parseSilenceWindow(config.Silence)
+	// 重建匹配器确保配置更新生效
+	fw.matcher = match.NewMatcher(config.FileExt)
 
 	logger.Info("开始监控目录: %s", fw.config.WatchDir)
 	err := fw.addWatchRecursively(fw.config.WatchDir)
@@ -227,8 +235,8 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 }
 
 func (fw *FileWatcher) isTargetFileEvent(event fsnotify.Event) bool {
-	ext := strings.TrimSpace(fw.config.FileExt)
-	if ext != "" && !strings.EqualFold(filepath.Ext(event.Name), ext) {
+	// 先按后缀过滤事件
+	if fw.matcher != nil && !fw.matcher.IsTargetFile(event.Name) {
 		return false
 	}
 	//把 event.Op 当成一个装了很多开关的面板，fsnotify.Write 是其中一个开关。event.Op & fsnotify.Write 就是在检查“Write 这个开关是不是开着”
@@ -247,7 +255,6 @@ func (fw *FileWatcher) handleCreatedPath(path string) {
 	if err != nil || !fi.IsDir() {
 		return
 	}
-
 	if err := fw.addWatchRecursively(path); err != nil {
 		logger.Warn("递归添加新目录监控失败: %s, 错误: %v", path, err)
 		return

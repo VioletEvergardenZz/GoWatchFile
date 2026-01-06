@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// 覆盖对象 key 与下载链接的构建行为
 func TestRelativePath_PreventsSymlinkEscape(t *testing.T) {
 	baseDir := t.TempDir()
 	outsideDir := t.TempDir()

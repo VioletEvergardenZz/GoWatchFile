@@ -23,12 +23,12 @@ type MetricCard struct {
 
 // FileItem 表示文件列表中的一行
 type FileItem struct {
-	Name             string `json:"name"`
-	Path             string `json:"path"`
-	Size             string `json:"size"`
-	Status           string `json:"status"` // 状态: uploaded | queued | failed | existing
-	Time             string `json:"time"`
-	AutoUpload       bool   `json:"autoUpload"`
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	Size       string `json:"size"`
+	Status     string `json:"status"` // 状态: uploaded | queued | failed | existing
+	Time       string `json:"time"`
+	AutoUpload bool   `json:"autoUpload"`
 }
 
 // MonitorNote 表示一个小型说明块
@@ -60,7 +60,7 @@ type ChartPoint struct {
 	Label    string `json:"label"`
 	Uploads  int    `json:"uploads"`
 	Failures int    `json:"failures"`
-	Queue    int    `json:"queue"`			//队列长度
+	Queue    int    `json:"queue"` //队列长度
 }
 
 // UploadRecord 表示最近的上传记录

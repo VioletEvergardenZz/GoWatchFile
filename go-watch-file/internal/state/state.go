@@ -5,12 +5,12 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	"file-watch/internal/match"
 	"file-watch/internal/models"
 )
 
@@ -64,7 +64,7 @@ type RuntimeState struct {
 	//配置/环境
 	host     string
 	watchDir string
-	fileExt  string
+	matcher  *match.Matcher
 
 	//文件状态
 	fileState map[string]fileState
@@ -91,9 +91,10 @@ func NewRuntimeState(cfg *models.Config) *RuntimeState {
 		auto[normalizeKeyPath(watchDir)] = true
 	}
 	return &RuntimeState{
-		host:      host,
-		watchDir:  watchDir,
-		fileExt:   strings.TrimSpace(cfg.FileExt),
+		host:     host,
+		watchDir: watchDir,
+		// 统一复用匹配器做后缀过滤
+		matcher:   match.NewMatcher(cfg.FileExt),
 		fileState: make(map[string]fileState),
 		autoOn:    auto,
 		queue:     seedQueuePoints(),
@@ -166,6 +167,7 @@ func (s *RuntimeState) SetAutoUpload(path string, enabled bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if isDir {
+		// 目录开关时清理子级覆盖配置
 		for p := range s.autoOn {
 			if p != keyPath && isSameOrChildPath(p, keyPath) {
 				delete(s.autoOn, p)
@@ -173,6 +175,7 @@ func (s *RuntimeState) SetAutoUpload(path string, enabled bool) {
 		}
 	}
 	s.autoOn[keyPath] = enabled
+	// 同步已有文件状态的开关
 	for p, st := range s.fileState {
 		if (isDir && isSameOrChildPath(p, normPath)) || (!isDir && normalizeKeyPath(p) == keyPath) {
 			st.AutoUpload = enabled
@@ -313,6 +316,7 @@ func (s *RuntimeState) UploadRecords() []UploadRecord {
 	return out
 }
 
+// 构建文件表展示项
 func (s *RuntimeState) buildFileItems(files []scannedFile) []FileItem {
 	items := make([]FileItem, 0, len(files))
 	for _, f := range files {
@@ -341,6 +345,7 @@ func (s *RuntimeState) DirectoryTree() []FileNode {
 	return s.buildDirectoryTree(s.collectFiles())
 }
 
+// 生成目录树结构
 func (s *RuntimeState) buildDirectoryTree(files []scannedFile) []FileNode {
 	dirMap := make(map[string]*FileNode)
 	rootPath := normalizePath(s.watchDir)
@@ -362,6 +367,7 @@ func (s *RuntimeState) buildDirectoryTree(files []scannedFile) []FileNode {
 		if _, ok := dirMap[path]; ok {
 			return
 		}
+		// 递归补齐父目录节点
 		dirMap[path] = &FileNode{
 			Name:       filepath.Base(path),
 			Path:       path,
@@ -396,6 +402,7 @@ func (s *RuntimeState) buildDirectoryTree(files []scannedFile) []FileNode {
 	for p := range dirMap {
 		dirPaths = append(dirPaths, p)
 	}
+	// 先按深度排序再挂载父子关系
 	sort.Slice(dirPaths, func(i, j int) bool {
 		return strings.Count(dirPaths[i], "/") > strings.Count(dirPaths[j], "/")
 	})
@@ -428,6 +435,7 @@ func (s *RuntimeState) buildDirectoryTree(files []scannedFile) []FileNode {
 	return roots
 }
 
+// 递归排序子节点
 func sortChildren(node *FileNode) {
 	sort.Slice(node.Children, func(i, j int) bool {
 		return node.Children[i].Path < node.Children[j].Path
@@ -527,10 +535,7 @@ func (s *RuntimeState) ChartPoints() []ChartPoint {
 func (s *RuntimeState) HeroCopy(cfg *models.Config) HeroCopy {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	suffix := fmt.Sprintf("过滤 %s", cfg.FileExt)
-	if strings.TrimSpace(cfg.FileExt) == "" {
-		suffix = "关闭 · 全量目录"
-	}
+	suffix := formatSuffixFilter(cfg.FileExt)
 	return HeroCopy{
 		Agent:        s.host,
 		WatchDirs:    []string{cfg.WatchDir},
@@ -545,10 +550,32 @@ func (s *RuntimeState) HeroCopy(cfg *models.Config) HeroCopy {
 func (s *RuntimeState) ConfigSnapshot(cfg *models.Config) ConfigSnapshot {
 	return ConfigSnapshot{
 		WatchDir:    cfg.WatchDir,
-		FileExt:     cfg.FileExt,
+		FileExt:     formatExtList(cfg.FileExt),
 		Silence:     cfg.Silence,
 		Concurrency: fmt.Sprintf("workers=%d / queue=%d", cfg.UploadWorkers, cfg.UploadQueueSize),
 	}
+}
+
+// 格式化后缀过滤展示
+func formatSuffixFilter(raw string) string {
+	extLabel := formatExtList(raw)
+	if strings.TrimSpace(extLabel) == "" {
+		return "关闭 · 全量目录"
+	}
+	return fmt.Sprintf("过滤 %s", extLabel)
+}
+
+// 解析并格式化后缀列表
+func formatExtList(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return ""
+	}
+	// 保持与后端解析一致的显示格式
+	if exts, err := match.ParseExtList(trimmed); err == nil && len(exts) > 0 {
+		return strings.Join(exts, ", ")
+	}
+	return trimmed
 }
 
 // MonitorNotes 返回配置驱动的说明信息
@@ -598,6 +625,7 @@ type scannedFile struct {
 	state   fileState
 }
 
+// 遍历磁盘收集文件列表
 func (s *RuntimeState) collectFiles() []scannedFile {
 	// 在锁内快照状态
 	s.mu.RLock()
@@ -648,6 +676,7 @@ func (s *RuntimeState) collectFiles() []scannedFile {
 	return files
 }
 
+// 记录文件状态变化并补充上传记录
 func (s *RuntimeState) recordState(path string, status FileStatus, manual bool, note string) {
 	norm := normalizePath(path)
 	now := time.Now()
@@ -676,6 +705,7 @@ func (s *RuntimeState) recordState(path string, status FileStatus, manual bool, 
 	})
 }
 
+// 获取已存在状态或初始化默认值
 func (s *RuntimeState) fetchOrInitStateLocked(path string) fileState {
 	if st, ok := s.fileState[path]; ok {
 		return st
@@ -686,6 +716,7 @@ func (s *RuntimeState) fetchOrInitStateLocked(path string) fileState {
 	}
 }
 
+// 状态转为展示文本
 func fileStatusLabel(status FileStatus) string {
 	switch status {
 	case StatusQueued:
@@ -730,11 +761,11 @@ func (s *RuntimeState) autoUploadLocked(path string) bool {
 
 // 是否匹配目标后缀
 func (s *RuntimeState) isTargetFile(path string) bool {
-	ext := strings.TrimSpace(s.fileExt)
-	if ext == "" {
-		return true //所有文件都算目标
+	if s.matcher == nil {
+		return true
 	}
-	return strings.EqualFold(filepath.Ext(path), ext)
+	// 匹配器内部处理后缀规则
+	return s.matcher.IsTargetFile(path)
 }
 
 type fileInfo struct {
@@ -743,6 +774,7 @@ type fileInfo struct {
 
 func (s *RuntimeState) statFile(path string) fileInfo {
 	info := fileInfo{}
+	// 读取文件大小用于展示与统计
 	if st, err := os.Stat(path); err == nil {
 		info.size = st.Size()
 	}
@@ -750,6 +782,7 @@ func (s *RuntimeState) statFile(path string) fileInfo {
 }
 
 func normalizePath(path string) string {
+	// 统一路径格式便于比较
 	if path == "" {
 		return ""
 	}
@@ -757,17 +790,16 @@ func normalizePath(path string) string {
 }
 
 func normalizeKeyPath(path string) string {
+	// 保持路径大小写不做系统适配
 	norm := normalizePath(path)
 	if norm == "" {
 		return ""
-	}
-	if runtime.GOOS == "windows" {
-		return strings.ToLower(norm)
 	}
 	return norm
 }
 
 func isDirPath(path string) bool {
+	// 判断路径是否为目录
 	if path == "" {
 		return false
 	}
@@ -779,6 +811,7 @@ func isDirPath(path string) bool {
 }
 
 func isSameOrChildPath(path, root string) bool {
+	// 判断路径是否为根路径或子路径
 	path = normalizeKeyPath(path)
 	root = normalizeKeyPath(root)
 	if root == "" {
@@ -796,6 +829,7 @@ func isSameOrChildPath(path, root string) bool {
 	return false
 }
 
+// 根据快照计算自动上传开关
 func autoEnabledFromCopy(auto map[string]bool, path string) bool {
 	norm := normalizeKeyPath(path)
 	if norm == "" {
@@ -836,6 +870,7 @@ func formatSize(bytes int64) string {
 	}
 }
 
+// 格式化耗时展示
 func formatLatency(d time.Duration) string {
 	if d <= 0 {
 		return "--"
@@ -843,6 +878,7 @@ func formatLatency(d time.Duration) string {
 	return fmt.Sprintf("%d ms", d.Milliseconds())
 }
 
+// 格式化时间展示
 func formatDateTime(t time.Time) string {
 	if t.IsZero() {
 		return "--"

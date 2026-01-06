@@ -182,6 +182,7 @@ export const monitorSummary: MonitorSummary[] = [
   { label: "队列 backlog", value: "32", desc: "workers=8 / retry=3" },
 ];
 
+// 过滤示例配置
 export const configSnapshot: ConfigSnapshot = {
   watchDir: "/data/logs/app , /data/etl/raw",
   fileExt: "关闭 · 全量目录",

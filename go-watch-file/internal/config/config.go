@@ -11,6 +11,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"file-watch/internal/match"
 	"file-watch/internal/models"
 )
 
@@ -244,8 +245,9 @@ func validateFileExt(ext string) error {
 		// 允许留空，表示不过滤后缀，监控所有文件
 		return nil
 	}
-	if !strings.HasPrefix(trimmed, ".") || trimmed == "." {
-		return fmt.Errorf("文件后缀必须以 '.' 开头")
+	// 支持多后缀并进行格式校验
+	if _, err := match.ParseExtList(trimmed); err != nil {
+		return err
 	}
 	return nil
 }

@@ -67,8 +67,8 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 	}
 
 	input := &s3.PutObjectInput{
-		Bucket:        aws.String(c.config.Bucket),
-		Key:           aws.String(objectKey),
+		Bucket: aws.String(c.config.Bucket),
+		Key:    aws.String(objectKey),
 		// 只读取固定长度，保证与 ContentLength 匹配
 		Body:          io.NewSectionReader(file, 0, contentLength),
 		ContentLength: aws.Int64(contentLength),

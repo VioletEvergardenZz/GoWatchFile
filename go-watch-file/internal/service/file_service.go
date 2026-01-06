@@ -12,6 +12,7 @@ import (
 	"file-watch/internal/dingtalk"
 	"file-watch/internal/email"
 	"file-watch/internal/logger"
+	"file-watch/internal/match"
 	"file-watch/internal/models"
 	"file-watch/internal/s3"
 	"file-watch/internal/state"
@@ -366,8 +367,9 @@ func validateFileExt(ext string) error {
 		// 允许空字符串，表示不过滤后缀
 		return nil
 	}
-	if !strings.HasPrefix(ext, ".") || ext == "." {
-		return fmt.Errorf("文件后缀必须以 '.' 开头，例如 .log")
+	// 复用多后缀解析进行格式校验
+	if _, err := match.ParseExtList(strings.TrimSpace(ext)); err != nil {
+		return err
 	}
 	return nil
 }

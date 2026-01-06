@@ -1,6 +1,6 @@
 # 文件监控配置
 watch_dir: "${WATCH_DIR}"
-# 仅支持单一后缀。示例：.log / .txt / .zip
+# 多后缀支持，逗号/空格分隔。示例：.log,.txt,.zip
 file_ext: "${FILE_EXT}"
 
 # 通知机器人配置（可选）

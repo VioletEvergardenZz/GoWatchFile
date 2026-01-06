@@ -9,6 +9,7 @@ import (
 	"file-watch/internal/models"
 )
 
+// 覆盖配置加载流程
 func TestLoadConfig(t *testing.T) {
 	watchDir := filepath.ToSlash(t.TempDir())
 
@@ -126,7 +127,7 @@ func TestValidateConfig(t *testing.T) {
 		watchDir := filepath.ToSlash(t.TempDir())
 		invalidConfig := &models.Config{
 			WatchDir: watchDir,
-			FileExt:  "hprof", // missing leading dot
+			FileExt:  "hprof", // 缺少前导点
 			Bucket:   "test-bucket",
 			AK:       "test-ak",
 			SK:       "test-sk",
@@ -138,6 +139,24 @@ func TestValidateConfig(t *testing.T) {
 
 		if err := ValidateConfig(invalidConfig); err == nil {
 			t.Fatal("无效配置应该验证失败")
+		}
+	})
+
+	t.Run("multi file ext", func(t *testing.T) {
+		watchDir := filepath.ToSlash(t.TempDir())
+		validConfig := &models.Config{
+			WatchDir: watchDir,
+			FileExt:  ".log, .txt",
+			Bucket:   "test-bucket",
+			AK:       "test-ak",
+			SK:       "test-sk",
+			Endpoint: "https://test-endpoint.com",
+			Region:   "test-region",
+			LogLevel: "info",
+			APIBind:  ":8080",
+		}
+		if err := ValidateConfig(validConfig); err != nil {
+			t.Fatalf("多后缀配置验证失败: %v", err)
 		}
 	})
 

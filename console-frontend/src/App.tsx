@@ -65,6 +65,17 @@ const fmt = (t: string) => {
   return `${localDatePrefix()} ${t}`;
 };
 
+// 补齐配置快照默认值避免空引用
+const normalizeConfigSnapshot = (value?: Partial<ConfigSnapshot>): ConfigSnapshot => {
+  const base = value ?? {};
+  return {
+    watchDir: base.watchDir ?? "",
+    fileExt: base.fileExt ?? "",
+    silence: base.silence ?? "",
+    concurrency: base.concurrency ?? "",
+  };
+};
+
 const getPreferredTheme = (): "dark" | "light" => {
   if (typeof window === "undefined") return "dark";
   const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
@@ -316,9 +327,9 @@ function App() {
       const summary = data.monitorSummary ?? emptyMonitorSummary;
       const chartPointsData = data.chartPoints ?? emptyChartPoints;
 
-      let configData = (data.configSnapshot as ConfigSnapshot | undefined) ?? emptyConfig;
+      let configData = normalizeConfigSnapshot(data.configSnapshot as ConfigSnapshot | undefined);
       if (lastSavedConfig.current) {
-        configData = { ...configData, ...lastSavedConfig.current };
+        configData = normalizeConfigSnapshot({ ...configData, ...lastSavedConfig.current });
       }
 
       const mergedHero = {
@@ -1165,8 +1176,9 @@ function App() {
               </div>
               <div className="input">
                 <label>文件后缀过滤</label>
+                {/* 支持多个后缀输入 */}
                 <input
-                  placeholder="不填则默认显示监控目录下的所有文件和子目录"
+                  placeholder="支持多个后缀（逗号分隔），不填则默认显示监控目录下的所有文件和子目录"
                   value={configForm.fileExt}
                   onChange={(e) => setConfigForm((prev) => ({ ...prev, fileExt: e.target.value }))}
                 />

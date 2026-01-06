@@ -29,6 +29,7 @@ export type MonitorNote = {
   detail: string;
 };
 
+// 配置快照包含过滤信息
 export type ConfigSnapshot = {
   watchDir: string;
   fileExt: string;
