@@ -209,6 +209,8 @@ function App() {
   const logRequestIdRef = useRef(0);
   const collapseInitRef = useRef(USE_MOCK);
   const lastSuffixFilterRef = useRef<string | null>(USE_MOCK ? heroCopy.suffixFilter : null);
+  const lastRootRef = useRef<string | null>(USE_MOCK ? (treeSeed[0]?.path ?? "") : null);
+  const dirPathsRef = useRef<Set<string>>(new Set());
   const dashboardFetchingRef = useRef(false);
   const visibleSectionsRef = useRef<Map<string, IntersectionObserverEntry>>(new Map());
 
@@ -217,6 +219,8 @@ function App() {
     return filtered.length ? filtered : tree;
   }, [tree, currentRoot]);
 
+  const dirPaths = useMemo(() => collectDirPaths(rootNodes), [rootNodes]);
+
   const activeNode = useMemo(() => {
     if (!activePath) return undefined;
     return findNode(rootNodes, activePath);
@@ -224,15 +228,14 @@ function App() {
 
   useEffect(() => {
     if (collapseInitRef.current) return;
-    if (!tree.length) return;
-    const scopedNodes = tree.filter((node) => !currentRoot || node.path === currentRoot);
-    if (!scopedNodes.length) return;
-    setCollapsed(new Set(collectDirPaths(scopedNodes)));
+    if (!dirPaths.length) return;
+    setCollapsed(new Set(dirPaths));
+    dirPathsRef.current = new Set(dirPaths);
     collapseInitRef.current = true;
-  }, [tree, currentRoot]);
+  }, [dirPaths]);
 
   useEffect(() => {
-    if (!tree.length) return;
+    if (!dirPaths.length) return;
     const current = heroState.suffixFilter ?? "";
     const last = lastSuffixFilterRef.current;
     if (last === null) {
@@ -240,10 +243,54 @@ function App() {
       return;
     }
     if (last === current) return;
-    const scopedNodes = tree.filter((node) => !currentRoot || node.path === currentRoot);
-    setCollapsed(new Set(collectDirPaths(scopedNodes)));
+    setCollapsed(new Set(dirPaths));
+    dirPathsRef.current = new Set(dirPaths);
     lastSuffixFilterRef.current = current;
-  }, [heroState.suffixFilter, tree, currentRoot]);
+  }, [heroState.suffixFilter, dirPaths]);
+
+  useEffect(() => {
+    if (!dirPaths.length) return;
+    const rootKey = currentRoot || rootNodes[0]?.path || "";
+    if (!rootKey) return;
+    const last = lastRootRef.current;
+    if (last === null) {
+      lastRootRef.current = rootKey;
+      return;
+    }
+    if (last === rootKey) return;
+    setCollapsed(new Set(dirPaths));
+    dirPathsRef.current = new Set(dirPaths);
+    lastRootRef.current = rootKey;
+  }, [currentRoot, rootNodes, dirPaths]);
+
+  useEffect(() => {
+    if (!dirPaths.length) return;
+    const currentSet = new Set(dirPaths);
+    const prevSet = dirPathsRef.current;
+    if (prevSet.size === 0) {
+      dirPathsRef.current = currentSet;
+      return;
+    }
+    setCollapsed((prev) => {
+      let changed = false;
+      const next = new Set<string>();
+      for (const path of prev) {
+        if (currentSet.has(path)) {
+          next.add(path);
+        } else {
+          changed = true;
+        }
+      }
+      for (const path of currentSet) {
+        if (!prevSet.has(path)) {
+          next.add(path);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    dirPathsRef.current = currentSet;
+  }, [dirPaths]);
 
   const refreshDashboard = useCallback(async () => {
     if (USE_MOCK) {
