@@ -37,6 +37,7 @@ const UPLOAD_PAGE_SIZE = 5;
 const FILE_PAGE_SIZE = 10;
 const LOG_POLL_MS = 2000;
 const DASHBOARD_POLL_MS = 3000;
+const THEME_STORAGE_KEY = "gwf-theme";
 
 const hasDatePrefix = (value: string) => /\d{4}-\d{2}-\d{2}/.test(value);
 const localDatePrefix = () => {
@@ -47,6 +48,14 @@ const fmt = (t: string) => {
   if (!t || t === "--") return t || "--";
   if (hasDatePrefix(t)) return t;
   return `${localDatePrefix()} ${t}`;
+};
+
+const getPreferredTheme = (): "dark" | "light" => {
+  if (typeof window === "undefined") return "dark";
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  if (stored === "light" || stored === "dark") return stored;
+  if (window.matchMedia?.("(prefers-color-scheme: light)").matches) return "light";
+  return "dark";
 };
 
 const resolveRecordTimestamp = (value: string) => {
@@ -154,6 +163,7 @@ function App() {
   const [filePage, setFilePage] = useState(1);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<"realtime" | "24h">("realtime");
+  const [theme, setTheme] = useState<"dark" | "light">(() => getPreferredTheme());
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(!USE_MOCK);
   const [saving, setSaving] = useState(false);
@@ -279,6 +289,13 @@ function App() {
     if (USE_MOCK) return;
     void refreshDashboard();
   }, [refreshDashboard]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    document.body.dataset.theme = theme;
+    document.body.style.colorScheme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme]);
 
   useEffect(() => {
     if (USE_MOCK) return;
@@ -673,6 +690,22 @@ function App() {
     [chartPointsState]
   );
 
+  const chartPalette = useMemo(
+    () =>
+      theme === "light"
+        ? {
+            legend: "#1f2937",
+            ticks: "#64748b",
+            grid: "rgba(15, 23, 42, 0.08)",
+          }
+        : {
+            legend: "#e5e7eb",
+            ticks: "#9ca3af",
+            grid: "rgba(255,255,255,0.06)",
+          },
+    [theme]
+  );
+
   const parseConcurrency = (value: string) => {
     const workersMatch = value.match(/workers\s*=?\s*(\d+)/i) ?? value.match(/并发\s*=?\s*(\d+)/i);
     const queueMatch = value.match(/queue\s*=?\s*(\d+)/i) ?? value.match(/队列\s*=?\s*(\d+)/i);
@@ -688,22 +721,22 @@ function App() {
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          labels: { color: "#e5e7eb", usePointStyle: true },
+          labels: { color: chartPalette.legend, usePointStyle: true },
         },
         tooltip: { intersect: false, mode: "index" },
       },
       scales: {
         x: {
-          grid: { color: "rgba(255,255,255,0.06)" },
-          ticks: { color: "#9ca3af" },
+          grid: { color: chartPalette.grid },
+          ticks: { color: chartPalette.ticks },
         },
         y: {
-          grid: { color: "rgba(255,255,255,0.06)" },
-          ticks: { color: "#9ca3af" },
+          grid: { color: chartPalette.grid },
+          ticks: { color: chartPalette.ticks },
         },
       },
     }),
-    []
+    [chartPalette]
   );
 
   const renderTree = (nodes: FileNode[], depth = 0) =>
@@ -878,6 +911,19 @@ function App() {
               ) : null}
               <div className={`chip ${timeframe === "realtime" ? "active" : ""}`} onClick={() => setTimeframe("realtime")}>
                 实时
+              </div>
+              <div className="theme-toggle">
+                <span className="muted small">背景</span>
+                <label className="switch mini">
+                  <input
+                    type="checkbox"
+                    aria-label="切换深色/浅色背景"
+                    checked={theme === "light"}
+                    onChange={(e) => setTheme(e.target.checked ? "light" : "dark")}
+                  />
+                  <span className="slider" />
+                </label>
+                <span className="badge ghost">{theme === "light" ? "浅色" : "深色"}</span>
               </div>
             </div>
           </header>
