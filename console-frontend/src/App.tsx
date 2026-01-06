@@ -39,6 +39,21 @@ const LOG_POLL_MS = 2000;
 const DASHBOARD_POLL_MS = 3000;
 const THEME_STORAGE_KEY = "gwf-theme";
 
+type LogMode = "tail" | "search";
+
+type LogFetchOptions = {
+  mode?: LogMode;
+  query?: string;
+};
+
+type FileLogResponse = {
+  lines?: string[];
+  mode?: LogMode;
+  query?: string;
+  matched?: number;
+  truncated?: boolean;
+};
+
 const hasDatePrefix = (value: string) => /\d{4}-\d{2}-\d{2}/.test(value);
 const localDatePrefix = () => {
   const now = new Date();
@@ -158,6 +173,10 @@ function App() {
   const [chartPointsState, setChartPointsState] = useState(USE_MOCK ? chartPoints : emptyChartPoints);
   const [tailLinesState, setTailLinesState] = useState<string[]>([]);
   const [activeLogPath, setActiveLogPath] = useState<string | null>(null);
+  const [logMode, setLogMode] = useState<LogMode>("tail");
+  const [logQuery, setLogQuery] = useState("");
+  const [logQueryApplied, setLogQueryApplied] = useState("");
+  const [logTruncated, setLogTruncated] = useState(false);
   const [followTail, setFollowTail] = useState(true);
   const [uploadPage, setUploadPage] = useState(1);
   const [filePage, setFilePage] = useState(1);
@@ -172,7 +191,7 @@ function App() {
   const lastSavedConfig = useRef<ConfigSnapshot | null>(null);
   const actionTimerRef = useRef<number | undefined>(undefined);
   const tailBoxRef = useRef<HTMLDivElement | null>(null);
-  const logFetchingRef = useRef(false);
+  const logRequestIdRef = useRef(0);
   const dashboardFetchingRef = useRef(false);
   const visibleSectionsRef = useRef<Map<string, IntersectionObserverEntry>>(new Map());
 
@@ -362,14 +381,19 @@ function App() {
     }, 3000);
   }, []);
 
-  const fetchLogLines = useCallback(async (path: string) => {
-    if (logFetchingRef.current) return;
-    logFetchingRef.current = true;
+  const fetchLogLines = useCallback(async (path: string, options: LogFetchOptions = {}) => {
+    const requestId = ++logRequestIdRef.current;
+    const trimmedQuery = options.query?.trim() ?? "";
+    const isSearch = options.mode === "search" || trimmedQuery !== "";
     try {
+      const payload: { path: string; query?: string } = { path };
+      if (trimmedQuery) {
+        payload.query = trimmedQuery;
+      }
       const res = await fetch(`${API_BASE}/api/file-log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -379,45 +403,51 @@ function App() {
           if (payload?.error) message = payload.error;
         } catch {}
         if (message.includes("仅支持文本文件")) {
-          setTailLinesState(["当前文件为二进制，无法展示日志。"]);
+          if (requestId !== logRequestIdRef.current) return;
+          setTailLinesState(["当前文件为二进制，无法展示内容。"]);
           setActiveLogPath(null);
+          setLogTruncated(false);
           setError(null);
           return;
         }
         if (message.includes("文件路径不在监控目录下")) {
-          setTailLinesState(["当前文件已不在监控目录，已停止日志拉取。"]);
+          if (requestId !== logRequestIdRef.current) return;
+          setTailLinesState(["当前文件已不在监控目录，已停止内容拉取。"]);
           setActiveLogPath(null);
+          setLogTruncated(false);
           setError(null);
           return;
         }
-        throw new Error(message || `加载文件日志失败，状态码 ${res.status}`);
+        throw new Error(message || `加载文件内容失败，状态码 ${res.status}`);
       }
-      const data = (await res.json()) as { lines?: string[] };
+      const data = (await res.json()) as FileLogResponse;
+      if (requestId !== logRequestIdRef.current) return;
       setTailLinesState(data.lines ?? []);
+      setLogTruncated(isSearch ? Boolean(data.truncated) : false);
       setError(null);
     } catch (err) {
+      if (requestId !== logRequestIdRef.current) return;
       setError((err as Error).message);
-    } finally {
-      logFetchingRef.current = false;
     }
   }, []);
 
   const handleTailScroll = useCallback(() => {
+    if (logMode !== "tail") return;
     const el = tailBoxRef.current;
     if (!el) return;
     const threshold = 24;
     const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
     setFollowTail((prev) => (prev === atBottom ? prev : atBottom));
-  }, []);
+  }, [logMode]);
 
   useEffect(() => {
-    if (!activeLogPath) return;
-    void fetchLogLines(activeLogPath);
+    if (!activeLogPath || logMode !== "tail") return;
+    void fetchLogLines(activeLogPath, { mode: "tail" });
     const timer = window.setInterval(() => {
-      void fetchLogLines(activeLogPath);
+      void fetchLogLines(activeLogPath, { mode: "tail" });
     }, LOG_POLL_MS);
     return () => window.clearInterval(timer);
-  }, [activeLogPath, fetchLogLines]);
+  }, [activeLogPath, fetchLogLines, logMode]);
 
   useEffect(() => {
     if (!activeLogPath) return;
@@ -425,12 +455,60 @@ function App() {
   }, [activeLogPath]);
 
   useEffect(() => {
-    if (!activeLogPath || !tailBoxRef.current || !followTail) return;
+    if (!activeLogPath || logMode !== "tail" || !tailBoxRef.current || !followTail) return;
     const el = tailBoxRef.current;
     window.requestAnimationFrame(() => {
       el.scrollTop = el.scrollHeight;
     });
-  }, [tailLinesState, activeLogPath, followTail]);
+  }, [tailLinesState, activeLogPath, followTail, logMode]);
+
+  const switchToTail = useCallback(() => {
+    setLogMode("tail");
+    setLogQueryApplied("");
+    setLogTruncated(false);
+    setFollowTail(true);
+  }, []);
+
+  const runLogSearch = useCallback(() => {
+    if (!activeLogPath) return;
+    const trimmed = logQuery.trim();
+    if (!trimmed) return;
+    setLogMode("search");
+    setLogQueryApplied(trimmed);
+    setLogTruncated(false);
+    setFollowTail(false);
+    void fetchLogLines(activeLogPath, { mode: "search", query: trimmed });
+  }, [activeLogPath, fetchLogLines, logQuery]);
+
+  const renderLogLine = useCallback(
+    (line: string) => {
+      if (logMode !== "search" || !logQueryApplied) return line;
+      const lowerLine = line.toLowerCase();
+      const lowerQuery = logQueryApplied.toLowerCase();
+      if (!lowerQuery || !lowerLine.includes(lowerQuery)) return line;
+      const parts: Array<string | JSX.Element> = [];
+      let cursor = 0;
+      let index = lowerLine.indexOf(lowerQuery, cursor);
+      while (index !== -1) {
+        if (index > cursor) {
+          parts.push(line.slice(cursor, index));
+        }
+        const match = line.slice(index, index + lowerQuery.length);
+        parts.push(
+          <span className="highlight" key={`${index}-${cursor}`}>
+            {match}
+          </span>
+        );
+        cursor = index + lowerQuery.length;
+        index = lowerLine.indexOf(lowerQuery, cursor);
+      }
+      if (cursor < line.length) {
+        parts.push(line.slice(cursor));
+      }
+      return parts;
+    },
+    [logMode, logQueryApplied]
+  );
 
   const handleAutoToggle = async (path: string, value: boolean) => {
     const node = findNode(tree, path);
@@ -502,7 +580,11 @@ function App() {
   const handleViewLog = (file: FileItem) => {
     if (!file.path) return;
     setError(null);
+    setLogMode("tail");
+    setLogQueryApplied("");
+    setLogTruncated(false);
     setFollowTail(true);
+    logRequestIdRef.current += 1;
     setActiveLogPath(file.path);
   };
 
@@ -584,8 +666,14 @@ function App() {
   }, [filePage, filePageSafe]);
 
   const handleClearTail = () => {
+    logRequestIdRef.current += 1;
     setTailLinesState([]);
     setActiveLogPath(null);
+    setLogMode("tail");
+    setLogQuery("");
+    setLogQueryApplied("");
+    setLogTruncated(false);
+    setFollowTail(true);
   };
 
   const handleSaveSnapshot = async () => {
@@ -842,7 +930,7 @@ function App() {
                   : id === "files"
                   ? "文件列表"
                   : id === "tail"
-                  ? "文件日志"
+                  ? "文件内容"
                   : id === "failures"
                   ? "上传记录"
                   : "监控";
@@ -856,7 +944,7 @@ function App() {
                   : id === "files"
                   ? "基础信息"
                   : id === "tail"
-                  ? "文件日志"
+                  ? "文件内容"
                   : id === "failures"
                   ? "最近上传"
                   : "吞吐 / 队列";
@@ -870,7 +958,7 @@ function App() {
                   : id === "files"
                   ? "列表"
                   : id === "tail"
-                  ? "日志"
+                  ? "内容"
                   : id === "failures"
                   ? "记录"
                   : "图表";
@@ -1214,20 +1302,50 @@ function App() {
 
           <section className="panel" id="tail">
             <div className="section-title">
-              <h2>文件日志</h2>
+              <h2>文件内容</h2>
             </div>
-            <div className="toolbar">
-              <div className="chip active">实时</div>
-              <button className="btn secondary" type="button" onClick={handleClearTail}>
-                清除
-              </button>
+            <div className="toolbar space-between">
+              <div className="toolbar-actions">
+                <div className={`chip ${logMode === "tail" ? "active" : ""}`} onClick={switchToTail}>
+                  实时
+                </div>
+                <div className={`chip ${logMode === "search" ? "active" : ""}`} onClick={runLogSearch}>
+                  全文检索
+                </div>
+                {logMode === "search" && logQueryApplied ? (
+                  <span className="badge ghost">
+                    关键词 {logQueryApplied} · 匹配 {tailLinesState.length} 行{logTruncated ? " · 已截断" : ""}
+                  </span>
+                ) : null}
+              </div>
+              <div className="toolbar-actions">
+                <input
+                  className="search log-search"
+                  placeholder="关键词/全文检索"
+                  value={logQuery}
+                  onChange={(e) => setLogQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") runLogSearch();
+                  }}
+                />
+                <button className="btn secondary" type="button" onClick={runLogSearch} disabled={!activeLogPath || !logQuery.trim()}>
+                  检索
+                </button>
+                <button className="btn secondary" type="button" onClick={handleClearTail}>
+                  清除
+                </button>
+              </div>
             </div>
             <div className="tail-box" ref={tailBoxRef} onScroll={handleTailScroll}>
-              {tailLinesState.map((line, idx) => (
-                <div className="tail-line" key={`${line}-${idx}`}>
-                  {line}
-                </div>
-              ))}
+              {logMode === "search" && logQueryApplied && tailLinesState.length === 0 ? (
+                <div className="tail-line">未找到匹配内容</div>
+              ) : (
+                tailLinesState.map((line, idx) => (
+                  <div className="tail-line" key={`${line}-${idx}`}>
+                    {renderLogLine(line)}
+                  </div>
+                ))
+              )}
             </div>
           </section>
 

@@ -103,10 +103,10 @@ api_bind: "${API_BIND}"
 - Body：`{ "path": "/path/to/file" }`
 - 说明：即使该路径自动上传关闭，也会触发一次上传（单次）。
 
-### 4) 文件 Tail
+### 4) 文件内容 / 全文检索
 - `POST /api/file-log`
-- Body：`{ "path": "/path/to/file" }`
-- 限制：只读取**文本文件**，最多 **512KB / 500 行**。
+- Body：`{ "path": "/path/to/file", "query": "keyword", "limit": 500, "caseSensitive": false }`
+- 说明：不传 `query` 时读取文件尾部（仅文本文件，最多 **512KB / 500 行**）；传入 `query` 时进行全文检索并返回匹配行（默认最多 **2000 行**，超出会截断）。
 
 ### 5) 运行时配置更新
 - `POST /api/config`

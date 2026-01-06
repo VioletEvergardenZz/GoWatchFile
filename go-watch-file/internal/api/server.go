@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -32,6 +33,8 @@ type handler struct {
 const (
 	maxFileLogBytes = 512 * 1024 //最多读取 512KB 的内容
 	maxFileLogLines = 500        //最多返回 500 行内容
+	maxFileSearchLines = 2000    //最多返回 2000 行匹配结果
+	maxFileSearchLineBytes = 1024 * 1024 //单行最大 1MB，避免超长行撑爆内存
 )
 
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
@@ -160,7 +163,10 @@ func (h *handler) fileLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Path string `json:"path"`
+		Path          string `json:"path"`
+		Query         string `json:"query"`
+		Limit         int    `json:"limit"`
+		CaseSensitive bool   `json:"caseSensitive"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Path) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
@@ -188,6 +194,24 @@ func (h *handler) fileLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is a directory"})
 		return
 	}
+	// query 为空时走 tail 模式，否则走全文检索
+	query := strings.TrimSpace(req.Query)
+	if query != "" {
+		lines, truncated, err := searchFileLogLines(cleanedPath, query, req.Limit, req.CaseSensitive)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":        true,
+			"mode":      "search",
+			"query":     query,
+			"matched":   len(lines),
+			"truncated": truncated,
+			"lines":     lines,
+		})
+		return
+	}
 	lines, err := readFileLogLines(cleanedPath)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
@@ -195,6 +219,7 @@ func (h *handler) fileLog(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":    true,
+		"mode":  "tail",
 		"lines": lines,
 	})
 }
@@ -316,6 +341,73 @@ func readFileLogLines(path string) ([]string, error) {
 		lines = lines[len(lines)-maxFileLogLines:] //只保留最后 maxFileLogLines 行
 	}
 	return lines, nil
+}
+
+// searchFileLogLines 搜索文件内容并返回匹配行
+func searchFileLogLines(path, query string, limit int, caseSensitive bool) ([]string, bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, false, err
+	}
+	defer file.Close()
+
+	// 先做文本判定，避免扫描二进制文件
+	if err := ensureTextFile(file); err != nil {
+		return nil, false, err
+	}
+	if limit <= 0 || limit > maxFileSearchLines {
+		limit = maxFileSearchLines
+	}
+	trimmedQuery := strings.TrimSpace(query)
+	if trimmedQuery == "" {
+		return []string{}, false, nil
+	}
+	normalizedQuery := trimmedQuery
+	if !caseSensitive {
+		normalizedQuery = strings.ToLower(trimmedQuery)
+	}
+
+	// 使用 Scanner 按行扫描，避免一次性读入大文件
+	capHint := limit
+	if capHint > 64 {
+		capHint = 64
+	}
+	matches := make([]string, 0, capHint)
+	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), maxFileSearchLineBytes)
+	for scanner.Scan() {
+		line := strings.TrimRight(scanner.Text(), "\r")
+		haystack := line
+		if !caseSensitive {
+			haystack = strings.ToLower(line)
+		}
+		// 包含关键字即视为命中
+		if strings.Contains(haystack, normalizedQuery) {
+			matches = append(matches, line)
+			if len(matches) >= limit {
+				return matches, true, nil
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return nil, false, err
+	}
+	return matches, false, nil
+}
+
+// ensureTextFile 用于快速判断是否为文本文件
+func ensureTextFile(file *os.File) error {
+	buf := make([]byte, 4096)
+	n, err := file.Read(buf)
+	if err != nil && err != io.EOF {
+		return err
+	}
+	if !isTextData(buf[:n]) {
+		return fmt.Errorf("仅支持文本文件")
+	}
+	// 重置到文件开头，避免影响后续扫描
+	_, err = file.Seek(0, io.SeekStart)
+	return err
 }
 
 // 简单判断是否是文本数据
