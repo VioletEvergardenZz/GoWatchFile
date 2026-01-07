@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"file-watch/internal/logger"
 	"file-watch/internal/match"
 	"file-watch/internal/models"
+	"file-watch/internal/pathutil"
 	"file-watch/internal/s3"
 	"file-watch/internal/state"
 	"file-watch/internal/upload"
@@ -218,7 +220,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 
 	// 处理 watchDir 更新并做校验
 	if strings.TrimSpace(watchDir) != "" && strings.TrimSpace(watchDir) != current.WatchDir {
-		normalized, err := normalizeWatchDir(strings.TrimSpace(watchDir))
+		normalized, err := normalizeWatchDirs(strings.TrimSpace(watchDir))
 		if err != nil {
 			return nil, err
 		}
@@ -342,23 +344,42 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	return fs.Config(), nil
 }
 
-// normalizeWatchDir 校验并规范化监控目录
-func normalizeWatchDir(path string) (string, error) {
-	if strings.TrimSpace(path) == "" {
+// normalizeWatchDirs 校验并规范化监控目录列表
+func normalizeWatchDirs(raw string) (string, error) {
+	dirs := pathutil.SplitWatchDirs(raw)
+	if len(dirs) == 0 {
 		return "", fmt.Errorf("监控目录不能为空")
 	}
-	absPath, err := filepath.Abs(path)
-	if err != nil {
-		return "", fmt.Errorf("监控目录无效: %w", err)
+	normalized := make([]string, 0, len(dirs))
+	seen := make(map[string]struct{})
+	for _, dir := range dirs {
+		absPath, err := filepath.Abs(dir)
+		if err != nil {
+			return "", fmt.Errorf("监控目录无效: %w", err)
+		}
+		stat, statErr := os.Stat(absPath)
+		if statErr != nil {
+			return "", fmt.Errorf("监控目录无效: %w", statErr)
+		}
+		if !stat.IsDir() {
+			return "", fmt.Errorf("监控目录不是一个目录")
+		}
+		key := normalizeWatchDirKey(absPath)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		normalized = append(normalized, absPath)
 	}
-	stat, statErr := os.Stat(absPath)
-	if statErr != nil {
-		return "", fmt.Errorf("监控目录无效: %w", statErr)
+	return strings.Join(normalized, ","), nil
+}
+
+func normalizeWatchDirKey(path string) string {
+	key := filepath.ToSlash(path)
+	if runtime.GOOS == "windows" {
+		key = strings.ToLower(key)
 	}
-	if !stat.IsDir() {
-		return "", fmt.Errorf("监控目录不是一个目录")
-	}
-	return absPath, nil
+	return key
 }
 
 // validateFileExt 校验文件后缀格式

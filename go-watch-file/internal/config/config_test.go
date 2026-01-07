@@ -142,6 +142,25 @@ func TestValidateConfig(t *testing.T) {
 		}
 	})
 
+	t.Run("multi watch dir", func(t *testing.T) {
+		watchDir1 := filepath.ToSlash(t.TempDir())
+		watchDir2 := filepath.ToSlash(t.TempDir())
+		validConfig := &models.Config{
+			WatchDir: watchDir1 + "," + watchDir2,
+			FileExt:  ".log",
+			Bucket:   "test-bucket",
+			AK:       "test-ak",
+			SK:       "test-sk",
+			Endpoint: "https://test-endpoint.com",
+			Region:   "test-region",
+			LogLevel: "info",
+			APIBind:  ":8080",
+		}
+		if err := ValidateConfig(validConfig); err != nil {
+			t.Fatalf("多目录配置验证失败: %v", err)
+		}
+	})
+
 	t.Run("multi file ext", func(t *testing.T) {
 		watchDir := filepath.ToSlash(t.TempDir())
 		validConfig := &models.Config{

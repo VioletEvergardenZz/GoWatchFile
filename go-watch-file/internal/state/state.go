@@ -12,6 +12,7 @@ import (
 
 	"file-watch/internal/match"
 	"file-watch/internal/models"
+	"file-watch/internal/pathutil"
 )
 
 // “内存中保留数量的上限”常量，用来限制运行态数据列表的长度
@@ -62,9 +63,9 @@ type RuntimeState struct {
 	mu sync.RWMutex //读多写少，读用 RLock，写用 Lock
 
 	//配置/环境
-	host     string
-	watchDir string
-	matcher  *match.Matcher
+	host      string
+	watchDirs []string
+	matcher   *match.Matcher
 
 	//文件状态
 	fileState map[string]fileState
@@ -85,14 +86,18 @@ type RuntimeState struct {
 // NewRuntimeState 基于配置默认值构建 RuntimeState
 func NewRuntimeState(cfg *models.Config) *RuntimeState {
 	host, _ := os.Hostname()
-	watchDir := normalizePath(cfg.WatchDir)
+	watchDirs := pathutil.SplitWatchDirs(cfg.WatchDir)
 	auto := map[string]bool{}
-	if watchDir != "" {
-		auto[normalizeKeyPath(watchDir)] = true
+	for _, dir := range watchDirs {
+		norm := normalizePath(dir)
+		if norm == "" {
+			continue
+		}
+		auto[normalizeKeyPath(norm)] = true
 	}
 	return &RuntimeState{
-		host:     host,
-		watchDir: watchDir,
+		host:      host,
+		watchDirs: watchDirs,
 		// 统一复用匹配器做后缀过滤
 		matcher:   match.NewMatcher(cfg.FileExt),
 		fileState: make(map[string]fileState),
@@ -122,31 +127,46 @@ func (s *RuntimeState) CarryOverFrom(old *RuntimeState) {
 
 // BootstrapExisting 预加载监控目录下的已有文件为已存在状态
 func (s *RuntimeState) BootstrapExisting() error {
-	if s.watchDir == "" {
+	if len(s.watchDirs) == 0 {
 		return nil
 	}
 
-	//扫描监控目录里的所有文件和子目录
-	err := filepath.WalkDir(s.watchDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
+	// 扫描多个监控目录并去重
+	seen := make(map[string]struct{})
+	var walkErr error
+	for _, watchDir := range s.watchDirs {
+		if strings.TrimSpace(watchDir) == "" {
+			continue
+		}
+		err := filepath.WalkDir(watchDir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !s.isTargetFile(path) { //不符合目标后缀,跳过
+				return nil
+			}
+			norm := normalizePath(path)
+			if _, ok := seen[norm]; ok {
+				return nil
+			}
+			seen[norm] = struct{}{}
+			s.mu.Lock()
+			s.fileState[norm] = fileState{
+				Status:     StatusExisting,
+				AutoUpload: s.autoUploadLocked(path),
+				Note:       "历史文件",
+			}
+			s.mu.Unlock()
 			return nil
+		})
+		if err != nil && walkErr == nil {
+			walkErr = err
 		}
-		if d.IsDir() {
-			return nil
-		}
-		if !s.isTargetFile(path) { //不符合目标后缀,跳过
-			return nil
-		}
-		s.mu.Lock()
-		s.fileState[normalizePath(path)] = fileState{
-			Status:     StatusExisting,
-			AutoUpload: s.autoUploadLocked(path),
-			Note:       "历史文件",
-		}
-		s.mu.Unlock()
-		return nil
-	})
-	return err
+	}
+	return walkErr
 }
 
 // AutoUploadEnabled 返回该路径是否启用自动上传
@@ -348,8 +368,18 @@ func (s *RuntimeState) DirectoryTree() []FileNode {
 // 生成目录树结构
 func (s *RuntimeState) buildDirectoryTree(files []scannedFile) []FileNode {
 	dirMap := make(map[string]*FileNode)
-	rootPath := normalizePath(s.watchDir)
-	if rootPath != "" {
+	rootPaths := make([]string, 0, len(s.watchDirs))
+	rootSet := make(map[string]struct{})
+	for _, watchDir := range s.watchDirs {
+		rootPath := normalizePath(watchDir)
+		if rootPath == "" {
+			continue
+		}
+		if _, exists := rootSet[rootPath]; exists {
+			continue
+		}
+		rootSet[rootPath] = struct{}{}
+		rootPaths = append(rootPaths, rootPath)
 		dirMap[rootPath] = &FileNode{
 			Name:       rootPath,
 			Path:       rootPath,
@@ -407,7 +437,7 @@ func (s *RuntimeState) buildDirectoryTree(files []scannedFile) []FileNode {
 		return strings.Count(dirPaths[i], "/") > strings.Count(dirPaths[j], "/")
 	})
 	for _, dirPath := range dirPaths {
-		if dirPath == rootPath {
+		if _, isRoot := rootSet[dirPath]; isRoot {
 			continue
 		}
 		parentPath := normalizePath(filepath.Dir(dirPath))
@@ -420,13 +450,17 @@ func (s *RuntimeState) buildDirectoryTree(files []scannedFile) []FileNode {
 		sortChildren(node)
 	}
 
-	if rootPath != "" {
+	roots := []FileNode{}
+	for _, rootPath := range rootPaths {
 		if root, ok := dirMap[rootPath]; ok {
-			return []FileNode{*root}
+			roots = append(roots, *root)
 		}
 	}
+	if len(roots) > 0 {
+		return roots
+	}
 
-	roots := []FileNode{}
+	roots = []FileNode{}
 	for path, node := range dirMap {
 		if normalizePath(filepath.Dir(path)) == path || path == "" {
 			roots = append(roots, *node)
@@ -536,9 +570,17 @@ func (s *RuntimeState) HeroCopy(cfg *models.Config) HeroCopy {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	suffix := formatSuffixFilter(cfg.FileExt)
+	watchDirs := make([]string, 0, len(s.watchDirs))
+	for _, dir := range s.watchDirs {
+		norm := normalizePath(dir)
+		if norm == "" {
+			continue
+		}
+		watchDirs = append(watchDirs, norm)
+	}
 	return HeroCopy{
 		Agent:        s.host,
-		WatchDirs:    []string{cfg.WatchDir},
+		WatchDirs:    watchDirs,
 		SuffixFilter: suffix,
 		Silence:      cfg.Silence,
 		Queue:        fmt.Sprintf("队列 %d", s.queueLen),
@@ -640,35 +682,45 @@ func (s *RuntimeState) collectFiles() []scannedFile {
 	s.mu.RUnlock()
 
 	files := []scannedFile{}
-	_ = filepath.WalkDir(s.watchDir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
+	seen := make(map[string]struct{})
+	for _, watchDir := range s.watchDirs {
+		if strings.TrimSpace(watchDir) == "" {
+			continue
+		}
+		_ = filepath.WalkDir(watchDir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			if !s.isTargetFile(path) {
+				return nil
+			}
+			stat, statErr := d.Info()
+			if statErr != nil {
+				return nil
+			}
+			norm := normalizePath(path)
+			if _, ok := seen[norm]; ok {
+				return nil
+			}
+			seen[norm] = struct{}{}
+			fsState := stateCopy[norm]
+			if fsState.Status == StatusUnknown {
+				fsState.Status = StatusExisting
+			}
+			autoEnabled := autoEnabledFromCopy(autoCopy, norm)
+			fsState.AutoUpload = autoEnabled
+			files = append(files, scannedFile{
+				path:    norm,
+				size:    stat.Size(),
+				modTime: stat.ModTime(),
+				state:   fsState,
+			})
 			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if !s.isTargetFile(path) {
-			return nil
-		}
-		stat, statErr := d.Info()
-		if statErr != nil {
-			return nil
-		}
-		norm := normalizePath(path)
-		fsState := stateCopy[norm]
-		if fsState.Status == StatusUnknown {
-			fsState.Status = StatusExisting
-		}
-		autoEnabled := autoEnabledFromCopy(autoCopy, norm)
-		fsState.AutoUpload = autoEnabled
-		files = append(files, scannedFile{
-			path:    norm,
-			size:    stat.Size(),
-			modTime: stat.ModTime(),
-			state:   fsState,
 		})
-		return nil
-	})
+	}
 
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].modTime.After(files[j].modTime)

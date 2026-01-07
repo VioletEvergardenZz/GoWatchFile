@@ -85,6 +85,48 @@ func TestBuildObjectKey_StrictAndPermissive(t *testing.T) {
 	}
 }
 
+func TestRelativePathAny_PicksDeepestBase(t *testing.T) {
+	baseDir := t.TempDir()
+	nestedDir := filepath.Join(baseDir, "nested")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("创建目录失败: %v", err)
+	}
+	fileInNested := filepath.Join(nestedDir, "deep.txt")
+	if err := os.WriteFile(fileInNested, []byte("data"), 0o644); err != nil {
+		t.Fatalf("写入文件失败: %v", err)
+	}
+	base, rel, err := RelativePathAny([]string{baseDir, nestedDir}, fileInNested)
+	if err != nil {
+		t.Fatalf("RelativePathAny 返回错误: %v", err)
+	}
+	if base != nestedDir {
+		t.Fatalf("匹配目录不符合预期，实际 %q", base)
+	}
+	if rel != "deep.txt" {
+		t.Fatalf("相对路径不符合预期，实际 %q", rel)
+	}
+}
+
+func TestBuildObjectKeyStrictForDirs(t *testing.T) {
+	baseDir := t.TempDir()
+	nestedDir := filepath.Join(baseDir, "nested")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatalf("创建目录失败: %v", err)
+	}
+	fileInNested := filepath.Join(nestedDir, "deep.txt")
+	if err := os.WriteFile(fileInNested, []byte("data"), 0o644); err != nil {
+		t.Fatalf("写入文件失败: %v", err)
+	}
+	key, err := BuildObjectKeyStrictForDirs([]string{baseDir, nestedDir}, fileInNested)
+	if err != nil {
+		t.Fatalf("构建对象 key 失败: %v", err)
+	}
+	expected := trimLeadingSlash(joinURLPath(trimLeadingSlash(toSlashPath(nestedDir)), "deep.txt"))
+	if key != expected {
+		t.Fatalf("严格模式生成的 key 不符合预期: %q（期望 %q）", key, expected)
+	}
+}
+
 func TestBuildDownloadURL_PathStyleAndEscape(t *testing.T) {
 	u := BuildDownloadURL("https://example.com:9000/api", "my-bucket", "folder/a b#c?.txt", true, false)
 	want := "https://example.com:9000/api/my-bucket/folder/a%20b%23c%3F.txt"

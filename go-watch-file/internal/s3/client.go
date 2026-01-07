@@ -96,7 +96,8 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 }
 
 func (c *Client) buildObjectKey(filePath string) (string, error) {
-	return pathutil.BuildObjectKeyStrict(c.config.WatchDir, filePath)
+	watchDirs := pathutil.SplitWatchDirs(c.config.WatchDir)
+	return pathutil.BuildObjectKeyStrictForDirs(watchDirs, filePath)
 }
 
 func (c *Client) buildDownloadURL(objectKey string) string {

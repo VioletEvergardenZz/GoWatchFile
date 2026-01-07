@@ -18,6 +18,7 @@ import (
 	"file-watch/internal/logger"
 	"file-watch/internal/match"
 	"file-watch/internal/models"
+	"file-watch/internal/pathutil"
 )
 
 const (
@@ -77,10 +78,11 @@ func NewFileWatcher(config *models.Config, uploadPool UploadPool) (*FileWatcher,
 // Start 启动文件监控
 func (fw *FileWatcher) Start() error {
 	logger.Info("初始化文件监控器...")
-	logger.Info("开始监控目录: %s", fw.config.WatchDir)
+	watchDirs := pathutil.SplitWatchDirs(fw.config.WatchDir)
+	logger.Info("开始监控目录: %s", strings.Join(watchDirs, ", "))
 
-	//递归把目录都加入监听
-	err := fw.addWatchRecursively(fw.config.WatchDir)
+	// 多目录场景下逐个加入监听
+	err := fw.addWatchRecursivelyForDirs(watchDirs)
 	if err != nil {
 		if errors.Is(err, errWatchLimitReached) {
 			logger.Warn("监控目录过大导致系统句柄不足，已降级为部分监控: %v", err)
@@ -116,15 +118,16 @@ func (fw *FileWatcher) Reset(config *models.Config) error {
 	// 重建匹配器确保配置更新生效
 	fw.matcher = match.NewMatcher(config.FileExt)
 
-	logger.Info("开始监控目录: %s", fw.config.WatchDir)
-	err := fw.addWatchRecursively(fw.config.WatchDir)
+	watchDirs := pathutil.SplitWatchDirs(fw.config.WatchDir)
+	logger.Info("开始监控目录: %s", strings.Join(watchDirs, ", "))
+	err := fw.addWatchRecursivelyForDirs(watchDirs)
 	if err != nil && !errors.Is(err, errWatchLimitReached) {
 		logger.Error("添加目录监控失败: %v", err)
 		if prevConfig != nil {
 			fw.removeAllWatches()
 			fw.config = prevConfig
 			fw.silenceWindow = parseSilenceWindow(prevConfig.Silence)
-			restoreErr := fw.addWatchRecursively(prevConfig.WatchDir)
+			restoreErr := fw.addWatchRecursivelyForDirs(pathutil.SplitWatchDirs(prevConfig.WatchDir))
 			if restoreErr != nil {
 				if errors.Is(restoreErr, errWatchLimitReached) {
 					logger.Warn("恢复旧目录监控降级为部分监控: %v", restoreErr)
@@ -360,6 +363,29 @@ func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 		}
 		return nil
 	})
+}
+
+func (fw *FileWatcher) addWatchRecursivelyForDirs(dirs []string) error {
+	if len(dirs) == 0 {
+		return errors.New("watch dir is empty")
+	}
+	var limitReached bool
+	for _, dir := range dirs {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		if err := fw.addWatchRecursively(dir); err != nil {
+			if errors.Is(err, errWatchLimitReached) {
+				limitReached = true
+				break
+			}
+			return err
+		}
+	}
+	if limitReached {
+		return errWatchLimitReached
+	}
+	return nil
 }
 
 // handleFileEvent 处理文件事件

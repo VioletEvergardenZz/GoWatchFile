@@ -13,6 +13,7 @@ import (
 
 	"file-watch/internal/match"
 	"file-watch/internal/models"
+	"file-watch/internal/pathutil"
 )
 
 const (
@@ -64,7 +65,7 @@ func LoadConfig(configFile string) (*models.Config, error) {
 
 // ValidateConfig 验证配置必填项。
 func ValidateConfig(config *models.Config) error {
-	if err := validateWatchDir(config.WatchDir); err != nil {
+	if err := validateWatchDirs(config.WatchDir); err != nil {
 		return err
 	}
 	if err := validateFileExt(config.FileExt); err != nil {
@@ -235,6 +236,19 @@ func validateWatchDir(path string) error {
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("监控目录不是一个目录")
+	}
+	return nil
+}
+
+func validateWatchDirs(raw string) error {
+	dirs := pathutil.SplitWatchDirs(raw)
+	if len(dirs) == 0 {
+		return requireValue("", "监控目录")
+	}
+	for _, dir := range dirs {
+		if err := validateWatchDir(dir); err != nil {
+			return err
+		}
 	}
 	return nil
 }

@@ -20,7 +20,7 @@ import (
 
 // 统一启动/停止 HTTP 服务
 type Server struct {
-	httpServer *http.Server		//负责监听端口、接收请求、管理超时/连接等
+	httpServer *http.Server //负责监听端口、接收请求、管理超时/连接等
 }
 
 // 请求处理器
@@ -31,15 +31,15 @@ type handler struct {
 
 // 日志读取的限制常量
 const (
-	maxFileLogBytes = 512 * 1024 //最多读取 512KB 的内容
-	maxFileLogLines = 500        //最多返回 500 行内容
-	maxFileSearchLines = 2000    //最多返回 2000 行匹配结果
+	maxFileLogBytes        = 512 * 1024  //最多读取 512KB 的内容
+	maxFileLogLines        = 500         //最多返回 500 行内容
+	maxFileSearchLines     = 2000        //最多返回 2000 行匹配结果
 	maxFileSearchLineBytes = 1024 * 1024 //单行最大 1MB，避免超长行撑爆内存
 )
 
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	h := &handler{cfg: cfg, fs: fs}
-	mux := http.NewServeMux()		//创建一个路由器（根据 URL 路径分发请求）
+	mux := http.NewServeMux() //创建一个路由器（根据 URL 路径分发请求）
 	mux.HandleFunc("/api/dashboard", h.dashboard)
 	mux.HandleFunc("/api/auto-upload", h.toggleAutoUpload)
 	mux.HandleFunc("/api/manual-upload", h.manualUpload)
@@ -65,7 +65,6 @@ func (s *Server) Start() {
 		}
 	}()
 }
-
 
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.httpServer == nil {
@@ -181,7 +180,12 @@ func (h *handler) fileLog(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "watch dir not configured"})
 		return
 	}
-	if _, err := pathutil.RelativePath(cfg.WatchDir, cleanedPath); err != nil {
+	watchDirs := pathutil.SplitWatchDirs(cfg.WatchDir)
+	if len(watchDirs) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "watch dir not configured"})
+		return
+	}
+	if _, _, err := pathutil.RelativePathAny(watchDirs, cleanedPath); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
@@ -269,12 +273,11 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
-//统一返回 JSON 响应
+// 统一返回 JSON 响应
 func writeJSON(w http.ResponseWriter, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)		//编码成 JSON，直接写进响应体里（这里不处理错误）
+	_ = json.NewEncoder(w).Encode(payload) //编码成 JSON，直接写进响应体里（这里不处理错误）
 }
 
 func withCORS(next http.Handler) http.Handler {
