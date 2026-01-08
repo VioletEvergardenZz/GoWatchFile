@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Line } from "react-chartjs-2";
 import type { ChartOptions } from "chart.js";
 import { CategoryScale, Chart as ChartJS, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from "chart.js";
@@ -64,6 +64,74 @@ const fmt = (t: string) => {
   if (hasDatePrefix(t)) return t;
   return `${localDatePrefix()} ${t}`;
 };
+
+const WATCH_DIR_CONFIG_SPLIT_RE = /[,\n\r;，；]+/;
+
+const splitWatchDirs = (raw: string) =>
+  raw
+    .split(WATCH_DIR_CONFIG_SPLIT_RE)
+    .map((dir) => dir.trim())
+    .filter(Boolean);
+
+const isWatchDirInputSeparator = (value: string) =>
+  value === "," ||
+  value === ";" ||
+  value === "，" ||
+  value === "；" ||
+  value === "\n" ||
+  value === "\r" ||
+  value === "\t" ||
+  value === " ";
+
+const splitWatchDirsInput = (raw: string) => {
+  const out: string[] = [];
+  let buffer = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+
+  const push = () => {
+    const trimmed = buffer.trim();
+    if (trimmed) out.push(trimmed);
+    buffer = "";
+  };
+
+  for (let i = 0; i < raw.length; i += 1) {
+    const ch = raw[i];
+    if (escaped) {
+      buffer += ch;
+      escaped = false;
+      continue;
+    }
+    if (quote) {
+      if (ch === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (ch === quote) {
+        quote = null;
+        continue;
+      }
+      buffer += ch;
+      continue;
+    }
+    if (ch === "'" || ch === "\"") {
+      quote = ch;
+      continue;
+    }
+    if (isWatchDirInputSeparator(ch)) {
+      push();
+      continue;
+    }
+    buffer += ch;
+  }
+  if (escaped) {
+    buffer += "\\";
+  }
+  push();
+  return out;
+};
+
+const normalizeWatchDirInput = (raw: string) => splitWatchDirsInput(raw).join(",");
 
 // 补齐配置快照默认值避免空引用
 const normalizeConfigSnapshot = (value?: Partial<ConfigSnapshot>): ConfigSnapshot => {
@@ -336,7 +404,7 @@ function App() {
         ...heroData,
         silence: lastSavedConfig.current?.silence ?? heroData.silence,
         watchDirs: lastSavedConfig.current?.watchDir
-          ? lastSavedConfig.current.watchDir.split(",").map((d) => d.trim()).filter(Boolean)
+          ? splitWatchDirs(lastSavedConfig.current.watchDir)
           : heroData.watchDirs,
       };
 
@@ -384,7 +452,7 @@ function App() {
         ...heroData,
         silence: lastSavedConfig.current?.silence ?? heroData.silence,
         watchDirs: lastSavedConfig.current?.watchDir
-          ? lastSavedConfig.current.watchDir.split(",").map((d) => d.trim()).filter(Boolean)
+          ? splitWatchDirs(lastSavedConfig.current.watchDir)
           : heroData.watchDirs,
       };
 
@@ -584,7 +652,7 @@ function App() {
       const lowerLine = line.toLowerCase();
       const lowerQuery = logQueryApplied.toLowerCase();
       if (!lowerQuery || !lowerLine.includes(lowerQuery)) return line;
-      const parts: Array<string | JSX.Element> = [];
+      const parts: ReactNode[] = [];
       let cursor = 0;
       let index = lowerLine.indexOf(lowerQuery, cursor);
       while (index !== -1) {
@@ -769,7 +837,7 @@ function App() {
   const handleSaveSnapshot = async () => {
     setSaveMessage(null);
     setError(null);
-    const watchDir = configForm.watchDir?.trim();
+    const watchDir = normalizeWatchDirInput(configForm.watchDir ?? "");
     const fileExt = configForm.fileExt?.trim() ?? "";
     const silence = configForm.silence?.trim() ?? "";
     if (!watchDir) {
@@ -810,19 +878,22 @@ function App() {
         concurrency: payloadConfig?.concurrency ?? configForm.concurrency,
         silence: payloadConfig?.silence ?? silence ?? configForm.silence,
       };
+      const nextWatchDirs = splitWatchDirs(nextConfig.watchDir);
+      const nextRoot = nextWatchDirs.includes(currentRoot) ? currentRoot : nextWatchDirs[0] ?? "";
       lastSavedConfig.current = nextConfig;
       setConfigForm(nextConfig);
-      setCurrentRoot(nextConfig.watchDir);
+      setCurrentRoot(nextRoot);
       setActiveLogPath(null);
       setTailLinesState([]);
       setError(null);
       setHeroState((prev) => ({
         ...prev,
-        watchDirs: nextConfig.watchDir ? nextConfig.watchDir.split(",").map((d) => d.trim()).filter(Boolean) : prev.watchDirs,
+        watchDirs: nextWatchDirs.length ? nextWatchDirs : prev.watchDirs,
         silence: nextConfig.silence ?? prev.silence,
         suffixFilter: nextSuffix,
       }));
-      setSaveMessage(`已保存当前表单（监控目录：${watchDir}，后缀：${fileExt || "全量"}），后端已应用`);
+      const watchDirLabel = payloadConfig?.watchDir ?? watchDir;
+      setSaveMessage(`已保存当前表单（监控目录：${watchDirLabel}，后缀：${fileExt || "全量"}），后端已应用`);
       await refreshDashboard();
     } catch (err) {
       setError((err as Error).message);
@@ -981,7 +1052,6 @@ function App() {
     ? fmt(activeNode.updated)
     : "--";
   const silenceValue = useMemo(() => heroState.silence?.replace(/静默/gi, "").trim() ?? "", [heroState.silence]);
-  const watchDirsLabel = heroState.watchDirs.length ? heroState.watchDirs.join(", ") : "--";
   const booting = !bootstrapped;
 
   if (booting) {
@@ -1169,7 +1239,9 @@ function App() {
               <div className="input">
                 <label>监控目录</label>
                 <input
-                  placeholder="填写要监听的目录，例如 /opt/test"
+                  placeholder={
+                    'Enter directories separated by space/comma/semicolon; quote paths with spaces (e.g. "/data/my logs" /data/other)'
+                  }
                   value={configForm.watchDir}
                   onChange={(e) => setConfigForm((prev) => ({ ...prev, watchDir: e.target.value }))}
                 />
