@@ -18,7 +18,8 @@ go build -o bin/file-watch cmd/main.go
 
 ### 配置要点
 - `watch_dir` 必须存在且为目录。
-- `file_ext` 仅支持单一后缀（如 `.log` / `.txt` / `.zip`），可留空表示不过滤。
+- `watch_dir` 支持多目录（逗号或分号分隔）。
+- `file_ext` 支持多后缀（逗号或空格分隔），可留空表示不过滤。
 - `silence`/`SILENCE_WINDOW` 默认 `10s`，支持 `10s` / `10秒` / `10`。
 - `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
 - `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。

@@ -38,6 +38,7 @@
 - `api_bind`：API 监听地址（默认 `:8080`）。
 
 ### 可选字段
+- `watch_exclude` (`WATCH_EXCLUDE`)：排除目录（逗号/分号分隔），支持目录名或绝对路径，如 `.git,node_modules,/opt/homebrew`。
 - `file_ext` (`FILE_EXT`)：后缀过滤，支持多值（逗号/空格分隔，如 `.log,.txt`），为空则不过滤。
 - `silence` (`SILENCE_WINDOW`)：写入完成判定窗口，默认 `10s`。
   - 支持写法：`10s` / `10秒` / `10`。
@@ -52,6 +53,7 @@
 ### 配置示例（config.yaml）
 ```yaml
 watch_dir: "${WATCH_DIR}"
+watch_exclude: "${WATCH_EXCLUDE}"
 file_ext: "${FILE_EXT}"
 # 可选：silence: "${SILENCE_WINDOW}"
 
@@ -138,6 +140,7 @@ api_bind: "${API_BIND}"
 - 上传队列为内存队列，重启会清空。
 - 上传失败没有自动重试（需手动触发）。
 - 已实现钉钉通知与邮件通知，企业微信未接入。
+- 目录过大时可能触发系统句柄限制，可通过 `watch_exclude` 跳过大目录或提升系统 `ulimit`。
 
 ## 相关文档
 - 平台概述：`../docs/overview.md`

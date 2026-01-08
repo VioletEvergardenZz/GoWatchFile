@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -70,6 +71,9 @@ func loadAndValidateConfig(configPath string) (*models.Config, error) {
 func logConfig(cfg *models.Config) {
 	logger.Info("配置加载成功")
 	logger.Info("监控目录: %s", cfg.WatchDir)
+	if strings.TrimSpace(cfg.WatchExclude) != "" {
+		logger.Info("监控排除: %s", cfg.WatchExclude)
+	}
 	logger.Info("文件后缀: %s", cfg.FileExt)
 	logger.Info("S3 Bucket: %s", cfg.Bucket)
 	logger.Info("S3 Endpoint: %s", cfg.Endpoint)

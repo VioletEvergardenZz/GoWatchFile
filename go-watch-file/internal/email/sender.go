@@ -24,6 +24,7 @@ type Sender struct {
 	useTLS   bool
 }
 
+// NewSender 创建邮件发送器
 func NewSender(host string, port int, user, password, from string, to []string, useTLS bool) *Sender {
 	return &Sender{
 		host: strings.TrimSpace(host),
@@ -195,6 +196,7 @@ func (e *QuitError) Unwrap() error {
 	return e.Err
 }
 
+// IsQuitError 判断错误是否为退出失败
 func IsQuitError(err error) bool {
 	// 用于外部判断是否属于 QUIT 异常
 	var quitErr *QuitError

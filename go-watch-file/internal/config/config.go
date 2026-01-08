@@ -95,6 +95,7 @@ func ValidateConfig(config *models.Config) error {
 
 func applyEnvOverrides(cfg *models.Config) error {
 	cfg.WatchDir = stringFromEnv("WATCH_DIR", cfg.WatchDir)
+	cfg.WatchExclude = stringFromEnv("WATCH_EXCLUDE", cfg.WatchExclude)
 	cfg.FileExt = stringFromEnv("FILE_EXT", cfg.FileExt)
 	cfg.Silence = stringFromEnv("SILENCE_WINDOW", cfg.Silence)
 	cfg.RobotKey = stringFromEnv("ROBOT_KEY", cfg.RobotKey)

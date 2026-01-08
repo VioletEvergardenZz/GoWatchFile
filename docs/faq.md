@@ -25,8 +25,9 @@
 ## 6. 文件 Tail 报错或无内容
 - `/api/file-log` 仅支持文本文件（遇到二进制会报错）。
 - 只返回最后 512KB / 500 行。
-- `path` 必须位于 `watch_dir` 下，否则会被拒绝。
+- `path` 必须位于 `watch_dir` 配置的任一目录下，否则会被拒绝。
 
 ## 7. 目录很多时监控不完整
 - fsnotify 依赖系统文件句柄，目录数量过多可能触发 “too many open files”。
 - 日志中会提示监控降级，可考虑提高系统 `ulimit` 或缩小监控范围。
+- 可通过 `watch_exclude` 或 `WATCH_EXCLUDE` 排除 `.git` 等大目录。

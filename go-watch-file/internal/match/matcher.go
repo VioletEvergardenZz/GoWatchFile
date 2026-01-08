@@ -5,12 +5,14 @@ import (
 	"strings"
 )
 
+// Matcher 负责后缀匹配
 // 负责后缀匹配
 type Matcher struct {
 	extSet          map[string]struct{}
 	caseInsensitive bool
 }
 
+// NewMatcher 创建后缀匹配器
 // 根据后缀构建匹配器
 func NewMatcher(fileExt string) *Matcher {
 	exts, _ := ParseExtList(fileExt)
@@ -20,6 +22,7 @@ func NewMatcher(fileExt string) *Matcher {
 	}
 }
 
+// IsTargetFile 判断路径是否符合后缀规则
 // 判断路径是否符合后缀规则
 func (m *Matcher) IsTargetFile(filePath string) bool {
 	if m == nil || len(m.extSet) == 0 {
@@ -35,6 +38,7 @@ func (m *Matcher) IsTargetFile(filePath string) bool {
 	return ok
 }
 
+// ParseExtList 解析并归一化后缀列表
 // 将多后缀字符串拆分并归一化
 func ParseExtList(raw string) ([]string, error) {
 	parts := splitList(raw)
@@ -59,6 +63,7 @@ func ParseExtList(raw string) ([]string, error) {
 	return out, nil
 }
 
+// ErrInvalidExt 表示无效后缀
 // 表示无效后缀
 type ErrInvalidExt struct {
 	Value string

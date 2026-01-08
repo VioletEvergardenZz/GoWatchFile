@@ -15,6 +15,7 @@ func TestLoadConfig(t *testing.T) {
 
 	tempConfig := fmt.Sprintf(`
 watch_dir: "%s"
+watch_exclude: ".git,node_modules"
 file_ext: ".hprof"
 robot_key: "test-key"
 dingtalk_webhook: "https://oapi.dingtalk.com/robot/send?access_token=test-token"
@@ -51,6 +52,9 @@ api_bind: ":9000"
 
 	if config.WatchDir != watchDir {
 		t.Errorf("WatchDir 期望 %s, 实际 %s", watchDir, config.WatchDir)
+	}
+	if config.WatchExclude != ".git,node_modules" {
+		t.Errorf("WatchExclude 期望 .git,node_modules, 实际 %s", config.WatchExclude)
 	}
 	if config.FileExt != ".hprof" {
 		t.Errorf("FileExt 期望 .hprof, 实际 %s", config.FileExt)
@@ -259,6 +263,7 @@ log_level: "info"
 	configPath := writeTempConfig(t, baseConfig)
 
 	t.Setenv("WATCH_DIR", envWatchDir)
+	t.Setenv("WATCH_EXCLUDE", ".git,.cache")
 	t.Setenv("S3_AK", "env-ak")
 	t.Setenv("S3_SK", "env-sk")
 	t.Setenv("UPLOAD_WORKERS", "7")
@@ -272,6 +277,9 @@ log_level: "info"
 
 	if config.WatchDir != envWatchDir {
 		t.Errorf("WatchDir 应从环境变量覆盖, 实际 %s", config.WatchDir)
+	}
+	if config.WatchExclude != ".git,.cache" {
+		t.Errorf("WatchExclude 应从环境变量覆盖, 实际 %s", config.WatchExclude)
 	}
 	if config.AK != "env-ak" || config.SK != "env-sk" {
 		t.Errorf("AK/SK 应从环境变量覆盖, 实际 ak=%s sk=%s", config.AK, config.SK)

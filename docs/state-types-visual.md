@@ -25,8 +25,6 @@ class DashboardData {
   MetricCard[] metricCards
   FileNode[] directoryTree
   FileItem[] files
-  string[] tailLines
-  TimelineEvent[] timelineEvents
   MonitorNote[] monitorNotes
   UploadRecord[] uploadRecords
   MonitorSummary[] monitorSummary
@@ -38,7 +36,6 @@ DashboardData *-- HeroCopy
 DashboardData *-- MetricCard
 DashboardData *-- FileNode
 DashboardData *-- FileItem
-DashboardData *-- TimelineEvent
 DashboardData *-- MonitorNote
 DashboardData *-- UploadRecord
 DashboardData *-- MonitorSummary
@@ -53,18 +50,16 @@ flowchart TB
   A --> C[MetricCards()]
   A --> D[DirectoryTree()]
   A --> E[FileItems()]
-  A --> F[TailLines()]
-  A --> G[TimelineEvents()]
-  A --> H[MonitorNotes(cfg)]
-  A --> I[UploadRecords()]
-  A --> J[MonitorSummary()]
-  A --> K[ConfigSnapshot(cfg)]
-  A --> L[ChartPoints()]
+  A --> F[MonitorNotes(cfg)]
+  A --> G[UploadRecords()]
+  A --> H[MonitorSummary()]
+  A --> I[ConfigSnapshot(cfg)]
+  A --> J[ChartPoints()]
 ```
 
 **补充说明**
-- `tailLines` 是**运行态日志**（入队/成功/失败等），不是文件内容。文件内容 Tail 使用 `/api/file-log`。
-- 内存列表有上限：`tailLines` 200、`timelineEvents` 120、`uploadRecords` 200、`chartPoints` 32。
+- DashboardData 不包含文件内容 Tail，文件内容通过 `/api/file-log` 获取。
+- 内存列表有上限：`uploadRecords` 200、`chartPoints` 32。
 
 ---
 
@@ -96,22 +91,17 @@ flowchart TB
   B[FileItem.status] --> B1[queued=入队]
   B --> B2[uploaded=成功]
   B --> B3[failed=失败]
-  B --> B4[existing=历史/未上传]
+  B --> B4[existing=历史文件]
 
-  C[TimelineEvent.status] --> C1[info=提示]
-  C --> C2[success=成功]
-  C --> C3[warning=警告]
-  C --> C4[danger=错误]
+  C[UploadRecord.result] --> C1[success=成功]
+  C --> C2[failed=失败]
+  C --> C3[pending=等待]
 
-  D[UploadRecord.result] --> D1[success=成功]
-  D --> D2[failed=失败]
-  D --> D3[pending=等待]
+  D[时间格式] --> D1[time/updated: YYYY-MM-DD HH:MM:SS]
+  D --> D2[chartPoints.label: HH:MM]
 
-  E[时间格式] --> E1[time/updated: YYYY-MM-DD HH:MM:SS]
-  E --> E2[chartPoints.label: HH:MM]
-
-  F[大小/耗时] --> F1[size: 12 KB / 1.2 MB / 0.9 GB]
-  F --> F2[latency: 120 ms 或 --]
+  E[大小/耗时] --> E1[size: 12 KB / 1.2 MB / 0.9 GB]
+  E --> E2[latency: 120 ms 或 --]
 ```
 
 ---
@@ -129,7 +119,6 @@ class FileNode {
   bool autoUpload
   string size?
   string updated?
-  string content?
   FileNode[] children?
 }
 ```
@@ -138,7 +127,7 @@ class FileNode {
 - `name`：展示名；根节点通常为 `watch_dir` 的完整路径。
 - `path`：规范化路径（`/` 分隔）。
 - `autoUpload`：是否自动上传。
-- `content`：状态备注（如“自动入队”“上传失败原因”“历史文件”）。
+- `size`/`updated`：仅在文件节点返回，目录节点为空。
 
 来源：`DirectoryTree()` 扫描磁盘并合并运行态生成。
 
@@ -182,23 +171,7 @@ class FileItem {
 
 ---
 
-### 5.4 TimelineEvent（时间线事件）
-
-```mermaid
-classDiagram
-class TimelineEvent {
-  string label
-  string time
-  string status  // info | success | warning | danger
-  string host?
-}
-```
-
-来源：`TimelineEvents()`，记录入队/成功/失败/开关调整等事件。
-
----
-
-### 5.5 MonitorNote（监控说明）
+### 5.4 MonitorNote（监控说明）
 
 ```mermaid
 classDiagram
@@ -212,7 +185,7 @@ class MonitorNote {
 
 ---
 
-### 5.6 ConfigSnapshot（配置表单快照）
+### 5.5 ConfigSnapshot（配置表单快照）
 
 ```mermaid
 classDiagram
@@ -230,7 +203,7 @@ class ConfigSnapshot {
 
 ---
 
-### 5.7 HeroCopy（头部摘要）
+### 5.6 HeroCopy（头部摘要）
 
 ```mermaid
 classDiagram
@@ -245,12 +218,12 @@ class HeroCopy {
 ```
 
 说明：
-- `watchDirs` 当前仅包含一个监控目录。
+- `watchDirs` 为监控目录列表，支持多个监控目录。
 - `suffixFilter` 为空时显示“关闭 · 全量目录”。
 
 ---
 
-### 5.8 ChartPoint（趋势图点）
+### 5.7 ChartPoint（趋势图点）
 
 ```mermaid
 classDiagram
@@ -268,7 +241,7 @@ class ChartPoint {
 
 ---
 
-### 5.9 UploadRecord（上传记录）
+### 5.8 UploadRecord（上传记录）
 
 ```mermaid
 classDiagram
@@ -285,11 +258,11 @@ class UploadRecord {
 
 说明：
 - `pending` 表示已入队但尚未完成。
-- `time` 为空时显示 `--`（例如历史文件初始化）。
+- `time` 为入队或完成的时间戳。
 
 ---
 
-### 5.10 MonitorSummary（摘要指标）
+### 5.9 MonitorSummary（摘要指标）
 
 ```mermaid
 classDiagram
@@ -302,4 +275,3 @@ class MonitorSummary {
 
 说明：
 - 包括“近 1 分钟吞吐”“成功率”“队列 backlog”“失败累计”等指标。
-

@@ -1,5 +1,7 @@
 # 文件监控配置
 watch_dir: "${WATCH_DIR}"
+# 排除目录（可选），逗号或分号分隔
+watch_exclude: "${WATCH_EXCLUDE}"
 # 多后缀支持，逗号/空格分隔。示例：.log,.txt,.zip
 file_ext: "${FILE_EXT}"
 

@@ -35,6 +35,7 @@ type FileWatcher struct {
 	config        *models.Config
 	uploadPool    UploadPool
 	matcher       *match.Matcher
+	exclude       *pathutil.ExcludeMatcher
 	ctx           context.Context
 	cancel        context.CancelFunc
 	eventsDone    chan struct{}
@@ -61,12 +62,14 @@ func NewFileWatcher(config *models.Config, uploadPool UploadPool) (*FileWatcher,
 
 	// 初始化匹配器用于后缀过滤
 	matcher := match.NewMatcher(config.FileExt)
+	exclude := pathutil.NewExcludeMatcher(config.WatchExclude)
 
 	return &FileWatcher{
 		watcher:       watcher,
 		config:        config,
 		uploadPool:    uploadPool,
 		matcher:       matcher,
+		exclude:       exclude,
 		lastLogged:    make(map[string]time.Time),
 		lastWriteTime: make(map[string]time.Time),
 		writeTimers:   make(map[string]*time.Timer),
@@ -117,6 +120,7 @@ func (fw *FileWatcher) Reset(config *models.Config) error {
 	fw.silenceWindow = parseSilenceWindow(config.Silence)
 	// 重建匹配器确保配置更新生效
 	fw.matcher = match.NewMatcher(config.FileExt)
+	fw.exclude = pathutil.NewExcludeMatcher(config.WatchExclude)
 
 	watchDirs := pathutil.SplitWatchDirs(fw.config.WatchDir)
 	logger.Info("开始监控目录: %s", strings.Join(watchDirs, ", "))
@@ -258,6 +262,9 @@ func (fw *FileWatcher) handleCreatedPath(path string) {
 	if err != nil || !fi.IsDir() {
 		return
 	}
+	if fw.isExcludedPath(path) {
+		return
+	}
 	if err := fw.addWatchRecursively(path); err != nil {
 		logger.Warn("递归添加新目录监控失败: %s, 错误: %v", path, err)
 		return
@@ -339,6 +346,10 @@ func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 		if !d.IsDir() {
 			return nil
 		}
+		if fw.isExcludedPath(path) {
+			logger.Debug("跳过排除目录: %s", path)
+			return fs.SkipDir
+		}
 		added, err := fw.addWatch(path)
 		if err != nil {
 			if isTooManyOpenFiles(err) {
@@ -363,6 +374,14 @@ func (fw *FileWatcher) addWatchRecursively(dirPath string) error {
 		}
 		return nil
 	})
+}
+
+// 判断路径是否需要排除
+func (fw *FileWatcher) isExcludedPath(path string) bool {
+	if fw.exclude == nil {
+		return false
+	}
+	return fw.exclude.IsExcluded(path)
 }
 
 func (fw *FileWatcher) addWatchRecursivelyForDirs(dirs []string) error {

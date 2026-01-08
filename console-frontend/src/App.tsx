@@ -133,6 +133,48 @@ const splitWatchDirsInput = (raw: string) => {
 
 const normalizeWatchDirInput = (raw: string) => splitWatchDirsInput(raw).join(",");
 
+const splitFileExtList = (raw: string) =>
+  raw
+    .split(/[,\s;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+const resolveUploadStatusQuery = (raw: string) => {
+  const cleaned = raw.trim().toLowerCase();
+  if (!cleaned) return "";
+  if (cleaned.includes("成功") || cleaned.includes("success") || cleaned.includes("uploaded") || cleaned.includes("ok")) {
+    return "success";
+  }
+  if (cleaned.includes("失败") || cleaned.includes("failed") || cleaned.includes("error") || cleaned.includes("fail")) {
+    return "failed";
+  }
+  if (cleaned.includes("排队") || cleaned.includes("队列") || cleaned.includes("等待") || cleaned.includes("pending") || cleaned.includes("queued")) {
+    return "pending";
+  }
+  return "";
+};
+
+const matchUploadSearch = (record: UploadRecord, raw: string) => {
+  const trimmed = raw.trim();
+  if (!trimmed) return true;
+  const status = resolveUploadStatusQuery(trimmed);
+  if (status) {
+    return record.result === status;
+  }
+  const haystack = `${record.file} ${record.target ?? ""} ${record.note ?? ""}`.toLowerCase();
+  return haystack.includes(trimmed.toLowerCase());
+};
+
+const formatTreeFilterBadge = (raw: string) => {
+  const trimmed = raw.trim();
+  if (!trimmed) return "--";
+  if (trimmed.includes("全量")) return "全量目录";
+  const cleaned = trimmed.replace(/^过滤\s*/i, "");
+  const exts = splitFileExtList(cleaned);
+  if (!exts.length) return trimmed;
+  return `过滤 ${exts.join(", ")}`;
+};
+
 // 补齐配置快照默认值避免空引用
 const normalizeConfigSnapshot = (value?: Partial<ConfigSnapshot>): ConfigSnapshot => {
   const base = value ?? {};
@@ -278,6 +320,7 @@ function App() {
   const [timeframe, setTimeframe] = useState<"realtime" | "24h">("realtime");
   const [theme, setTheme] = useState<"dark" | "light">(() => getPreferredTheme());
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
+  const [uploadSearchTerm, setUploadSearchTerm] = useState("");
   const [loading, setLoading] = useState(!USE_MOCK);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -765,6 +808,12 @@ function App() {
     }
   };
 
+  const treeFiles = useMemo(() => {
+    return currentRoot ? files.filter((f) => f.path.startsWith(currentRoot)) : files;
+  }, [files, currentRoot]);
+
+  const treeFilterBadge = useMemo(() => formatTreeFilterBadge(heroState.suffixFilter ?? ""), [heroState.suffixFilter]);
+
   const filteredFiles = useMemo(() => {
     return files
       .filter((f) => (currentRoot ? f.path.startsWith(currentRoot) : true))
@@ -797,18 +846,26 @@ function App() {
       .map(({ record }) => record);
   }, [uploadRecordsState]);
 
-  const uploadPageCount = Math.max(1, Math.ceil(sortedUploadRecords.length / UPLOAD_PAGE_SIZE));
+  const filteredUploadRecords = useMemo(() => {
+    return sortedUploadRecords.filter((record) => matchUploadSearch(record, uploadSearchTerm));
+  }, [sortedUploadRecords, uploadSearchTerm]);
+
+  const uploadPageCount = Math.max(1, Math.ceil(filteredUploadRecords.length / UPLOAD_PAGE_SIZE));
   const uploadPageSafe = Math.min(uploadPage, uploadPageCount);
   const uploadRecordsPage = useMemo(() => {
     const start = (uploadPageSafe - 1) * UPLOAD_PAGE_SIZE;
-    return sortedUploadRecords.slice(start, start + UPLOAD_PAGE_SIZE);
-  }, [uploadPageSafe, sortedUploadRecords]);
+    return filteredUploadRecords.slice(start, start + UPLOAD_PAGE_SIZE);
+  }, [uploadPageSafe, filteredUploadRecords]);
 
   useEffect(() => {
     if (uploadPage !== uploadPageSafe) {
       setUploadPage(uploadPageSafe);
     }
   }, [uploadPage, uploadPageSafe]);
+
+  useEffect(() => {
+    setUploadPage(1);
+  }, [uploadSearchTerm]);
 
   const filePageCount = Math.max(1, Math.ceil(filteredFiles.length / FILE_PAGE_SIZE));
   const filePageSafe = Math.min(filePage, filePageCount);
@@ -1313,10 +1370,10 @@ function App() {
                   </button>
                 </div>
                 <div className="tree-meta">
-                  <span className="badge ghost">过滤: {heroState.suffixFilter}</span>
-                  <span className="badge ghost">匹配文件: {files.length}</span>
+                  <span className="badge ghost">{treeFilterBadge}</span>
+                  <span className="badge ghost">匹配文件: {treeFiles.length}</span>
                 </div>
-                {files.length === 0 ? <div className="empty-state">当前过滤下暂无匹配文件</div> : null}
+                {treeFiles.length === 0 ? <div className="empty-state">当前过滤下暂无匹配文件</div> : null}
                 <div className="tree">{renderTree(rootNodes)}</div>
               </div>
 
@@ -1517,7 +1574,12 @@ function App() {
           <section className="panel" id="failures">
             <div className="section-title">
               <h2>上传记录 / 最近动作</h2>
-              <span>成功 / 失败 / 排队</span>
+              <input
+                className="search"
+                placeholder="搜索状态：成功 / 失败 / 排队"
+                value={uploadSearchTerm}
+                onChange={(e) => setUploadSearchTerm(e.target.value)}
+              />
             </div>
             <table className="table upload-table">
               <thead>
@@ -1530,28 +1592,36 @@ function App() {
                   <th>备注</th>
                 </tr>
               </thead>
-              <tbody key={uploadPageSafe}>
-                {uploadRecordsPage.map((item, index) => (
-                  <tr key={`${item.file}-${item.time}-${item.result}-${index}`}>
-                    <td>
-                      <div className="row-title">{item.file}</div>
-                      <div className="row-sub">{item.size}</div>
-                    </td>
-                    <td>
-                      <span
-                        className={`pill ${item.result === "success" ? "success" : item.result === "failed" ? "danger" : "warning"}`}
-                      >
-                        {item.result === "success" ? "成功" : item.result === "failed" ? "失败" : "等待"}
-                      </span>
-                    </td>
-                    <td>{item.latency}</td>
-                    <td className="upload-target" title={item.target ?? ""}>{item.target || "--"}</td>
-                    <td>{fmt(item.time)}</td>
-                    <td className="upload-note">
-                      <div className="row-sub">{item.note ?? "--"}</div>
+              <tbody key={`${uploadPageSafe}-${uploadSearchTerm}`}>
+                {uploadRecordsPage.length ? (
+                  uploadRecordsPage.map((item, index) => (
+                    <tr key={`${item.file}-${item.time}-${item.result}-${index}`}>
+                      <td>
+                        <div className="row-title">{item.file}</div>
+                        <div className="row-sub">{item.size}</div>
+                      </td>
+                      <td>
+                        <span
+                          className={`pill ${item.result === "success" ? "success" : item.result === "failed" ? "danger" : "warning"}`}
+                        >
+                          {item.result === "success" ? "成功" : item.result === "failed" ? "失败" : "等待"}
+                        </span>
+                      </td>
+                      <td>{item.latency}</td>
+                      <td className="upload-target" title={item.target ?? ""}>{item.target || "--"}</td>
+                      <td>{fmt(item.time)}</td>
+                      <td className="upload-note">
+                        <div className="row-sub">{item.note ?? "--"}</div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td className="table-empty" colSpan={6}>
+                      暂无匹配记录
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
             <div className="pagination">

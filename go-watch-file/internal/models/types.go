@@ -7,6 +7,7 @@ import (
 // Config 配置结构体
 type Config struct {
 	WatchDir        string `yaml:"watch_dir"`
+	WatchExclude    string `yaml:"watch_exclude"`
 	FileExt         string `yaml:"file_ext"`
 	Silence         string `yaml:"silence"`
 	RobotKey        string `yaml:"robot_key"`

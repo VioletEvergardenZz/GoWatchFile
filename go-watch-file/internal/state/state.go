@@ -22,14 +22,20 @@ const (
 	maxNotifications = 200 //通知事件的最大数量
 )
 
+// FileStatus 表示文件处理状态
 type FileStatus int
 
 // 枚举类型（整型），表示文件的处理状态
 const (
+	// StatusUnknown 表示未知状态
 	StatusUnknown FileStatus = iota
+	// StatusQueued 表示已入队
 	StatusQueued
+	// StatusUploaded 表示上传成功
 	StatusUploaded
+	// StatusFailed 表示上传失败
 	StatusFailed
+	// StatusExisting 表示历史文件状态
 	StatusExisting
 )
 
@@ -66,6 +72,7 @@ type RuntimeState struct {
 	host      string
 	watchDirs []string
 	matcher   *match.Matcher
+	exclude   *pathutil.ExcludeMatcher
 
 	//文件状态
 	fileState map[string]fileState
@@ -100,6 +107,7 @@ func NewRuntimeState(cfg *models.Config) *RuntimeState {
 		watchDirs: watchDirs,
 		// 统一复用匹配器做后缀过滤
 		matcher:   match.NewMatcher(cfg.FileExt),
+		exclude:   pathutil.NewExcludeMatcher(cfg.WatchExclude),
 		fileState: make(map[string]fileState),
 		autoOn:    auto,
 		queue:     seedQueuePoints(),
@@ -143,6 +151,9 @@ func (s *RuntimeState) BootstrapExisting() error {
 				return nil
 			}
 			if d.IsDir() {
+				if s.isExcludedPath(path) {
+					return fs.SkipDir
+				}
 				return nil
 			}
 			if !s.isTargetFile(path) { //不符合目标后缀,跳过
@@ -692,6 +703,9 @@ func (s *RuntimeState) collectFiles() []scannedFile {
 				return nil
 			}
 			if d.IsDir() {
+				if s.isExcludedPath(path) {
+					return fs.SkipDir
+				}
 				return nil
 			}
 			if !s.isTargetFile(path) {
@@ -818,6 +832,14 @@ func (s *RuntimeState) isTargetFile(path string) bool {
 	}
 	// 匹配器内部处理后缀规则
 	return s.matcher.IsTargetFile(path)
+}
+
+// 判断路径是否需要排除
+func (s *RuntimeState) isExcludedPath(path string) bool {
+	if s.exclude == nil {
+		return false
+	}
+	return s.exclude.IsExcluded(path)
 }
 
 type fileInfo struct {

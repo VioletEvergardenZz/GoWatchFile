@@ -31,9 +31,13 @@ type WorkerPool struct {
 }
 
 var (
+	// ErrQueueFull 表示上传队列已满
 	ErrQueueFull     = errors.New("upload queue full")
+	// ErrPoolClosed 表示上传池已经关闭
 	ErrPoolClosed    = errors.New("worker pool closed")
+	// ErrShutdownTimed 表示上传池关闭超时
 	ErrShutdownTimed = errors.New("worker pool shutdown timed out")
+	// ErrUploadFuncNil 表示上传处理函数为空
 	ErrUploadFuncNil = errors.New("upload func is nil")
 )
 

@@ -18,6 +18,7 @@ import (
 	"file-watch/internal/service"
 )
 
+// Server 管理接口服务的启动与关闭
 // 统一启动/停止 HTTP 服务
 type Server struct {
 	httpServer *http.Server //负责监听端口、接收请求、管理超时/连接等
@@ -37,6 +38,7 @@ const (
 	maxFileSearchLineBytes = 1024 * 1024 //单行最大 1MB，避免超长行撑爆内存
 )
 
+// NewServer 创建接口服务并注册路由
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	h := &handler{cfg: cfg, fs: fs}
 	mux := http.NewServeMux() //创建一个路由器（根据 URL 路径分发请求）
@@ -56,6 +58,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	return &Server{httpServer: srv}
 }
 
+// Start 启动接口服务并开始监听
 func (s *Server) Start() {
 	go func() {
 		logger.Info("API 服务监听 %s", s.httpServer.Addr)
@@ -66,6 +69,7 @@ func (s *Server) Start() {
 	}()
 }
 
+// Shutdown 优雅关闭接口服务
 func (s *Server) Shutdown(ctx context.Context) error {
 	if s.httpServer == nil {
 		return nil
