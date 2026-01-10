@@ -241,11 +241,21 @@ region: "test-region"
 	if config.APIBind != ":8080" {
 		t.Errorf("APIBind 默认值期望 :8080, 实际 %s", config.APIBind)
 	}
+	if config.AlertPollInterval != "2s" {
+		t.Errorf("AlertPollInterval 默认值期望 2s, 实际 %s", config.AlertPollInterval)
+	}
+	if config.AlertStartFromEnd == nil || *config.AlertStartFromEnd != true {
+		t.Errorf("AlertStartFromEnd 默认值期望 true, 实际 %v", config.AlertStartFromEnd)
+	}
 }
 
 func TestLoadConfigEnvOverrides(t *testing.T) {
 	fileWatchDir := filepath.ToSlash(t.TempDir())
 	envWatchDir := filepath.ToSlash(t.TempDir())
+	alertRulePath := filepath.ToSlash(filepath.Join(t.TempDir(), "alert-rules.yaml"))
+	if err := os.WriteFile(alertRulePath, []byte("version: 1\nrules:\n  - id: test\n    level: ignore\n    keywords: [\"test\"]\n"), 0644); err != nil {
+		t.Fatalf("写入临时规则文件失败: %v", err)
+	}
 
 	baseConfig := fmt.Sprintf(`
 watch_dir: "%s"
@@ -269,6 +279,11 @@ log_level: "info"
 	t.Setenv("UPLOAD_WORKERS", "7")
 	t.Setenv("LOG_LEVEL", "error")
 	t.Setenv("API_BIND", ":18080")
+	t.Setenv("ALERT_ENABLED", "true")
+	t.Setenv("ALERT_RULES_FILE", alertRulePath)
+	t.Setenv("ALERT_LOG_PATHS", "/var/log/app/error.log")
+	t.Setenv("ALERT_POLL_INTERVAL", "5s")
+	t.Setenv("ALERT_START_FROM_END", "false")
 
 	config, err := LoadConfig(configPath)
 	if err != nil {
@@ -292,6 +307,21 @@ log_level: "info"
 	}
 	if config.APIBind != ":18080" {
 		t.Errorf("APIBind 应从环境变量覆盖为 :18080, 实际 %s", config.APIBind)
+	}
+	if config.AlertEnabled != true {
+		t.Errorf("AlertEnabled 应从环境变量覆盖为 true, 实际 %v", config.AlertEnabled)
+	}
+	if config.AlertRulesFile != alertRulePath {
+		t.Errorf("AlertRulesFile 应从环境变量覆盖, 实际 %s", config.AlertRulesFile)
+	}
+	if config.AlertLogPaths != "/var/log/app/error.log" {
+		t.Errorf("AlertLogPaths 应从环境变量覆盖, 实际 %s", config.AlertLogPaths)
+	}
+	if config.AlertPollInterval != "5s" {
+		t.Errorf("AlertPollInterval 应从环境变量覆盖为 5s, 实际 %s", config.AlertPollInterval)
+	}
+	if config.AlertStartFromEnd == nil || *config.AlertStartFromEnd != false {
+		t.Errorf("AlertStartFromEnd 应从环境变量覆盖为 false, 实际 %v", config.AlertStartFromEnd)
 	}
 }
 

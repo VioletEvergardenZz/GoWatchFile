@@ -3,4 +3,6 @@
 !config.example.yaml
 logs/
 file-watch
+bin/
+!alert-rules.example.yaml
 

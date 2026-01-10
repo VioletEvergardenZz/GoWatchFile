@@ -46,3 +46,10 @@ upload_queue_size: 100
 
 # API 服务监听地址
 api_bind: "${API_BIND}"
+
+# 告警决策配置
+alert_enabled: true
+alert_rules_file: "${ALERT_RULES_FILE}"
+alert_log_paths: "${ALERT_LOG_PATHS}"
+alert_poll_interval: "${ALERT_POLL_INTERVAL}"
+alert_start_from_end: true

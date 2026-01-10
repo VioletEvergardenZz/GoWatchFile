@@ -54,23 +54,7 @@ func (r *Robot) SendMessage(ctx context.Context, downloadURL, fileName string) e
 	fileName = defaultValue(fileName, "unknown")
 
 	msg := buildMarkdownMessage(downloadURL, fileName)
-
-	jsonReq, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("序列化钉钉消息失败: %w", err)
-	}
-
-	webhookURL, err := r.buildWebhookURL()
-	if err != nil {
-		return fmt.Errorf("构建钉钉 webhook URL 失败: %w", err)
-	}
-
-	if err := r.postMessage(ctx, webhookURL, jsonReq); err != nil {
-		return err
-	}
-
-	logger.Info("钉钉机器人消息发送成功")
-	return nil
+	return r.SendMarkdown(ctx, msg.Markdown.Title, msg.Markdown.Text)
 }
 
 func buildMarkdownMessage(downloadURL, fileName string) message {
@@ -88,6 +72,33 @@ func buildMarkdownMessage(downloadURL, fileName string) message {
 			Text:  text,
 		},
 	}
+}
+
+// SendMarkdown 发送钉钉富文本消息
+func (r *Robot) SendMarkdown(ctx context.Context, title, text string) error {
+	if r.webhook == "" {
+		return fmt.Errorf("钉钉 webhook 为空")
+	}
+	msg := message{
+		MsgType: "markdown",
+		Markdown: markdown{
+			Title: defaultValue(title, "消息通知"),
+			Text:  defaultValue(text, "无内容"),
+		},
+	}
+	jsonReq, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("序列化钉钉消息失败: %w", err)
+	}
+	webhookURL, err := r.buildWebhookURL()
+	if err != nil {
+		return fmt.Errorf("构建钉钉 webhook URL 失败: %w", err)
+	}
+	if err := r.postMessage(ctx, webhookURL, jsonReq); err != nil {
+		return err
+	}
+	logger.Info("钉钉机器人消息发送成功")
+	return nil
 }
 
 func (r *Robot) postMessage(ctx context.Context, webhookURL string, payload []byte) error {

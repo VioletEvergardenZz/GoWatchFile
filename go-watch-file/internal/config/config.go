@@ -6,8 +6,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v2"
 
@@ -17,12 +19,14 @@ import (
 )
 
 const (
-	defaultUploadWorkers   = 3
-	defaultUploadQueueSize = 100
-	defaultLogLevel        = "info"
-	defaultLogToStd        = true
-	defaultAPIBind         = ":8080"
-	defaultSilence         = "10s"
+	defaultUploadWorkers     = 3
+	defaultUploadQueueSize   = 100
+	defaultLogLevel          = "info"
+	defaultLogToStd          = true
+	defaultAPIBind           = ":8080"
+	defaultSilence           = "10s"
+	defaultAlertPollInterval = "2s"
+	defaultAlertStartFromEnd = true
 )
 
 var allowedLogLevels = map[string]struct{}{
@@ -87,6 +91,9 @@ func ValidateConfig(config *models.Config) error {
 		return err
 	}
 	if err := requireValue(config.APIBind, "API 监听地址"); err != nil {
+		return err
+	}
+	if err := validateAlertConfig(config); err != nil {
 		return err
 	}
 
@@ -157,6 +164,19 @@ func applyEnvOverrides(cfg *models.Config) error {
 		cfg.UploadQueueSize = parsed
 	}
 	cfg.APIBind = stringFromEnv("API_BIND", cfg.APIBind)
+	if parsed, ok, err := boolFromEnv("ALERT_ENABLED"); err != nil {
+		return err
+	} else if ok {
+		cfg.AlertEnabled = parsed
+	}
+	cfg.AlertRulesFile = stringFromEnv("ALERT_RULES_FILE", cfg.AlertRulesFile)
+	cfg.AlertLogPaths = stringFromEnv("ALERT_LOG_PATHS", cfg.AlertLogPaths)
+	cfg.AlertPollInterval = stringFromEnv("ALERT_POLL_INTERVAL", cfg.AlertPollInterval)
+	if parsed, ok, err := boolFromEnv("ALERT_START_FROM_END"); err != nil {
+		return err
+	} else if ok {
+		cfg.AlertStartFromEnd = boolPtr(parsed)
+	}
 
 	return nil
 }
@@ -179,6 +199,12 @@ func applyDefaults(cfg *models.Config) {
 	}
 	if strings.TrimSpace(cfg.APIBind) == "" {
 		cfg.APIBind = defaultAPIBind
+	}
+	if strings.TrimSpace(cfg.AlertPollInterval) == "" {
+		cfg.AlertPollInterval = defaultAlertPollInterval
+	}
+	if cfg.AlertStartFromEnd == nil {
+		cfg.AlertStartFromEnd = boolPtr(defaultAlertStartFromEnd)
 	}
 }
 
@@ -297,6 +323,55 @@ func validateLogLevel(level string) error {
 		return fmt.Errorf("不支持的日志级别: %s", level)
 	}
 	return nil
+}
+
+func validateAlertConfig(config *models.Config) error {
+	if config == nil {
+		return nil
+	}
+	rulesFile := strings.TrimSpace(config.AlertRulesFile)
+	logPaths := strings.TrimSpace(config.AlertLogPaths)
+	enabled := config.AlertEnabled || rulesFile != "" || logPaths != ""
+	if !enabled {
+		return nil
+	}
+	if rulesFile == "" {
+		return fmt.Errorf("告警规则文件不能为空")
+	}
+	if logPaths == "" {
+		return fmt.Errorf("告警日志路径不能为空")
+	}
+	if _, err := os.Stat(rulesFile); err != nil {
+		return fmt.Errorf("告警规则文件无效: %w", err)
+	}
+	if _, err := parseAlertInterval(config.AlertPollInterval); err != nil {
+		return fmt.Errorf("告警轮询间隔无效: %w", err)
+	}
+	return nil
+}
+
+func parseAlertInterval(raw string) (time.Duration, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return 0, nil
+	}
+	clean := strings.ToLower(trimmed)
+	clean = strings.ReplaceAll(clean, "秒钟", "秒")
+	clean = strings.ReplaceAll(clean, "秒", "s")
+	clean = strings.ReplaceAll(clean, "分钟", "m")
+	clean = strings.ReplaceAll(clean, "分", "m")
+	clean = strings.ReplaceAll(clean, "小时", "h")
+	clean = strings.TrimSpace(clean)
+	if d, err := time.ParseDuration(clean); err == nil && d > 0 {
+		return d, nil
+	}
+	numRe := regexp.MustCompile(`\d+`)
+	if m := numRe.FindString(clean); m != "" {
+		if v, err := strconv.Atoi(m); err == nil && v > 0 {
+			return time.Duration(v) * time.Second, nil
+		}
+	}
+	return 0, fmt.Errorf("时间间隔必须大于零")
 }
 
 func resolveEnvPlaceholder(value string) string {

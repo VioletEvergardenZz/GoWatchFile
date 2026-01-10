@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"file-watch/internal/alert"
 	"file-watch/internal/dingtalk"
 	"file-watch/internal/email"
 	"file-watch/internal/logger"
@@ -30,7 +31,9 @@ type FileService struct {
 	emailSender   *email.Sender
 	uploadPool    *upload.WorkerPool
 	watcher       *watcher.FileWatcher
+	alertManager  *alert.Manager
 	state         *state.RuntimeState
+	running       bool
 	mu            sync.Mutex      //互斥锁，用来保护 FileService 内部共享数据的并发读写
 	manualOnce    map[string]bool //标记“某个路径的下一次处理是手动上传”
 }
@@ -57,6 +60,14 @@ func NewFileService(config *models.Config) (*FileService, error) {
 		state:         runtimeState,
 		manualOnce:    make(map[string]bool),
 	}
+	alertManager, err := alert.NewManager(config, &alert.NotifierSet{
+		DingTalk: fileService.dingtalkRobot,
+		Email:    fileService.emailSender,
+	})
+	if err != nil {
+		return nil, err
+	}
+	fileService.alertManager = alertManager
 
 	uploadPool, err := newUploadPool(config, fileService.processFile, fileService.handlePoolStats)
 	if err != nil {
@@ -401,6 +412,12 @@ func (fs *FileService) Start() error {
 	if err := fs.watcher.Start(); err != nil {
 		return fmt.Errorf("启动文件监控失败: %w", err)
 	}
+	if fs.alertManager != nil {
+		fs.alertManager.Start()
+	}
+	fs.mu.Lock()
+	fs.running = true
+	fs.mu.Unlock()
 	logger.Info("文件服务启动成功")
 	return nil
 }
@@ -408,6 +425,12 @@ func (fs *FileService) Start() error {
 // Stop 停止文件服务。
 func (fs *FileService) Stop() error {
 	logger.Info("停止文件服务...")
+	fs.mu.Lock()
+	fs.running = false
+	fs.mu.Unlock()
+	if fs.alertManager != nil {
+		fs.alertManager.Stop()
+	}
 	if fs.uploadPool != nil {
 		if err := fs.uploadPool.ShutdownGraceful(shutdownTimeout); err != nil {
 			logger.Warn("关闭上传工作池超时，已发出取消信号: %v", err)
@@ -549,6 +572,87 @@ func (fs *FileService) State() *state.RuntimeState {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	return fs.state
+}
+
+// AlertState 暴露告警运行态给 API 服务
+func (fs *FileService) AlertState() *alert.State {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	if fs.alertManager == nil {
+		return nil
+	}
+	return fs.alertManager.State()
+}
+
+// AlertEnabled 返回告警是否启用
+func (fs *FileService) AlertEnabled() bool {
+	fs.mu.Lock()
+	manager := fs.alertManager
+	cfg := fs.config
+	fs.mu.Unlock()
+	if manager != nil {
+		return manager.Enabled()
+	}
+	if cfg == nil {
+		return false
+	}
+	return cfg.AlertEnabled
+}
+
+// UpdateAlertConfig 运行时更新告警配置（仅内存）
+func (fs *FileService) UpdateAlertConfig(enabled bool, rulesFile, logPaths, pollInterval string, startFromEnd bool) (*models.Config, error) {
+	fs.mu.Lock()
+	if fs.config == nil {
+		fs.mu.Unlock()
+		return nil, fmt.Errorf("配置未初始化")
+	}
+	current := *fs.config
+	manager := fs.alertManager
+	running := fs.running
+	fs.mu.Unlock()
+
+	updated := current
+	updated.AlertEnabled = enabled
+	updated.AlertRulesFile = strings.TrimSpace(rulesFile)
+	updated.AlertLogPaths = strings.TrimSpace(logPaths)
+	updated.AlertPollInterval = strings.TrimSpace(pollInterval)
+	updated.AlertStartFromEnd = &startFromEnd
+	if strings.TrimSpace(updated.AlertPollInterval) == "" {
+		updated.AlertPollInterval = "2s"
+	}
+
+	if manager == nil {
+		if enabled {
+			newManager, err := alert.NewManager(&updated, &alert.NotifierSet{
+				DingTalk: fs.dingtalkRobot,
+				Email:    fs.emailSender,
+			})
+			if err != nil {
+				return nil, err
+			}
+			manager = newManager
+			if running && manager != nil {
+				manager.Start()
+			}
+		}
+	} else {
+		if err := manager.UpdateConfig(alert.ConfigUpdate{
+			Enabled:      enabled,
+			RulesFile:    updated.AlertRulesFile,
+			LogPaths:     updated.AlertLogPaths,
+			PollInterval: updated.AlertPollInterval,
+			StartFromEnd: startFromEnd,
+		}, running); err != nil {
+			return nil, err
+		}
+	}
+
+	fs.mu.Lock()
+	fs.config = &updated
+	fs.alertManager = manager
+	fs.mu.Unlock()
+
+	return fs.Config(), nil
 }
 
 // AddFile 实现 watcher.UploadPool 用于入队监控到的文件

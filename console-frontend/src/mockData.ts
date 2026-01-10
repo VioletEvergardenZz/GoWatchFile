@@ -1,4 +1,6 @@
 import type {
+  AlertConfigSnapshot,
+  AlertDashboard,
   ChartPoint,
   ConfigSnapshot,
   FileItem,
@@ -168,11 +170,51 @@ export const monitorNotes: MonitorNote[] = [
 ];
 
 export const uploadRecords: UploadRecord[] = [
-  { file: "app-2024-12-26.log", target: "https://minio.local/logs-warm/app-2024-12-26.log", size: "14.2 MB", result: "success", latency: "640 ms", time: "10:32:10", note: "自动上传" },
-  { file: "etl-raw-2024-12-26-01.csv", target: "https://minio.local/etl-raw/etl-raw-2024-12-26-01.csv", size: "8.6 MB", result: "success", latency: "520 ms", time: "10:31:58", note: "校验通过" },
-  { file: "heap-2024-12-26.hprof", target: "", size: "1.2 GB", result: "pending", latency: "排队", time: "10:31:45", note: "排队中" },
-  { file: "vid-2301.mp4", target: "", size: "92 MB", result: "failed", latency: "timeout", time: "10:31:12", note: "已触发告警" },
-  { file: "model-v12.zip", target: "https://minio.local/artifacts/model-v12.zip", size: "482 MB", result: "success", latency: "2.4 s", time: "10:30:44", note: "断点续传" },
+  {
+    file: "app-2024-12-26.log",
+    target: "https://minio.local/logs-warm/app-2024-12-26.log",
+    size: "14.2 MB",
+    result: "success",
+    latency: "640 ms",
+    time: "10:32:10",
+    note: "自动上传",
+  },
+  {
+    file: "etl-raw-2024-12-26-01.csv",
+    target: "https://minio.local/etl-raw/etl-raw-2024-12-26-01.csv",
+    size: "8.6 MB",
+    result: "success",
+    latency: "520 ms",
+    time: "10:31:58",
+    note: "校验通过",
+  },
+  {
+    file: "heap-2024-12-26.hprof",
+    target: "",
+    size: "1.2 GB",
+    result: "pending",
+    latency: "排队",
+    time: "10:31:45",
+    note: "排队中",
+  },
+  {
+    file: "vid-2301.mp4",
+    target: "",
+    size: "92 MB",
+    result: "failed",
+    latency: "timeout",
+    time: "10:31:12",
+    note: "已触发告警",
+  },
+  {
+    file: "model-v12.zip",
+    target: "https://minio.local/artifacts/model-v12.zip",
+    size: "482 MB",
+    result: "success",
+    latency: "2.4 s",
+    time: "10:30:44",
+    note: "断点续传",
+  },
 ];
 
 export const monitorSummary: MonitorSummary[] = [
@@ -190,6 +232,14 @@ export const configSnapshot: ConfigSnapshot = {
   concurrency: "workers=8 / queue=200",
 };
 
+export const alertConfigSnapshot: AlertConfigSnapshot = {
+  enabled: true,
+  rulesFile: "/etc/gwf/alert-rules.yaml",
+  logPaths: "/var/log/app/error.log,/var/log/app/worker.error.log",
+  pollInterval: "2s",
+  startFromEnd: true,
+};
+
 export const chartPoints: ChartPoint[] = [
   { label: "02:00", uploads: 40, failures: 2, queue: 20 },
   { label: "04:00", uploads: 52, failures: 1, queue: 34 },
@@ -198,3 +248,89 @@ export const chartPoints: ChartPoint[] = [
   { label: "10:00", uploads: 92, failures: 2, queue: 38 },
   { label: "12:00", uploads: 88, failures: 3, queue: 32 },
 ];
+
+export const alertDashboard: AlertDashboard = {
+  overview: {
+    window: "最近30分钟",
+    risk: "高",
+    fatal: 1,
+    system: 6,
+    business: 12,
+    sent: 8,
+    suppressed: 14,
+    latest: "2025-01-08 22:33:05",
+  },
+  decisions: [
+    {
+      id: "1",
+      time: "2025-01-08 22:33:05",
+      level: "fatal",
+      rule: "系统异常激增",
+      message: "系统异常在5分钟内达到20次",
+      file: "-",
+      status: "sent",
+    },
+    {
+      id: "2",
+      time: "2025-01-08 22:32:41",
+      level: "system",
+      rule: "数据库连接池耗尽",
+      message: "HikariPool-1 - Connection is not available",
+      file: "/var/log/app/error.log",
+      status: "sent",
+    },
+    {
+      id: "3",
+      time: "2025-01-08 22:32:30",
+      level: "system",
+      rule: "线程池拒绝",
+      message: "RejectedExecutionException: thread pool is exhausted",
+      file: "/var/log/app/error.log",
+      status: "suppressed",
+      reason: "5分钟内已告警",
+    },
+    {
+      id: "4",
+      time: "2025-01-08 22:32:22",
+      level: "business",
+      rule: "订单落库失败",
+      message: "order write failed: duplicate key",
+      file: "/var/log/app/error.log",
+      status: "recorded",
+    },
+    {
+      id: "5",
+      time: "2025-01-08 22:31:58",
+      level: "system",
+      rule: "磁盘写入异常",
+      message: "I/O error on device /dev/nvme0n1",
+      file: "/var/log/app/error.log",
+      status: "suppressed",
+      reason: "5分钟内已告警",
+    },
+  ],
+  stats: {
+    sent: 8,
+    suppressed: 14,
+    recorded: 5,
+  },
+  rules: {
+    source: "/etc/gwf/alert-rules.yaml",
+    lastLoaded: "2025-01-08 22:33:00",
+    total: 12,
+    defaultSuppress: "5分钟",
+    escalation: "阈值20次 / 5分钟 -> fatal",
+    levels: {
+      ignore: 2,
+      business: 4,
+      system: 5,
+      fatal: 1,
+    },
+  },
+  polling: {
+    interval: "2s",
+    logFiles: ["/var/log/app/error.log", "/var/log/app/worker.error.log"],
+    lastPoll: "2025-01-08 22:33:04",
+    nextPoll: "2025-01-08 22:33:06",
+  },
+};

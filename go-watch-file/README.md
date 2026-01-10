@@ -49,6 +49,11 @@
 - `email_host` / `email_port` / `email_user` / `email_pass` / `email_from` / `email_to` / `email_use_tls`：SMTP 邮件通知（与钉钉同内容，可选）。
 - `robot_key`：预留字段，当前代码未使用。
 - `log_file` / `log_to_std` / `log_show_caller`：日志输出配置。
+- `alert_enabled` (`ALERT_ENABLED`)：是否启用告警决策（true/false）。
+- `alert_rules_file` (`ALERT_RULES_FILE`)：告警规则文件路径（YAML/JSON）。
+- `alert_log_paths` (`ALERT_LOG_PATHS`)：日志文件路径列表（逗号/分号/空白分隔）。
+- `alert_poll_interval` (`ALERT_POLL_INTERVAL`)：轮询间隔（默认 2s，支持 2s/2秒/2）。
+- `alert_start_from_end` (`ALERT_START_FROM_END`)：是否从文件末尾开始追踪（默认 true）。
 
 ### 配置示例（config.yaml）
 ```yaml
@@ -84,10 +89,19 @@ log_show_caller: false
 upload_workers: 3
 upload_queue_size: 100
 api_bind: "${API_BIND}"
+
+alert_enabled: true
+alert_rules_file: "/etc/gwf/alert-rules.yaml"
+alert_log_paths: "/var/log/app/error.log,/var/log/app/worker.error.log"
+alert_poll_interval: "2s"
+alert_start_from_end: true
 ```
 
 ### 环境变量模板（.env.example）
 `.env.example` 已提供模板。需要时可补充 `SILENCE_WINDOW=10s`。
+
+### 告警规则文件示例
+参考 `alert-rules.example.yaml`，按需调整关键词、级别与抑制窗口。
 
 ## HTTP API（控制台使用）
 
@@ -126,6 +140,10 @@ api_bind: "${API_BIND}"
 
 ### 6) 健康检查
 - `GET /api/health` → `{ "queue": n, "workers": n }`
+
+### 7) 告警决策面板
+- `GET /api/alerts`
+- 返回：`AlertDashboard`（告警概览、列表、统计、规则摘要、轮询摘要）
 
 ## 运行时配置更新说明
 `/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。该接口不会写回 `config.yaml`。

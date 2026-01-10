@@ -82,3 +82,89 @@ export type DashboardPayload = {
   configSnapshot: ConfigSnapshot;
   chartPoints: ChartPoint[];
 };
+
+export type AlertLevel = "ignore" | "business" | "system" | "fatal";
+
+export type AlertDecisionStatus = "sent" | "suppressed" | "recorded";
+
+export type AlertOverview = {
+  window: string;
+  risk: string;
+  fatal: number;
+  system: number;
+  business: number;
+  sent: number;
+  suppressed: number;
+  latest: string;
+};
+
+export type AlertDecision = {
+  id: string;
+  time: string;
+  level: AlertLevel;
+  rule: string;
+  message: string;
+  file: string;
+  status: AlertDecisionStatus;
+  reason?: string;
+};
+
+export type AlertStats = {
+  sent: number;
+  suppressed: number;
+  recorded: number;
+};
+
+export type RuleLevelCount = {
+  ignore: number;
+  business: number;
+  system: number;
+  fatal: number;
+};
+
+export type RulesSummary = {
+  source: string;
+  lastLoaded: string;
+  total: number;
+  defaultSuppress: string;
+  escalation: string;
+  levels: RuleLevelCount;
+  error?: string;
+};
+
+export type PollSummary = {
+  interval: string;
+  logFiles: string[];
+  lastPoll: string;
+  nextPoll: string;
+  error?: string;
+};
+
+export type AlertDashboard = {
+  overview: AlertOverview;
+  decisions: AlertDecision[];
+  stats: AlertStats;
+  rules: RulesSummary;
+  polling: PollSummary;
+};
+
+export type AlertResponse = {
+  ok: boolean;
+  enabled?: boolean;
+  data?: AlertDashboard;
+  error?: string;
+};
+
+export type AlertConfigSnapshot = {
+  enabled: boolean;
+  rulesFile: string;
+  logPaths: string;
+  pollInterval: string;
+  startFromEnd: boolean;
+};
+
+export type AlertConfigResponse = {
+  ok: boolean;
+  config?: AlertConfigSnapshot;
+  error?: string;
+};

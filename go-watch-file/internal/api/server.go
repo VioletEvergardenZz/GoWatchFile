@@ -47,6 +47,8 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/manual-upload", h.manualUpload)
 	mux.HandleFunc("/api/file-log", h.fileLog)
 	mux.HandleFunc("/api/config", h.updateConfig)
+	mux.HandleFunc("/api/alerts", h.alertDashboard)
+	mux.HandleFunc("/api/alert-config", h.alertConfig)
 	mux.HandleFunc("/api/health", h.health)
 
 	srv := &http.Server{
@@ -275,6 +277,103 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 		"queue":   stats.QueueLength,
 		"workers": stats.Workers,
 	})
+}
+
+func (h *handler) alertDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	alertState := h.fs.AlertState()
+	if alertState == nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":    false,
+			"error": "告警未启用",
+		})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"enabled": h.fs.AlertEnabled(),
+		"data":    alertState.Dashboard(),
+	})
+}
+
+func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	cfg := h.fs.Config()
+	if cfg == nil {
+		cfg = h.cfg
+	}
+	if cfg == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "config not ready"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":     true,
+			"config": buildAlertConfigSnapshot(cfg, h.fs.AlertEnabled()),
+		})
+		return
+	case http.MethodPost:
+		var req struct {
+			Enabled      bool   `json:"enabled"`
+			RulesFile    string `json:"rulesFile"`
+			LogPaths     string `json:"logPaths"`
+			PollInterval string `json:"pollInterval"`
+			StartFromEnd bool   `json:"startFromEnd"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+			return
+		}
+		updated, err := h.fs.UpdateAlertConfig(req.Enabled, req.RulesFile, req.LogPaths, req.PollInterval, req.StartFromEnd)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		h.cfg = updated
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":     true,
+			"config": buildAlertConfigSnapshot(updated, h.fs.AlertEnabled()),
+		})
+		return
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+}
+
+func buildAlertConfigSnapshot(cfg *models.Config, enabled bool) map[string]any {
+	if cfg == nil {
+		return map[string]any{
+			"enabled":      enabled,
+			"rulesFile":    "",
+			"logPaths":     "",
+			"pollInterval": "",
+			"startFromEnd": true,
+		}
+	}
+	startFromEnd := true
+	if cfg.AlertStartFromEnd != nil {
+		startFromEnd = *cfg.AlertStartFromEnd
+	}
+	pollInterval := strings.TrimSpace(cfg.AlertPollInterval)
+	if pollInterval == "" {
+		pollInterval = "2s"
+	}
+	return map[string]any{
+		"enabled":      enabled,
+		"rulesFile":    strings.TrimSpace(cfg.AlertRulesFile),
+		"logPaths":     strings.TrimSpace(cfg.AlertLogPaths),
+		"pollInterval": pollInterval,
+		"startFromEnd": startFromEnd,
+	}
 }
 
 // 统一返回 JSON 响应
