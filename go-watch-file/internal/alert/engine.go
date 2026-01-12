@@ -54,6 +54,7 @@ type Engine struct {
 	systemEvents     []time.Time
 	escalationActive bool
 	lastEscalationAt time.Time
+	suppressionEnabled bool
 	seq              atomic.Uint64
 }
 
@@ -68,6 +69,7 @@ func NewEngine(ruleset *Ruleset) (*Engine, error) {
 		escalation:   escalation,
 		lastAlert:    make(map[string]time.Time),
 		systemEvents: make([]time.Time, 0, 32),
+		suppressionEnabled: true,
 	}, nil
 }
 
@@ -86,6 +88,22 @@ func (e *Engine) Reset(ruleset *Ruleset) error {
 	e.lastEscalationAt = time.Time{}
 	e.mu.Unlock()
 	return nil
+}
+
+// SetSuppressionEnabled 控制是否启用抑制窗口
+func (e *Engine) SetSuppressionEnabled(enabled bool) {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	if e.suppressionEnabled == enabled {
+		e.mu.Unlock()
+		return
+	}
+	e.suppressionEnabled = enabled
+	e.lastAlert = make(map[string]time.Time)
+	e.lastEscalationAt = time.Time{}
+	e.mu.Unlock()
 }
 
 // Evaluate 根据日志内容生成告警决策
@@ -146,6 +164,9 @@ func (e *Engine) applySuppressionLocked(rule *compiledRule, now time.Time) (Deci
 	if !rule.notify {
 		return StatusRecorded, ""
 	}
+	if !e.suppressionEnabled {
+		return StatusSent, ""
+	}
 	if rule.suppressWindow <= 0 {
 		e.lastAlert[rule.id] = now
 		return StatusSent, ""
@@ -198,10 +219,10 @@ func (e *Engine) maybeEscalateLocked(now time.Time) *decisionResult {
 
 	status := StatusSent
 	reason := ""
-	if e.escalation.suppressWindow > 0 && !e.lastEscalationAt.IsZero() && now.Sub(e.lastEscalationAt) < e.escalation.suppressWindow {
+	if e.suppressionEnabled && e.escalation.suppressWindow > 0 && !e.lastEscalationAt.IsZero() && now.Sub(e.lastEscalationAt) < e.escalation.suppressWindow {
 		status = StatusSuppressed
 		reason = fmt.Sprintf("%s内已升级", formatDuration(e.escalation.suppressWindow))
-	} else {
+	} else if e.suppressionEnabled {
 		e.lastEscalationAt = now
 	}
 

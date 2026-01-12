@@ -27,6 +27,7 @@ const (
 	defaultSilence           = "10s"
 	defaultAlertPollInterval = "2s"
 	defaultAlertStartFromEnd = true
+	defaultAlertSuppressEnabled = true
 )
 
 var allowedLogLevels = map[string]struct{}{
@@ -169,6 +170,11 @@ func applyEnvOverrides(cfg *models.Config) error {
 	} else if ok {
 		cfg.AlertEnabled = parsed
 	}
+	if parsed, ok, err := boolFromEnv("ALERT_SUPPRESS_ENABLED"); err != nil {
+		return err
+	} else if ok {
+		cfg.AlertSuppressEnabled = boolPtr(parsed)
+	}
 	cfg.AlertRulesFile = stringFromEnv("ALERT_RULES_FILE", cfg.AlertRulesFile)
 	cfg.AlertLogPaths = stringFromEnv("ALERT_LOG_PATHS", cfg.AlertLogPaths)
 	cfg.AlertPollInterval = stringFromEnv("ALERT_POLL_INTERVAL", cfg.AlertPollInterval)
@@ -202,6 +208,9 @@ func applyDefaults(cfg *models.Config) {
 	}
 	if strings.TrimSpace(cfg.AlertPollInterval) == "" {
 		cfg.AlertPollInterval = defaultAlertPollInterval
+	}
+	if cfg.AlertSuppressEnabled == nil {
+		cfg.AlertSuppressEnabled = boolPtr(defaultAlertSuppressEnabled)
 	}
 	if cfg.AlertStartFromEnd == nil {
 		cfg.AlertStartFromEnd = boolPtr(defaultAlertStartFromEnd)

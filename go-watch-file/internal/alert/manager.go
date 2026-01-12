@@ -72,6 +72,7 @@ type Manager struct {
 	logPaths     []string
 	pollInterval time.Duration
 	startFromEnd bool
+	suppressEnabled bool
 	enabled      bool
 	running      bool
 	ctx          context.Context
@@ -81,6 +82,7 @@ type Manager struct {
 // ConfigUpdate 表示告警配置的运行时更新
 type ConfigUpdate struct {
 	Enabled      bool
+	SuppressEnabled bool
 	RulesFile    string
 	LogPaths     string
 	PollInterval string
@@ -124,6 +126,10 @@ func NewManager(cfg *models.Config, notifier Notifier) (*Manager, error) {
 	if cfg.AlertStartFromEnd != nil {
 		startFromEnd = *cfg.AlertStartFromEnd
 	}
+	suppressEnabled := true
+	if cfg.AlertSuppressEnabled != nil {
+		suppressEnabled = *cfg.AlertSuppressEnabled
+	}
 
 	state := NewState()
 	manager := &Manager{
@@ -136,7 +142,11 @@ func NewManager(cfg *models.Config, notifier Notifier) (*Manager, error) {
 		logPaths:     logPaths,
 		pollInterval: pollInterval,
 		startFromEnd: startFromEnd,
+		suppressEnabled: suppressEnabled,
 		enabled:      enabled,
+	}
+	if manager.engine != nil {
+		manager.engine.SetSuppressionEnabled(suppressEnabled)
 	}
 	manager.updateRulesSummary(ruleset, "")
 	manager.updatePollSummary(time.Time{}, nil)
@@ -216,6 +226,7 @@ func (m *Manager) UpdateConfig(update ConfigUpdate, shouldRun bool) error {
 	pollChanged := pollInterval != m.pollInterval
 	startChanged := update.StartFromEnd != m.startFromEnd
 	enabledChanged := update.Enabled != m.enabled
+	suppressChanged := update.SuppressEnabled != m.suppressEnabled
 
 	var ruleset *Ruleset
 	var rulesModTime time.Time
@@ -238,6 +249,7 @@ func (m *Manager) UpdateConfig(update ConfigUpdate, shouldRun bool) error {
 			if err != nil {
 				return err
 			}
+			engine.SetSuppressionEnabled(update.SuppressEnabled)
 			m.engine = engine
 		} else if err := m.engine.Reset(ruleset); err != nil {
 			return err
@@ -245,6 +257,12 @@ func (m *Manager) UpdateConfig(update ConfigUpdate, shouldRun bool) error {
 	}
 
 	m.enabled = update.Enabled
+	if suppressChanged {
+		m.suppressEnabled = update.SuppressEnabled
+		if m.engine != nil {
+			m.engine.SetSuppressionEnabled(update.SuppressEnabled)
+		}
+	}
 	m.rulesPath = rulesPath
 	if rulesPathChanged {
 		m.rulesModTime = rulesModTime

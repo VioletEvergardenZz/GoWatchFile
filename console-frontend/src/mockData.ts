@@ -234,6 +234,7 @@ export const configSnapshot: ConfigSnapshot = {
 
 export const alertConfigSnapshot: AlertConfigSnapshot = {
   enabled: true,
+  suppressEnabled: true,
   rulesFile: "/etc/gwf/alert-rules.yaml",
   logPaths: "/var/log/app/error.log,/var/log/app/worker.error.log",
   pollInterval: "2s",

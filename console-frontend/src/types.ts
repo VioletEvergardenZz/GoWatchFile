@@ -157,6 +157,7 @@ export type AlertResponse = {
 
 export type AlertConfigSnapshot = {
   enabled: boolean;
+  suppressEnabled: boolean;
   rulesFile: string;
   logPaths: string;
   pollInterval: string;

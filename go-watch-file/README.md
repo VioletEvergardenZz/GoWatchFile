@@ -50,6 +50,7 @@
 - `robot_key`：预留字段，当前代码未使用。
 - `log_file` / `log_to_std` / `log_show_caller`：日志输出配置。
 - `alert_enabled` (`ALERT_ENABLED`)：是否启用告警决策（true/false）。
+- `alert_suppress_enabled` (`ALERT_SUPPRESS_ENABLED`)：是否开启告警抑制（默认 true）。
 - `alert_rules_file` (`ALERT_RULES_FILE`)：告警规则文件路径（YAML/JSON）。
 - `alert_log_paths` (`ALERT_LOG_PATHS`)：日志文件路径列表（逗号/分号/空白分隔）。
 - `alert_poll_interval` (`ALERT_POLL_INTERVAL`)：轮询间隔（默认 2s，支持 2s/2秒/2）。
@@ -91,6 +92,7 @@ upload_queue_size: 100
 api_bind: "${API_BIND}"
 
 alert_enabled: true
+alert_suppress_enabled: true
 alert_rules_file: "/etc/gwf/alert-rules.yaml"
 alert_log_paths: "/var/log/app/error.log,/var/log/app/worker.error.log"
 alert_poll_interval: "2s"

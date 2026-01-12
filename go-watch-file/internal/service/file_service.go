@@ -600,7 +600,7 @@ func (fs *FileService) AlertEnabled() bool {
 }
 
 // UpdateAlertConfig 运行时更新告警配置（仅内存）
-func (fs *FileService) UpdateAlertConfig(enabled bool, rulesFile, logPaths, pollInterval string, startFromEnd bool) (*models.Config, error) {
+func (fs *FileService) UpdateAlertConfig(enabled bool, suppressEnabled bool, rulesFile, logPaths, pollInterval string, startFromEnd bool) (*models.Config, error) {
 	fs.mu.Lock()
 	if fs.config == nil {
 		fs.mu.Unlock()
@@ -613,6 +613,7 @@ func (fs *FileService) UpdateAlertConfig(enabled bool, rulesFile, logPaths, poll
 
 	updated := current
 	updated.AlertEnabled = enabled
+	updated.AlertSuppressEnabled = &suppressEnabled
 	updated.AlertRulesFile = strings.TrimSpace(rulesFile)
 	updated.AlertLogPaths = strings.TrimSpace(logPaths)
 	updated.AlertPollInterval = strings.TrimSpace(pollInterval)
@@ -638,6 +639,7 @@ func (fs *FileService) UpdateAlertConfig(enabled bool, rulesFile, logPaths, poll
 	} else {
 		if err := manager.UpdateConfig(alert.ConfigUpdate{
 			Enabled:      enabled,
+			SuppressEnabled: suppressEnabled,
 			RulesFile:    updated.AlertRulesFile,
 			LogPaths:     updated.AlertLogPaths,
 			PollInterval: updated.AlertPollInterval,

@@ -55,6 +55,7 @@ const emptyDashboard: AlertDashboard = {
 
 const emptyAlertConfig: AlertConfigSnapshot = {
   enabled: false,
+  suppressEnabled: true,
   rulesFile: "",
   logPaths: "",
   pollInterval: "2s",
@@ -220,6 +221,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           enabled: alertConfig.enabled,
+          suppressEnabled: alertConfig.suppressEnabled,
           rulesFile: alertConfig.rulesFile,
           logPaths: alertConfig.logPaths,
           pollInterval: alertConfig.pollInterval,
@@ -402,6 +404,21 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
                   checked={alertConfig.enabled}
                   disabled={configDisabled}
                   onChange={(e) => setAlertConfig((prev) => ({ ...prev, enabled: e.target.checked }))}
+                />
+                <span className="slider" />
+              </label>
+            </div>
+          </div>
+          <div className="input">
+            <label>告警抑制</label>
+            <div className="switch-group">
+              <span className="muted small">{alertConfig.suppressEnabled ? "开启" : "关闭"}</span>
+              <label className="switch">
+                <input
+                  type="checkbox"
+                  checked={alertConfig.suppressEnabled}
+                  disabled={configDisabled}
+                  onChange={(e) => setAlertConfig((prev) => ({ ...prev, suppressEnabled: e.target.checked }))}
                 />
                 <span className="slider" />
               </label>

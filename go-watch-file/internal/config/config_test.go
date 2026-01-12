@@ -244,6 +244,9 @@ region: "test-region"
 	if config.AlertPollInterval != "2s" {
 		t.Errorf("AlertPollInterval 默认值期望 2s, 实际 %s", config.AlertPollInterval)
 	}
+	if config.AlertSuppressEnabled == nil || *config.AlertSuppressEnabled != true {
+		t.Errorf("AlertSuppressEnabled 默认值期望 true, 实际 %v", config.AlertSuppressEnabled)
+	}
 	if config.AlertStartFromEnd == nil || *config.AlertStartFromEnd != true {
 		t.Errorf("AlertStartFromEnd 默认值期望 true, 实际 %v", config.AlertStartFromEnd)
 	}
@@ -280,6 +283,7 @@ log_level: "info"
 	t.Setenv("LOG_LEVEL", "error")
 	t.Setenv("API_BIND", ":18080")
 	t.Setenv("ALERT_ENABLED", "true")
+	t.Setenv("ALERT_SUPPRESS_ENABLED", "false")
 	t.Setenv("ALERT_RULES_FILE", alertRulePath)
 	t.Setenv("ALERT_LOG_PATHS", "/var/log/app/error.log")
 	t.Setenv("ALERT_POLL_INTERVAL", "5s")
@@ -310,6 +314,9 @@ log_level: "info"
 	}
 	if config.AlertEnabled != true {
 		t.Errorf("AlertEnabled 应从环境变量覆盖为 true, 实际 %v", config.AlertEnabled)
+	}
+	if config.AlertSuppressEnabled == nil || *config.AlertSuppressEnabled != false {
+		t.Errorf("AlertSuppressEnabled 应从环境变量覆盖为 false, 实际 %v", config.AlertSuppressEnabled)
 	}
 	if config.AlertRulesFile != alertRulePath {
 		t.Errorf("AlertRulesFile 应从环境变量覆盖, 实际 %s", config.AlertRulesFile)

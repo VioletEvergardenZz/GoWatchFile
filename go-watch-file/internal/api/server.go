@@ -323,6 +323,7 @@ func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		var req struct {
 			Enabled      bool   `json:"enabled"`
+			SuppressEnabled *bool `json:"suppressEnabled"`
 			RulesFile    string `json:"rulesFile"`
 			LogPaths     string `json:"logPaths"`
 			PollInterval string `json:"pollInterval"`
@@ -332,7 +333,14 @@ func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 			return
 		}
-		updated, err := h.fs.UpdateAlertConfig(req.Enabled, req.RulesFile, req.LogPaths, req.PollInterval, req.StartFromEnd)
+		suppressEnabled := true
+		if cfg.AlertSuppressEnabled != nil {
+			suppressEnabled = *cfg.AlertSuppressEnabled
+		}
+		if req.SuppressEnabled != nil {
+			suppressEnabled = *req.SuppressEnabled
+		}
+		updated, err := h.fs.UpdateAlertConfig(req.Enabled, suppressEnabled, req.RulesFile, req.LogPaths, req.PollInterval, req.StartFromEnd)
 		if err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 			return
@@ -353,6 +361,7 @@ func buildAlertConfigSnapshot(cfg *models.Config, enabled bool) map[string]any {
 	if cfg == nil {
 		return map[string]any{
 			"enabled":      enabled,
+			"suppressEnabled": true,
 			"rulesFile":    "",
 			"logPaths":     "",
 			"pollInterval": "",
@@ -363,12 +372,17 @@ func buildAlertConfigSnapshot(cfg *models.Config, enabled bool) map[string]any {
 	if cfg.AlertStartFromEnd != nil {
 		startFromEnd = *cfg.AlertStartFromEnd
 	}
+	suppressEnabled := true
+	if cfg.AlertSuppressEnabled != nil {
+		suppressEnabled = *cfg.AlertSuppressEnabled
+	}
 	pollInterval := strings.TrimSpace(cfg.AlertPollInterval)
 	if pollInterval == "" {
 		pollInterval = "2s"
 	}
 	return map[string]any{
 		"enabled":      enabled,
+		"suppressEnabled": suppressEnabled,
 		"rulesFile":    strings.TrimSpace(cfg.AlertRulesFile),
 		"logPaths":     strings.TrimSpace(cfg.AlertLogPaths),
 		"pollInterval": pollInterval,

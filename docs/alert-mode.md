@@ -21,6 +21,7 @@
 最小配置示例：
 ```yaml
 alert_enabled: true
+alert_suppress_enabled: true
 alert_rules_file: "/etc/gwf/alert-rules.yaml"
 alert_log_paths: "/var/log/app/error.log"
 alert_poll_interval: "2s"
@@ -36,6 +37,7 @@ alert_start_from_end: true
 
 ### 3.2 配置项说明
 - `alert_enabled`：显式启用开关。
+- `alert_suppress_enabled`：是否开启告警抑制（默认 `true`）。
 - `alert_rules_file`：规则文件路径（YAML/JSON 均可）。
 - `alert_log_paths`：日志文件路径列表，支持逗号/分号/空白/中文“，/；”分隔。
 - `alert_poll_interval`：轮询间隔（默认 `2s`，支持 `2s`/`2秒`/`2`）。
@@ -115,6 +117,7 @@ rules:
 ### 6.1 抑制窗口
 - 每条规则独立抑制；在窗口内重复匹配会被标记为 `suppressed`。
 - 时间写法同轮询间隔：`2s/2秒/2`、`5m/5分钟/300`、`1h/1小时`。
+- 可通过 `alert_suppress_enabled: false` 关闭抑制，所有匹配将直接发送通知。
 
 ### 6.2 异常升级（escalation）
 - 统计 **system 级别**告警在 `window` 内的次数。
