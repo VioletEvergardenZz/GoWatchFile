@@ -116,6 +116,7 @@ func (e *Engine) Evaluate(line, filePath string, now time.Time) []decisionResult
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
+	// 按顺序匹配第一条命中的规则
 	rule := e.matchRuleLocked(cleaned)
 	if rule == nil || rule.level == LevelIgnore {
 		return nil
@@ -129,9 +130,11 @@ func (e *Engine) Evaluate(line, filePath string, now time.Time) []decisionResult
 		message: truncateMessage(cleaned, maxDecisionMessage),
 		at:      now,
 	}
+	// 应用抑制窗口与通知策略
 	result.status, result.reason = e.applySuppressionLocked(rule, now)
 
 	if rule.level == LevelSystem {
+		// system 级别用于异常升级统计
 		e.appendSystemEventLocked(now)
 	}
 

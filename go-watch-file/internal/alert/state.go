@@ -8,7 +8,7 @@ import (
 
 const (
 	maxDecisionRecords = 200
-	overviewWindow     = 30 * time.Minute
+	overviewWindow     = 24 * time.Hour // 告警态势概览统计窗口
 )
 
 // Dashboard 表示告警控制台数据
@@ -190,6 +190,7 @@ func (s *State) Dashboard() Dashboard {
 
 func buildOverview(records []alertRecord) Overview {
 	now := time.Now()
+	// 仅统计窗口内的记录用于概览
 	windowStart := now.Add(-overviewWindow)
 
 	var fatalCount, systemCount, businessCount int
@@ -226,7 +227,7 @@ func buildOverview(records []alertRecord) Overview {
 	}
 
 	return Overview{
-		Window:     fmt.Sprintf("最近%d分钟", int(overviewWindow.Minutes())),
+		Window:     formatWindow(overviewWindow),
 		Risk:       risk,
 		Fatal:      fatalCount,
 		System:     systemCount,
@@ -235,6 +236,14 @@ func buildOverview(records []alertRecord) Overview {
 		Suppressed: suppressedCount,
 		Latest:     defaultTime(latest),
 	}
+}
+
+// formatWindow 统一概览窗口的展示文案
+func formatWindow(window time.Duration) string {
+	if window%time.Hour == 0 {
+		return fmt.Sprintf("最近%d小时", int(window.Hours()))
+	}
+	return fmt.Sprintf("最近%d分钟", int(window.Minutes()))
 }
 
 func formatTime(ts time.Time) string {

@@ -60,6 +60,7 @@ func NewFileService(config *models.Config) (*FileService, error) {
 		state:         runtimeState,
 		manualOnce:    make(map[string]bool),
 	}
+	// 初始化告警管理器并复用通知器
 	alertManager, err := alert.NewManager(config, &alert.NotifierSet{
 		DingTalk: fileService.dingtalkRobot,
 		Email:    fileService.emailSender,
@@ -409,6 +410,7 @@ func validateFileExt(ext string) error {
 // Start 启动文件服务。
 func (fs *FileService) Start() error {
 	logger.Info("启动文件服务...")
+	// 先启动文件监听 再启动告警轮询
 	if err := fs.watcher.Start(); err != nil {
 		return fmt.Errorf("启动文件监控失败: %w", err)
 	}
@@ -449,6 +451,7 @@ func (fs *FileService) Stop() error {
 func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	start := time.Now()
 	manual := fs.consumeManualOnce(filePath)
+	// 手动上传不受自动开关限制
 	if fs.state != nil && !manual && !fs.state.AutoUploadEnabled(filePath) {
 		fs.state.MarkSkipped(filePath)
 		return nil
@@ -622,6 +625,7 @@ func (fs *FileService) UpdateAlertConfig(enabled bool, suppressEnabled bool, rul
 		updated.AlertPollInterval = "2s"
 	}
 
+	// 告警管理器按需创建或热更新
 	if manager == nil {
 		if enabled {
 			newManager, err := alert.NewManager(&updated, &alert.NotifierSet{

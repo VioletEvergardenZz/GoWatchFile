@@ -9,15 +9,18 @@
 **后端（go-watch-file）**
 - 负责监控文件、入队上传、记录状态、汇总仪表盘数据。
 - 提供 HTTP API：仪表盘、自动上传开关、手动上传、文件 Tail、运行时配置更新。
+- 告警决策与告警配置 API：`/api/alerts`、`/api/alert-config`。
 
 **前端（console-frontend）**
 - 展示目录树 / 文件列表 / 上传记录 / 队列趋势 / Tail 日志。
 - 通过 API 拉取仪表盘数据，并触发上传与配置更新操作。
+- 告警控制台展示风险概览、告警列表与告警配置。
 
 **数据契约**
 - 后端聚合结构：`DashboardData`
 - 前端类型：`DashboardPayload`
 - 字段名一一对齐（`directoryTree`, `metricCards`, `uploadRecords`, `configSnapshot`, `chartPoints` 等）。
+- 告警数据结构：`AlertDashboard` 与 `AlertConfigSnapshot`（对应 `/api/alerts` 与 `/api/alert-config`）。
 
 ---
 
@@ -28,6 +31,10 @@
 - **轻量刷新**（`refreshLiveData`）：每 3 秒执行，只更新指标卡、上传记录、监控摘要与趋势图。
 
 这样避免频繁扫描目录导致前端闪动或后台负载升高。
+
+## 2.2 告警控制台刷新机制（实际实现）
+- 告警概览与决策列表：每 3 秒轮询 `/api/alerts`。
+- 告警配置：首次加载时调用 `/api/alert-config`，保存时调用 `POST /api/alert-config`。
 
 ---
 
@@ -93,6 +100,28 @@ sequenceDiagram
   Note over UI: 选中后每 2 秒轮询一次
 ```
 
+### 3.5 告警控制台刷新与配置
+
+```mermaid
+sequenceDiagram
+  participant UI as AlertConsole
+  participant API as API Server
+  participant FS as FileService
+  participant AS as AlertState
+
+  UI->>API: GET /api/alerts
+  API->>FS: AlertState()
+  FS->>AS: Dashboard()
+  AS-->>API: AlertDashboard
+  API-->>UI: 渲染告警概览与列表
+
+  UI->>API: GET /api/alert-config
+  API-->>UI: 告警配置快照
+  UI->>API: POST /api/alert-config
+  API->>FS: UpdateAlertConfig()
+  API-->>UI: 更新后的配置
+```
+
 ---
 
 ## 4. API 接口清单（面向前端）
@@ -131,9 +160,20 @@ sequenceDiagram
 - `GET /api/health`
 - 返回：`{ queue, workers }`
 
+**7) 告警面板**
+- `GET /api/alerts`
+- 返回：`{ ok, enabled, data }`，`data` 为 `AlertDashboard`
+
+**8) 告警配置**
+- `GET /api/alert-config`
+- `POST /api/alert-config`
+- 用途：读取与更新告警配置（仅内存生效）
+
 ---
 
 ## 5. 注意事项
 - `/api/config` 仅更新运行态配置，S3 与通知配置需改文件并重启。
+- `/api/alert-config` 仅更新告警相关配置，不写回 `config.yaml`。
+- 告警概览统计窗口为最近 24 小时。
 - 前端的 `concurrency` 字段是字符串（例如 `workers=3 / queue=100`），保存时解析成数值。
 - 如需完整字段解释与格式约定，参考 `docs/state-types-visual.md`。

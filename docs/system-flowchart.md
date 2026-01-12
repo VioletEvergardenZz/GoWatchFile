@@ -40,7 +40,21 @@ sequenceDiagram
     FS->>ST: MarkUploaded/MarkFailed
 ```
 
+## 告警模式流程
+
+```mermaid
+graph TD
+    L[日志文件] --> T[Alert Tailer 轮询读取]
+    T --> E[规则引擎匹配与抑制]
+    E --> D[决策记录]
+    D --> S[AlertState 运行态]
+    S --> A[/api/alerts]
+    D --> N[通知: 钉钉/邮件(可选)]
+```
+
 ## 说明
 - 自动上传开关通过 `/api/auto-upload` 修改运行态，并影响目录/文件的自动上传策略。
 - 文件 Tail 通过 `/api/file-log` 按需读取文件尾部内容，不走 Dashboard 数据。
 - S3 与通知配置变更需重启服务，运行时配置仅包含目录/后缀/并发/静默窗口。
+- 告警配置通过 `/api/alert-config` 运行时更新，仅内存生效。
+- 告警概览统计窗口为最近 24 小时。

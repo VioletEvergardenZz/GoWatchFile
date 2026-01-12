@@ -24,6 +24,12 @@ go build -o bin/file-watch cmd/main.go
 - `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
 - `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
 
+### 告警模式配置要点
+- `alert_rules_file` 与 `alert_log_paths` 为必填项，`alert_enabled` 用于显式开关。
+- `alert_start_from_end=true` 表示只处理新写入日志，避免历史告警。
+- `alert_suppress_enabled=false` 可关闭抑制，所有命中都会发送通知。
+- 规则文件支持热加载，修改后在下次轮询生效。
+
 ### 本地 MinIO 示例（示意）
 - `S3_ENDPOINT=127.0.0.1:9000`
 - `S3_FORCE_PATH_STYLE=true`
@@ -45,6 +51,8 @@ npm run dev
 
 S3 与通知配置需要修改 `.env`/`config.yaml` 并重启后端。
 
+告警配置通过 `/api/alert-config` 更新，仅影响内存并实时生效。
+
 ## 运行测试
 ```bash
 cd go-watch-file
@@ -54,4 +62,5 @@ go test ./...
 ## 常见开发验证
 - 新建文件后等待静默窗口结束，再观察上传与通知。
 - 通过 `/api/dashboard` 验证目录树、上传记录与队列趋势。
+- 通过 `/api/alerts` 验证告警概览与决策列表。
 - `LOG_LEVEL=debug` 便于追踪 watcher 与 queue 行为。

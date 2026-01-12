@@ -393,78 +393,82 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
           </div>
           <div className="section-meta">{configStatusLabel}</div>
         </div>
-        <div className="inputs">
-          <div className="input">
-            <label>告警开关</label>
-            <div className="switch-group">
-              <span className="muted small">{alertConfig.enabled ? "启用" : "停用"}</span>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={alertConfig.enabled}
-                  disabled={configDisabled}
-                  onChange={(e) => setAlertConfig((prev) => ({ ...prev, enabled: e.target.checked }))}
-                />
-                <span className="slider" />
-              </label>
+        <div className="alert-config-grid">
+          <div className="inputs config-switches">
+            <div className="input">
+              <label>告警开关</label>
+              <div className="switch-group">
+                <span className="muted small">{alertConfig.enabled ? "启用" : "停用"}</span>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={alertConfig.enabled}
+                    disabled={configDisabled}
+                    onChange={(e) => setAlertConfig((prev) => ({ ...prev, enabled: e.target.checked }))}
+                  />
+                  <span className="slider" />
+                </label>
+              </div>
+            </div>
+            <div className="input">
+              <label>告警抑制</label>
+              <div className="switch-group">
+                <span className="muted small">{alertConfig.suppressEnabled ? "开启" : "关闭"}</span>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={alertConfig.suppressEnabled}
+                    disabled={configDisabled}
+                    onChange={(e) => setAlertConfig((prev) => ({ ...prev, suppressEnabled: e.target.checked }))}
+                  />
+                  <span className="slider" />
+                </label>
+              </div>
+            </div>
+            <div className="input">
+              <label>从末尾开始</label>
+              <div className="switch-group">
+                <span className="muted small">{alertConfig.startFromEnd ? "是" : "否"}</span>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={alertConfig.startFromEnd}
+                    disabled={configDisabled}
+                    onChange={(e) => setAlertConfig((prev) => ({ ...prev, startFromEnd: e.target.checked }))}
+                  />
+                  <span className="slider" />
+                </label>
+              </div>
             </div>
           </div>
-          <div className="input">
-            <label>告警抑制</label>
-            <div className="switch-group">
-              <span className="muted small">{alertConfig.suppressEnabled ? "开启" : "关闭"}</span>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={alertConfig.suppressEnabled}
-                  disabled={configDisabled}
-                  onChange={(e) => setAlertConfig((prev) => ({ ...prev, suppressEnabled: e.target.checked }))}
-                />
-                <span className="slider" />
-              </label>
+          <div className="inputs config-fields">
+            <div className="input">
+              <label>规则文件路径</label>
+              <input
+                placeholder="/etc/gwf/alert-rules.yaml"
+                value={alertConfig.rulesFile}
+                disabled={configDisabled}
+                onChange={(e) => setAlertConfig((prev) => ({ ...prev, rulesFile: e.target.value }))}
+              />
             </div>
-          </div>
-          <div className="input">
-            <label>从末尾开始</label>
-            <div className="switch-group">
-              <span className="muted small">{alertConfig.startFromEnd ? "是" : "否"}</span>
-              <label className="switch">
-                <input
-                  type="checkbox"
-                  checked={alertConfig.startFromEnd}
-                  disabled={configDisabled}
-                  onChange={(e) => setAlertConfig((prev) => ({ ...prev, startFromEnd: e.target.checked }))}
-                />
-                <span className="slider" />
-              </label>
+            <div className="input">
+              <label>日志路径</label>
+              <input
+                placeholder="/var/log/app/error.log,/var/log/app/worker.error.log"
+                value={alertConfig.logPaths}
+                disabled={configDisabled}
+                onChange={(e) => setAlertConfig((prev) => ({ ...prev, logPaths: e.target.value }))}
+              />
             </div>
-          </div>
-          <div className="input">
-            <label>规则文件路径</label>
-            <input
-              placeholder="/etc/gwf/alert-rules.yaml"
-              value={alertConfig.rulesFile}
-              disabled={configDisabled}
-              onChange={(e) => setAlertConfig((prev) => ({ ...prev, rulesFile: e.target.value }))}
-            />
-          </div>
-          <div className="input">
-            <label>日志路径</label>
-            <input
-              placeholder="/var/log/app/error.log,/var/log/app/worker.error.log"
-              value={alertConfig.logPaths}
-              disabled={configDisabled}
-              onChange={(e) => setAlertConfig((prev) => ({ ...prev, logPaths: e.target.value }))}
-            />
-          </div>
-          <div className="input">
-            <label>轮询间隔</label>
-            <input
-              placeholder="2s / 5s / 10s"
-              value={alertConfig.pollInterval}
-              disabled={configDisabled}
-              onChange={(e) => setAlertConfig((prev) => ({ ...prev, pollInterval: e.target.value }))}
-            />
+            <div className="input">
+              <label>轮询间隔</label>
+              <input
+                placeholder="2s / 5s / 10s"
+                value={alertConfig.pollInterval}
+                disabled={configDisabled}
+                onChange={(e) => setAlertConfig((prev) => ({ ...prev, pollInterval: e.target.value }))}
+              />
+            </div>
           </div>
         </div>
         <div className="toolbar config-actions">

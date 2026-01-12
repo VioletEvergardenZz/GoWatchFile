@@ -277,6 +277,7 @@ func (m *Manager) UpdateConfig(update ConfigUpdate, shouldRun bool) error {
 	m.startFromEnd = update.StartFromEnd
 
 	if logPathsChanged || pollChanged || startChanged || enabledChanged {
+		// 影响轮询参数时刷新轮询摘要
 		m.updatePollSummary(time.Time{}, nil)
 	}
 
@@ -331,11 +332,13 @@ func (m *Manager) handleLine(path, line string) {
 		return
 	}
 	now := time.Now()
+	// 规则匹配可能产生多条决策 包含升级告警
 	results := m.engine.Evaluate(line, path, now)
 	if len(results) == 0 {
 		return
 	}
 	for _, result := range results {
+		// 决策写入运行态并按需触发通知
 		m.state.Record(result)
 		if result.status == StatusSent {
 			m.sendNotification(result)
@@ -387,6 +390,7 @@ func (m *Manager) updatePollSummary(at time.Time, pollErr error) {
 func (m *Manager) maybeReloadRules() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	// 规则文件变更时自动热加载
 	info, err := os.Stat(m.rulesPath)
 	if err != nil {
 		m.updateRulesSummary(nil, err.Error())

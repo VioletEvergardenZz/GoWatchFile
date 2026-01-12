@@ -9,6 +9,7 @@ React + TypeScript + Vite 单页应用，用于展示 Go 后端的仪表盘与�
 - 队列趋势与监控摘要图表。
 - 文件内容（实时 Tail + 关键词检索，轮询 `/api/file-log`）。
 - 运行时配置更新（`watchDir/fileExt/silence/workers/queue`）。
+- 告警控制台：风险概览、告警列表、抑制统计与告警配置更新。
 
 ## 快速开始
 ```bash
@@ -23,11 +24,14 @@ npm run dev
 - 仪表盘：每 3 秒刷新一次（`DASHBOARD_POLL_MS=3000`）。
 - 文件内容：实时 Tail 每 2 秒拉取一次（`LOG_POLL_MS=2000`），关键词检索为按需触发。
 - 目录树与文件列表仅在首次加载或手动操作后全量刷新，避免频繁扫描。
+- 告警控制台：每 3 秒拉取 `/api/alerts`，配置保存走 `/api/alert-config`。
 
 ## 目录结构
 - `src/App.tsx`：主界面与交互逻辑。
-- `src/types.ts`：与后端 `DashboardData` 对齐的类型定义。
+- `src/AlertConsole.tsx`：告警控制台与交互逻辑。
+- `src/types.ts`：与后端 `DashboardData` / `AlertDashboard` 对齐的类型定义。
 - `src/mockData.ts`：默认占位数据；API 未连通时用于初始渲染。
+- `src/Alert.css`：告警控制台样式。
 - `src/App.css` / `src/index.css`：主题与布局样式。
 
 ## 接口对接说明
@@ -37,5 +41,7 @@ npm run dev
 - `POST /api/manual-upload`：手动触发上传。
 - `POST /api/file-log`：读取文件内容（Tail/关键词检索）。
 - `POST /api/config`：运行时更新配置。
+- `GET /api/alerts`：告警概览与决策列表。
+- `GET /api/alert-config` / `POST /api/alert-config`：告警配置读取与更新。
 
 字段与数据结构详见 `docs/state-types-visual.md`。

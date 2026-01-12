@@ -286,6 +286,7 @@ func (h *handler) alertDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	alertState := h.fs.AlertState()
 	if alertState == nil {
+		// 告警未启用时返回空结果
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":    false,
 			"error": "告警未启用",
@@ -315,12 +316,14 @@ func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
+		// 读取告警配置快照
 		writeJSON(w, http.StatusOK, map[string]any{
 			"ok":     true,
 			"config": buildAlertConfigSnapshot(cfg, h.fs.AlertEnabled()),
 		})
 		return
 	case http.MethodPost:
+		// 运行时更新告警配置 仅内存生效
 		var req struct {
 			Enabled      bool   `json:"enabled"`
 			SuppressEnabled *bool `json:"suppressEnabled"`

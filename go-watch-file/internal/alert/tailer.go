@@ -83,14 +83,17 @@ func (t *Tailer) readFile(path string) error {
 	if !cursor.inited {
 		cursor.inited = true
 		if t.startFromEnd {
+			// 首次启动可从末尾开始 忽略历史内容
 			cursor.offset = size
 			cursor.remainder = ""
 			return nil
 		}
+		// 从文件头开始读取历史内容
 		cursor.offset = 0
 		cursor.remainder = ""
 	}
 	if size < cursor.offset {
+		// 文件截断或轮转时重置游标
 		cursor.offset = 0
 		cursor.remainder = ""
 	}

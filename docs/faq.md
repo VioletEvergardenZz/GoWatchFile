@@ -31,3 +31,14 @@
 - fsnotify 依赖系统文件句柄，目录数量过多可能触发 “too many open files”。
 - 日志中会提示监控降级，可考虑提高系统 `ulimit` 或缩小监控范围。
 - 可通过 `watch_exclude` 或 `WATCH_EXCLUDE` 排除 `.git` 等大目录。
+
+## 8. 告警控制台提示“告警未启用”
+- 确认 `alert_enabled=true`，并配置了 `alert_rules_file` 与 `alert_log_paths`。
+- 规则文件路径必须存在且可读取，否则会启动失败。
+
+## 9. 告警没有历史数据
+- 检查 `alert_start_from_end` 是否为 `true`，该配置会忽略历史日志，仅处理新写入内容。
+- 如需回溯历史日志，请改为 `false` 并留意可能产生大量历史告警。
+
+## 10. “最新窗口”是什么意思
+- 告警概览统计最近 24 小时的告警决策，控制台“最新窗口”展示该统计窗口文案。

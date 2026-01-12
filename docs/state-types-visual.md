@@ -275,3 +275,91 @@ class MonitorSummary {
 
 说明：
 - 包括“近 1 分钟吞吐”“成功率”“队列 backlog”“失败累计”等指标。
+
+---
+
+## 6. 告警控制台数据结构（AlertDashboard）
+
+```mermaid
+classDiagram
+class AlertDashboard {
+  AlertOverview overview
+  AlertDecision[] decisions
+  AlertStats stats
+  RulesSummary rules
+  PollSummary polling
+}
+
+class AlertOverview {
+  string window
+  string risk
+  int fatal
+  int system
+  int business
+  int sent
+  int suppressed
+  string latest
+}
+
+class AlertDecision {
+  string id
+  string time
+  string level
+  string rule
+  string message
+  string file
+  string status
+  string reason?
+}
+
+class AlertStats {
+  int sent
+  int suppressed
+  int recorded
+}
+
+class RulesSummary {
+  string source
+  string lastLoaded
+  int total
+  string defaultSuppress
+  string escalation
+  RuleLevelCount levels
+  string error?
+}
+
+class RuleLevelCount {
+  int ignore
+  int business
+  int system
+  int fatal
+}
+
+class PollSummary {
+  string interval
+  string[] logFiles
+  string lastPoll
+  string nextPoll
+  string error?
+}
+```
+
+说明：
+- `overview.window` 为概览统计窗口文案，当前为最近 24 小时。
+- `decisions` 按时间倒序返回，列表只保留最近 200 条。
+- `stats` 为累计统计，独立于概览窗口。
+- 结构定义来源于 `go-watch-file/internal/alert/state.go` 与 `console-frontend/src/types.ts`。
+
+### 6.1 AlertConfigSnapshot（告警配置快照）
+
+`/api/alert-config` 返回结构示例：
+```json
+{
+  "enabled": true,
+  "suppressEnabled": true,
+  "rulesFile": "/etc/gwf/alert-rules.yaml",
+  "logPaths": "/var/log/app/error.log",
+  "pollInterval": "2s",
+  "startFromEnd": true
+}
+```

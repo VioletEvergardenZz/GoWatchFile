@@ -55,6 +55,8 @@
 - `alert_log_paths` (`ALERT_LOG_PATHS`)：日志文件路径列表（逗号/分号/空白分隔）。
 - `alert_poll_interval` (`ALERT_POLL_INTERVAL`)：轮询间隔（默认 2s，支持 2s/2秒/2）。
 - `alert_start_from_end` (`ALERT_START_FROM_END`)：是否从文件末尾开始追踪（默认 true）。
+  - `true` 仅处理新写入日志，忽略历史内容。
+  - `false` 启动时从头扫描，可能产生历史告警。
 
 ### 配置示例（config.yaml）
 ```yaml
@@ -146,9 +148,28 @@ alert_start_from_end: true
 ### 7) 告警决策面板
 - `GET /api/alerts`
 - 返回：`AlertDashboard`（告警概览、列表、统计、规则摘要、轮询摘要）
+- 说明：概览窗口为最近 24 小时，控制台“最新窗口”展示 `overview.window`
+
+### 8) 告警配置
+- `GET /api/alert-config`
+- 返回：告警配置快照（enabled/suppressEnabled/rulesFile/logPaths/pollInterval/startFromEnd）
+- `POST /api/alert-config`
+- Body：
+  ```json
+  {
+    "enabled": true,
+    "suppressEnabled": true,
+    "rulesFile": "/etc/gwf/alert-rules.yaml",
+    "logPaths": "/var/log/app/error.log",
+    "pollInterval": "2s",
+    "startFromEnd": true
+  }
+  ```
+- 说明：仅更新内存配置，重启后以配置文件为准。
 
 ## 运行时配置更新说明
 `/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。该接口不会写回 `config.yaml`。
+`/api/alert-config` 仅更新告警配置与轮询状态，不写回 `config.yaml`。
 
 ## 运行态与指标
 - 运行态数据保存在内存中（tail/timeline/uploads/chart）。
@@ -166,6 +187,7 @@ alert_start_from_end: true
 - 平台概述：`../docs/overview.md`
 - 流程图：`../docs/system-flowchart.md`
 - 前后端联动：`../docs/frontend-backend-linkage.md`
+- 告警模式：`../docs/alert-mode.md`
 - 开发指南：`../docs/dev-guide.md`
 - 常见问题：`../docs/faq.md`
 
