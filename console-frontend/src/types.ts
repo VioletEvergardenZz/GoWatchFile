@@ -169,3 +169,61 @@ export type AlertConfigResponse = {
   config?: AlertConfigSnapshot;
   error?: string;
 };
+
+export type SystemProcessStatus = "running" | "sleeping" | "stopped" | "zombie";
+
+export type SystemResourceGauge = {
+  id: "cpu" | "memory" | "disk";
+  label: string;
+  usedPct: number;
+  usedLabel: string;
+  totalLabel: string;
+  subLabel: string;
+  trend: string;
+  tone?: "normal" | "warn" | "critical";
+};
+
+export type SystemVolume = {
+  mount: string;
+  usedPct: number;
+  used: string;
+  total: string;
+};
+
+export type SystemOverview = {
+  host: string;
+  os: string;
+  kernel: string;
+  uptime: string;
+  load: string;
+  ip: string;
+  lastUpdated: string;
+  processes: number;
+  connections: number;
+  connectionsBreakdown: string;
+  cpuTemp: string;
+  topProcess: string;
+};
+
+export type SystemProcess = {
+  pid: number;
+  name: string;
+  command: string;
+  user: string;
+  status: SystemProcessStatus;
+  cpu: number;
+  mem: number;
+  rss: string;
+  threads: number;
+  start: string;
+  uptime: string;
+  ports: string[];
+  ioRead: string;
+  ioWrite: string;
+  netIn: string;
+  netOut: string;
+  cwd: string;
+  path: string;
+  env: string[];
+  note?: string;
+};

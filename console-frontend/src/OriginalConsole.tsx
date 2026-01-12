@@ -3,6 +3,7 @@ import { Line } from "react-chartjs-2";
 import type { ChartOptions } from "chart.js";
 import { CategoryScale, Chart as ChartJS, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from "chart.js";
 import { AlertConsole } from "./AlertConsole";
+import { SystemConsole } from "./SystemConsole";
 import {
   chartPoints,
   configSnapshot,
@@ -31,6 +32,7 @@ import type {
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler, Legend);
 
 const SECTION_IDS = ["overview", "config", "directory", "files", "tail", "failures", "monitor"];
+const SYSTEM_SECTION_IDS = ["system-overview", "system-resources", "system-volumes", "system-processes", "system-process-detail"];
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
 const UPLOAD_PAGE_SIZE = 5;
@@ -38,7 +40,7 @@ const FILE_PAGE_SIZE = 10;
 const LOG_POLL_MS = 2000;
 const DASHBOARD_POLL_MS = 3000;
 const THEME_STORAGE_KEY = "gwf-theme";
-type ConsoleView = "console" | "alert";
+type ConsoleView = "console" | "alert" | "system";
 
 type OriginalConsoleProps = {
   view: ConsoleView;
@@ -547,7 +549,9 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   }, [currentRoot, rootNodes, activePath]);
 
   useEffect(() => {
-    if (!bootstrapped || view !== "console") return;
+    if (view === "alert") return;
+    if (view === "console" && !bootstrapped) return;
+    const sectionIds = view === "system" ? SYSTEM_SECTION_IDS : SECTION_IDS;
     visibleSectionsRef.current.clear();
     const observer = new IntersectionObserver(
       (entries) => {
@@ -570,7 +574,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
       { threshold: [0, 0.25, 0.5], rootMargin: "-30% 0px -30% 0px" }
     );
 
-    const targets = SECTION_IDS.map((id) => document.getElementById(id)).filter(Boolean) as Element[];
+    const targets = sectionIds.map((id) => document.getElementById(id)).filter(Boolean) as Element[];
     targets.forEach((el) => observer.observe(el));
     return () => {
       observer.disconnect();
@@ -1160,6 +1164,15 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
             >
               告警控制台
             </button>
+            <button
+              className={`view-tab ${view === "system" ? "active" : ""}`}
+              type="button"
+              role="tab"
+              aria-selected={view === "system"}
+              onClick={() => onViewChange("system")}
+            >
+              系统资源管理器
+            </button>
           </div>
           {view === "console" ? (
             <nav className="nav-list">
@@ -1206,6 +1219,53 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
                     : id === "failures"
                     ? "记录"
                     : "图表";
+                return (
+                  <a key={id} className={`nav-item ${activeSection === id ? "active" : ""}`} href={`#${id}`}>
+                    <div className="nav-label">
+                      <span className={`nav-dot ${activeSection === id ? "live" : ""}`} />
+                      <div>
+                        <div className="nav-label-title">{title}</div>
+                        <small>{desc}</small>
+                      </div>
+                    </div>
+                    <span className="badge ghost">{badge}</span>
+                  </a>
+                );
+              })}
+            </nav>
+          ) : view === "system" ? (
+            <nav className="nav-list">
+              {SYSTEM_SECTION_IDS.map((id) => {
+                const title =
+                  id === "system-overview"
+                    ? "系统概览"
+                    : id === "system-resources"
+                    ? "资源总览"
+                    : id === "system-volumes"
+                    ? "磁盘分区"
+                    : id === "system-processes"
+                    ? "进程列表"
+                    : "进程详情";
+                const desc =
+                  id === "system-overview"
+                    ? "主机 / 负载 / 连接"
+                    : id === "system-resources"
+                    ? "CPU / 内存 / 磁盘"
+                    : id === "system-volumes"
+                    ? "容量 / 使用率"
+                    : id === "system-processes"
+                    ? "筛选 / 排序"
+                    : "指标 / 处置";
+                const badge =
+                  id === "system-overview"
+                    ? "概览"
+                    : id === "system-resources"
+                    ? "资源"
+                    : id === "system-volumes"
+                    ? "分区"
+                    : id === "system-processes"
+                    ? "进程"
+                    : "详情";
                 return (
                   <a key={id} className={`nav-item ${activeSection === id ? "active" : ""}`} href={`#${id}`}>
                     <div className="nav-label">
@@ -1706,8 +1766,10 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
             </div>
           </section>
           </>
-          ) : (
+          ) : view === "alert" ? (
             <AlertConsole embedded />
+          ) : (
+            <SystemConsole embedded />
           )}
         </div>
       </div>
