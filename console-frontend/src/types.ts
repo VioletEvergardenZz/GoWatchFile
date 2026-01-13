@@ -227,3 +227,10 @@ export type SystemProcess = {
   env: string[];
   note?: string;
 };
+
+export type SystemDashboard = {
+  systemOverview: SystemOverview;
+  systemGauges: SystemResourceGauge[];
+  systemVolumes: SystemVolume[];
+  systemProcesses: SystemProcess[];
+};

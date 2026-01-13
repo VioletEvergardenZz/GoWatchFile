@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./SystemConsole.css";
-import { systemGauges, systemOverview, systemProcesses, systemVolumes } from "./mockData";
-import type { SystemProcess, SystemProcessStatus } from "./types";
+import { systemGauges as mockSystemGauges, systemOverview as mockSystemOverview, systemProcesses as mockSystemProcesses, systemVolumes as mockSystemVolumes } from "./mockData";
+import type { SystemDashboard, SystemOverview, SystemProcess, SystemProcessStatus, SystemResourceGauge, SystemVolume } from "./types";
 
 type SortKey = "cpu" | "mem" | "pid" | "name";
 
@@ -21,6 +21,9 @@ const STATUS_TONES: Record<SystemProcessStatus, "success" | "warning" | "danger"
 
 const CPU_HOTLINE = 35;
 const MEM_HOTLINE = 10;
+const POLL_MS = 3000;
+const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
+const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
 
 const clampPct = (value: number) => Math.max(0, Math.min(100, value));
 const formatPct = (value: number) => `${value.toFixed(1)}%`;
@@ -29,7 +32,30 @@ type SystemConsoleProps = {
   embedded?: boolean;
 };
 
+const emptyOverview: SystemOverview = {
+  host: "--",
+  os: "--",
+  kernel: "--",
+  uptime: "--",
+  load: "--",
+  ip: "--",
+  lastUpdated: "--",
+  processes: 0,
+  connections: 0,
+  connectionsBreakdown: "--",
+  cpuTemp: "--",
+  topProcess: "--",
+};
+
 export function SystemConsole({ embedded = false }: SystemConsoleProps) {
+  const [overview, setOverview] = useState<SystemOverview>(USE_MOCK ? mockSystemOverview : emptyOverview);
+  const [gauges, setGauges] = useState<SystemResourceGauge[]>(USE_MOCK ? mockSystemGauges : []);
+  const [volumes, setVolumes] = useState<SystemVolume[]>(USE_MOCK ? mockSystemVolumes : []);
+  const [processes, setProcesses] = useState<SystemProcess[]>(USE_MOCK ? mockSystemProcesses : []);
+  const [loading, setLoading] = useState(!USE_MOCK);
+  const fetchingRef = useRef(false);
+  const aliveRef = useRef(true);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [portTerm, setPortTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<SystemProcessStatus | "all">("all");
@@ -37,13 +63,50 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
   const [hotCpuOnly, setHotCpuOnly] = useState(false);
   const [hotMemOnly, setHotMemOnly] = useState(false);
   const [listeningOnly, setListeningOnly] = useState(false);
-  const [selectedPid, setSelectedPid] = useState<number | null>(() => systemProcesses[0]?.pid ?? null);
+  const [selectedPid, setSelectedPid] = useState<number | null>(() => (USE_MOCK ? mockSystemProcesses[0]?.pid ?? null : null));
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const refresh = async () => {
+      if (fetchingRef.current || !aliveRef.current) return;
+      fetchingRef.current = true;
+      // 拉取系统资源快照，避免并发请求叠加
+      try {
+        const resp = await fetch(`${API_BASE}/api/system`, { cache: "no-store" });
+        if (!resp.ok) {
+          throw new Error(`HTTP ${resp.status}`);
+        }
+        const payload = (await resp.json()) as Partial<SystemDashboard>;
+        if (!aliveRef.current) return;
+        if (payload.systemOverview !== undefined) setOverview(payload.systemOverview);
+        if (payload.systemGauges !== undefined) setGauges(payload.systemGauges);
+        if (payload.systemVolumes !== undefined) setVolumes(payload.systemVolumes);
+        if (payload.systemProcesses !== undefined) setProcesses(payload.systemProcesses);
+      } catch {
+        if (!aliveRef.current) return;
+      } finally {
+        fetchingRef.current = false;
+        if (aliveRef.current) {
+          setLoading(false);
+        }
+      }
+    };
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), POLL_MS);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const filteredProcesses = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     const port = portTerm.trim().toLowerCase();
-    return systemProcesses.filter((proc) => {
+    return processes.filter((proc) => {
       if (statusFilter !== "all" && proc.status !== statusFilter) return false;
       if (hotCpuOnly && proc.cpu < CPU_HOTLINE) return false;
       if (hotMemOnly && proc.mem < MEM_HOTLINE) return false;
@@ -58,7 +121,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
       }
       return true;
     });
-  }, [searchTerm, portTerm, statusFilter, hotCpuOnly, hotMemOnly, listeningOnly]);
+  }, [searchTerm, portTerm, statusFilter, hotCpuOnly, hotMemOnly, listeningOnly, processes]);
 
   const sortedProcesses = useMemo(() => {
     const next = [...filteredProcesses];
@@ -122,29 +185,29 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
           <h1>系统资源管理器</h1>
           <p className="subtitle">实时 CPU、内存、磁盘与进程资源概览，支持筛选与快速处置。</p>
           <div className="system-meta">
-            <span className="badge ghost">主机 {systemOverview.host}</span>
-            <span className="badge ghost">IP {systemOverview.ip}</span>
-            <span className="badge ghost">运行 {systemOverview.uptime}</span>
-            <span className="badge ghost">OS {systemOverview.os}</span>
-            <span className="badge ghost">内核 {systemOverview.kernel}</span>
-            <span className="badge ghost">更新 {systemOverview.lastUpdated}</span>
+            <span className="badge ghost">主机 {overview.host}</span>
+            <span className="badge ghost">IP {overview.ip}</span>
+            <span className="badge ghost">运行 {overview.uptime}</span>
+            <span className="badge ghost">OS {overview.os}</span>
+            <span className="badge ghost">内核 {overview.kernel}</span>
+            <span className="badge ghost">更新 {overview.lastUpdated}</span>
           </div>
         </div>
         <div className="system-hero-side">
           <div className="system-kpi">
             <small>系统负载</small>
-            <div className="kpi-value">{systemOverview.load}</div>
-            <span className="muted small">CPU 温度 {systemOverview.cpuTemp}</span>
+            <div className="kpi-value">{overview.load}</div>
+            <span className="muted small">CPU 温度 {overview.cpuTemp}</span>
           </div>
           <div className="system-kpi">
             <small>进程总数</small>
-            <div className="kpi-value">{systemOverview.processes}</div>
-            <span className="muted small">最高占用 {systemOverview.topProcess}</span>
+            <div className="kpi-value">{overview.processes}</div>
+            <span className="muted small">最高占用 {overview.topProcess}</span>
           </div>
           <div className="system-kpi">
             <small>活动连接</small>
-            <div className="kpi-value">{systemOverview.connections}</div>
-            <span className="muted small">{systemOverview.connectionsBreakdown}</span>
+            <div className="kpi-value">{overview.connections}</div>
+            <span className="muted small">{overview.connectionsBreakdown}</span>
           </div>
         </div>
       </section>
@@ -155,7 +218,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
           <span>刷新间隔 3 秒</span>
         </div>
         <div className="system-gauge-grid">
-          {systemGauges.map((gauge) => (
+          {gauges.map((gauge) => (
             <div className={`system-gauge tone-${gauge.tone ?? "normal"}`} key={gauge.id}>
               <div className="gauge-header">
                 <div>
@@ -182,7 +245,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
           <span>容量 / 使用率</span>
         </div>
         <div className="volume-grid">
-          {systemVolumes.map((volume) => (
+          {volumes.map((volume) => (
             <div className="volume-item" key={volume.mount}>
               <div className="volume-head">
                 <strong>{volume.mount}</strong>
@@ -203,7 +266,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
         <div className="section-title">
           <h2>进程列表 / 资源占用</h2>
           <span>
-            展示 {sortedProcesses.length} / {systemProcesses.length}
+            展示 {sortedProcesses.length} / {processes.length}
           </span>
         </div>
         <div className="toolbar">
@@ -305,7 +368,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
                 ) : (
                   <tr>
                     <td className="table-empty" colSpan={6}>
-                      暂无匹配进程
+                      {loading ? "数据加载中..." : "暂无匹配进程"}
                     </td>
                   </tr>
                 )}

@@ -122,6 +122,25 @@ sequenceDiagram
   API-->>UI: 更新后的配置
 ```
 
+### 3.6 系统资源管理控制台刷新
+
+```mermaid
+sequenceDiagram
+  participant UI as SystemConsole
+  participant API as API Server
+  participant SI as SysInfo Collector
+
+  UI->>API: GET /api/system
+  API->>SI: Snapshot(includeProcesses, limit)
+  SI-->>API: SystemDashboard
+  API-->>UI: 渲染资源概览/分区/进程列表
+```
+
+补充说明：
+- `mode=lite` 会跳过进程列表采集，降低采样开销。
+- `limit` 控制返回的进程数量；`0` 表示不限制。
+- IO/CPU 速率为相邻两次采样的差值计算，首次请求可能为 `--`。
+
 ---
 
 ## 4. API 接口清单（面向前端）
@@ -168,6 +187,11 @@ sequenceDiagram
 - `GET /api/alert-config`
 - `POST /api/alert-config`
 - 用途：读取与更新告警配置（仅内存生效）
+
+**9) 系统资源面板**
+- `GET /api/system`
+- Query：`mode=lite` / `limit`
+- 返回：`SystemDashboard`
 
 ---
 

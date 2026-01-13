@@ -167,6 +167,14 @@ alert_start_from_end: true
   ```
 - 说明：仅更新内存配置，重启后以配置文件为准。
 
+### 9) 系统资源面板
+- `GET /api/system`
+- Query：
+  - `mode=lite` → 仅返回概览/指标/分区，不返回进程列表
+  - `limit=200` → 限制返回的进程数量，`0` 表示不限制
+- 返回：`{ systemOverview, systemGauges, systemVolumes, systemProcesses }`
+- 说明：部分字段依赖系统权限与支持程度，无法采集时会返回 `--` 或空列表。
+
 ## 运行时配置更新说明
 `/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。该接口不会写回 `config.yaml`。
 `/api/alert-config` 仅更新告警配置与轮询状态，不写回 `config.yaml`。
@@ -187,6 +195,7 @@ alert_start_from_end: true
 - 平台概述：`../docs/overview.md`
 - 流程图：`../docs/system-flowchart.md`
 - 前后端联动：`../docs/frontend-backend-linkage.md`
+- 系统资源面板：`../docs/system-resource-console.md`
 - 告警模式：`../docs/alert-mode.md`
 - 开发指南：`../docs/dev-guide.md`
 - 常见问题：`../docs/faq.md`

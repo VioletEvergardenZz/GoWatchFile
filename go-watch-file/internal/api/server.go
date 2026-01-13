@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
 	"file-watch/internal/service"
+	"file-watch/internal/sysinfo"
 )
 
 // Server 管理接口服务的启动与关闭
@@ -28,6 +30,7 @@ type Server struct {
 type handler struct {
 	cfg *models.Config
 	fs  *service.FileService
+	sys *sysinfo.Collector
 }
 
 // 日志读取的限制常量
@@ -40,7 +43,11 @@ const (
 
 // NewServer 创建接口服务并注册路由
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
-	h := &handler{cfg: cfg, fs: fs}
+	h := &handler{
+		cfg: cfg,
+		fs:  fs,
+		sys: sysinfo.NewCollector(sysinfo.Options{}),
+	}
 	mux := http.NewServeMux() //创建一个路由器（根据 URL 路径分发请求）
 	mux.HandleFunc("/api/dashboard", h.dashboard)
 	mux.HandleFunc("/api/auto-upload", h.toggleAutoUpload)
@@ -49,6 +56,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/config", h.updateConfig)
 	mux.HandleFunc("/api/alerts", h.alertDashboard)
 	mux.HandleFunc("/api/alert-config", h.alertConfig)
+	mux.HandleFunc("/api/system", h.systemDashboard)
 	mux.HandleFunc("/api/health", h.health)
 
 	srv := &http.Server{
@@ -325,12 +333,12 @@ func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 	case http.MethodPost:
 		// 运行时更新告警配置 仅内存生效
 		var req struct {
-			Enabled      bool   `json:"enabled"`
-			SuppressEnabled *bool `json:"suppressEnabled"`
-			RulesFile    string `json:"rulesFile"`
-			LogPaths     string `json:"logPaths"`
-			PollInterval string `json:"pollInterval"`
-			StartFromEnd bool   `json:"startFromEnd"`
+			Enabled         bool   `json:"enabled"`
+			SuppressEnabled *bool  `json:"suppressEnabled"`
+			RulesFile       string `json:"rulesFile"`
+			LogPaths        string `json:"logPaths"`
+			PollInterval    string `json:"pollInterval"`
+			StartFromEnd    bool   `json:"startFromEnd"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
@@ -360,15 +368,46 @@ func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if h.sys == nil {
+		h.sys = sysinfo.NewCollector(sysinfo.Options{})
+	}
+	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mode")))
+	includeProcesses := mode != "lite" && mode != "light"
+	limit := -1
+	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
+		val, err := strconv.Atoi(raw)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid limit"})
+			return
+		}
+		limit = val
+	}
+	// mode=lite 时跳过进程列表采集，limit 可限制返回的进程数量
+	snapshot, err := h.sys.Snapshot(sysinfo.SnapshotOptions{
+		IncludeProcesses: includeProcesses,
+		ProcessLimit:     limit,
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, http.StatusOK, snapshot)
+}
+
 func buildAlertConfigSnapshot(cfg *models.Config, enabled bool) map[string]any {
 	if cfg == nil {
 		return map[string]any{
-			"enabled":      enabled,
+			"enabled":         enabled,
 			"suppressEnabled": true,
-			"rulesFile":    "",
-			"logPaths":     "",
-			"pollInterval": "",
-			"startFromEnd": true,
+			"rulesFile":       "",
+			"logPaths":        "",
+			"pollInterval":    "",
+			"startFromEnd":    true,
 		}
 	}
 	startFromEnd := true
@@ -384,12 +423,12 @@ func buildAlertConfigSnapshot(cfg *models.Config, enabled bool) map[string]any {
 		pollInterval = "2s"
 	}
 	return map[string]any{
-		"enabled":      enabled,
+		"enabled":         enabled,
 		"suppressEnabled": suppressEnabled,
-		"rulesFile":    strings.TrimSpace(cfg.AlertRulesFile),
-		"logPaths":     strings.TrimSpace(cfg.AlertLogPaths),
-		"pollInterval": pollInterval,
-		"startFromEnd": startFromEnd,
+		"rulesFile":       strings.TrimSpace(cfg.AlertRulesFile),
+		"logPaths":        strings.TrimSpace(cfg.AlertLogPaths),
+		"pollInterval":    pollInterval,
+		"startFromEnd":    startFromEnd,
 	}
 }
 
