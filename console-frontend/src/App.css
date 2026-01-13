@@ -67,7 +67,8 @@
   align-items: start;
 }
 
-.layout.layout-alert {
+.layout.layout-alert,
+.layout.layout-full {
   max-width: none;
   width: 100%;
 }
@@ -202,7 +203,8 @@
   padding: 0 0 48px;
 }
 
-.page.page-alert {
+.page.page-alert,
+.page.page-full {
   max-width: none;
   width: 100%;
 }

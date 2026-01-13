@@ -1137,7 +1137,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
 
   return (
     <div className="page-shell">
-      <div className={`layout ${view === "alert" ? "layout-alert" : ""}`}>
+      <div className={`layout ${view === "alert" ? "layout-alert" : "layout-full"}`}>
         <aside className="sidebar">
           <div className="nav-brand">
             <div className="brand-logo brand-logo-small">
@@ -1283,7 +1283,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
           ) : null}
         </aside>
 
-        <div className={`page ${view === "alert" ? "page-alert" : ""}`}>
+        <div className={`page ${view === "alert" ? "page-alert" : "page-full"}`}>
           {view === "console" ? (
             <>
           <header className="page-header">
