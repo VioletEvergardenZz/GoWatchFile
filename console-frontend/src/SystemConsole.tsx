@@ -27,6 +27,102 @@ const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").t
 
 const clampPct = (value: number) => Math.max(0, Math.min(100, value));
 const formatPct = (value: number) => `${value.toFixed(1)}%`;
+const safeNumber = (value: unknown, fallback = 0) => {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+};
+const safeString = (value: unknown, fallback = "--") => {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return fallback;
+  return String(value);
+};
+const safeStringArray = (value: unknown) => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => safeString(item, ""))
+    .filter((item) => item !== "");
+};
+
+const normalizeOverview = (raw: any): SystemOverview => ({
+  host: safeString(raw?.host, "--"),
+  os: safeString(raw?.os, "--"),
+  kernel: safeString(raw?.kernel, "--"),
+  uptime: safeString(raw?.uptime, "--"),
+  load: safeString(raw?.load, "--"),
+  ip: safeString(raw?.ip, "--"),
+  lastUpdated: safeString(raw?.lastUpdated, "--"),
+  processes: Math.max(0, Math.floor(safeNumber(raw?.processes, 0))),
+  connections: Math.max(0, Math.floor(safeNumber(raw?.connections, 0))),
+  connectionsBreakdown: safeString(raw?.connectionsBreakdown, "--"),
+  cpuTemp: safeString(raw?.cpuTemp, "--"),
+  topProcess: safeString(raw?.topProcess, "--"),
+});
+
+const normalizeGauge = (raw: any): SystemResourceGauge => {
+  const tone = raw?.tone;
+  const normalizedTone = tone === "warn" || tone === "critical" || tone === "normal" ? tone : undefined;
+  const id = raw?.id === "cpu" || raw?.id === "memory" || raw?.id === "disk" ? raw.id : "cpu";
+  return {
+    id,
+    label: safeString(raw?.label, "--"),
+    usedPct: clampPct(safeNumber(raw?.usedPct, 0)),
+    usedLabel: safeString(raw?.usedLabel, "--"),
+    totalLabel: safeString(raw?.totalLabel, "--"),
+    subLabel: safeString(raw?.subLabel, "--"),
+    trend: safeString(raw?.trend, "--"),
+    tone: normalizedTone,
+  };
+};
+
+const normalizeVolume = (raw: any): SystemVolume => ({
+  mount: safeString(raw?.mount, "--"),
+  usedPct: clampPct(safeNumber(raw?.usedPct, 0)),
+  used: safeString(raw?.used, "--"),
+  total: safeString(raw?.total, "--"),
+});
+
+const normalizeProcess = (raw: any): SystemProcess => {
+  const status = raw?.status;
+  const normalizedStatus: SystemProcessStatus =
+    status === "running" || status === "sleeping" || status === "stopped" || status === "zombie" ? status : "sleeping";
+  const pid = Math.max(0, Math.floor(safeNumber(raw?.pid, 0)));
+  const note = safeString(raw?.note ?? "", "");
+  return {
+    pid,
+    name: safeString(raw?.name, "--"),
+    command: safeString(raw?.command, "--"),
+    user: safeString(raw?.user, "--"),
+    status: normalizedStatus,
+    cpu: clampPct(safeNumber(raw?.cpu, 0)),
+    mem: clampPct(safeNumber(raw?.mem, 0)),
+    rss: safeString(raw?.rss, "--"),
+    threads: Math.max(0, Math.floor(safeNumber(raw?.threads, 0))),
+    start: safeString(raw?.start, "--"),
+    uptime: safeString(raw?.uptime, "--"),
+    ports: safeStringArray(raw?.ports),
+    ioRead: safeString(raw?.ioRead, "--"),
+    ioWrite: safeString(raw?.ioWrite, "--"),
+    netIn: safeString(raw?.netIn, "--"),
+    netOut: safeString(raw?.netOut, "--"),
+    cwd: safeString(raw?.cwd, "--"),
+    path: safeString(raw?.path, "--"),
+    env: safeStringArray(raw?.env),
+    note: note || undefined,
+  };
+};
+
+const normalizeDashboard = (raw: Partial<SystemDashboard> | null | undefined) => {
+  return {
+    overview: normalizeOverview(raw?.systemOverview ?? {}),
+    gauges: Array.isArray(raw?.systemGauges) ? raw?.systemGauges.map(normalizeGauge) : [],
+    volumes: Array.isArray(raw?.systemVolumes) ? raw?.systemVolumes.map(normalizeVolume) : [],
+    processes: Array.isArray(raw?.systemProcesses) ? raw?.systemProcesses.map(normalizeProcess) : [],
+  };
+};
 
 type SystemConsoleProps = {
   embedded?: boolean;
@@ -53,6 +149,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
   const [volumes, setVolumes] = useState<SystemVolume[]>(USE_MOCK ? mockSystemVolumes : []);
   const [processes, setProcesses] = useState<SystemProcess[]>(USE_MOCK ? mockSystemProcesses : []);
   const [loading, setLoading] = useState(!USE_MOCK);
+  const [error, setError] = useState<string | null>(null);
   const fetchingRef = useRef(false);
   const aliveRef = useRef(true);
 
@@ -85,12 +182,15 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
         }
         const payload = (await resp.json()) as Partial<SystemDashboard>;
         if (!aliveRef.current) return;
-        if (payload.systemOverview !== undefined) setOverview(payload.systemOverview);
-        if (payload.systemGauges !== undefined) setGauges(payload.systemGauges);
-        if (payload.systemVolumes !== undefined) setVolumes(payload.systemVolumes);
-        if (payload.systemProcesses !== undefined) setProcesses(payload.systemProcesses);
-      } catch {
+        const normalized = normalizeDashboard(payload);
+        setOverview(normalized.overview);
+        setGauges(normalized.gauges);
+        setVolumes(normalized.volumes);
+        setProcesses(normalized.processes);
+        setError(null);
+      } catch (err) {
         if (!aliveRef.current) return;
+        setError((err as Error).message || "加载系统数据失败");
       } finally {
         fetchingRef.current = false;
         if (aliveRef.current) {
@@ -179,6 +279,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
 
   return (
     <div className={`system-shell ${embedded ? "system-embedded" : ""}`}>
+      {error ? <div className="badge ghost">{error}</div> : null}
       <section className="system-hero" id="system-overview">
         <div className="system-hero-main">
           <p className="eyebrow">System Resource Manager</p>
