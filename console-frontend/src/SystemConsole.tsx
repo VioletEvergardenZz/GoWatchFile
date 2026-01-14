@@ -23,7 +23,7 @@ const CPU_HOTLINE = 35;
 const MEM_HOTLINE = 10;
 const POLL_MS = 3000;
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
-const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
+const USE_MOCK = import.meta.env.DEV && ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
 
 const clampPct = (value: number) => Math.max(0, Math.min(100, value));
 const formatPct = (value: number) => `${value.toFixed(1)}%`;
@@ -150,6 +150,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
   const [processes, setProcesses] = useState<SystemProcess[]>(USE_MOCK ? mockSystemProcesses : []);
   const [loading, setLoading] = useState(!USE_MOCK);
   const [error, setError] = useState<string | null>(null);
+  const [usingMockData, setUsingMockData] = useState(USE_MOCK);
   const fetchingRef = useRef(false);
   const aliveRef = useRef(true);
 
@@ -187,6 +188,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
         setGauges(normalized.gauges);
         setVolumes(normalized.volumes);
         setProcesses(normalized.processes);
+        setUsingMockData(false);
         setError(null);
       } catch (err) {
         if (!aliveRef.current) return;
@@ -259,6 +261,8 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
     return sortedProcesses.find((proc) => proc.pid === selectedPid) ?? null;
   }, [selectedPid, sortedProcesses]);
 
+  const showTopline = usingMockData || error;
+
   const handleTerminate = () => {
     if (!selectedProcess) return;
     setActionMessage(`已发送 ${selectedProcess.name} (PID ${selectedProcess.pid}) 的关闭指令`);
@@ -279,7 +283,12 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
 
   return (
     <div className={`system-shell ${embedded ? "system-embedded" : ""}`}>
-      {error ? <div className="badge ghost">{error}</div> : null}
+      {showTopline ? (
+        <div className="system-topline">
+          {error ? <div className="badge ghost">{error}</div> : null}
+          {usingMockData ? <span className="pill warning">正在显示示例数据</span> : null}
+        </div>
+      ) : null}
       <section className="system-hero" id="system-overview">
         <div className="system-hero-main">
           <p className="eyebrow">System Resource Manager</p>
