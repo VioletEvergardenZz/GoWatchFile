@@ -24,8 +24,10 @@ const MEM_HOTLINE = 10;
 const POLL_MS = 3000;
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 const USE_MOCK = import.meta.env.DEV && ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
+const PROCESS_PAGE_SIZE = 10;
 
 const clampPct = (value: number) => Math.max(0, Math.min(100, value));
+const clampProcessValue = (value: number) => Math.max(0, value);
 const formatPct = (value: number) => `${value.toFixed(1)}%`;
 const safeNumber = (value: unknown, fallback = 0) => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -91,14 +93,16 @@ const normalizeProcess = (raw: any): SystemProcess => {
     status === "running" || status === "sleeping" || status === "stopped" || status === "zombie" ? status : "sleeping";
   const pid = Math.max(0, Math.floor(safeNumber(raw?.pid, 0)));
   const note = safeString(raw?.note ?? "", "");
+  const cpu = clampProcessValue(safeNumber(raw?.cpu, 0));
+  const mem = clampPct(safeNumber(raw?.mem, 0));
   return {
     pid,
     name: safeString(raw?.name, "--"),
     command: safeString(raw?.command, "--"),
     user: safeString(raw?.user, "--"),
     status: normalizedStatus,
-    cpu: clampPct(safeNumber(raw?.cpu, 0)),
-    mem: clampPct(safeNumber(raw?.mem, 0)),
+    cpu,
+    mem,
     rss: safeString(raw?.rss, "--"),
     threads: Math.max(0, Math.floor(safeNumber(raw?.threads, 0))),
     start: safeString(raw?.start, "--"),
@@ -162,6 +166,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
   const [hotMemOnly, setHotMemOnly] = useState(false);
   const [listeningOnly, setListeningOnly] = useState(false);
   const [selectedPid, setSelectedPid] = useState<number | null>(() => (USE_MOCK ? mockSystemProcesses[0]?.pid ?? null : null));
+  const [procPage, setProcPage] = useState(1);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -243,14 +248,36 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
     return next;
   }, [filteredProcesses, sortKey]);
 
+  const pageCount = Math.max(1, Math.ceil(sortedProcesses.length / PROCESS_PAGE_SIZE));
+  const pageSafe = Math.min(procPage, pageCount);
+
+  useEffect(() => {
+    if (procPage !== pageSafe) {
+      setProcPage(pageSafe);
+    }
+  }, [pageSafe, procPage]);
+
+  useEffect(() => {
+    setProcPage(1);
+  }, [searchTerm, portTerm, statusFilter, hotCpuOnly, hotMemOnly, listeningOnly, sortKey]);
+
+  const pagedProcesses = useMemo(() => {
+    const start = (pageSafe - 1) * PROCESS_PAGE_SIZE;
+    return sortedProcesses.slice(start, start + PROCESS_PAGE_SIZE);
+  }, [sortedProcesses, pageSafe]);
+
   useEffect(() => {
     if (!sortedProcesses.length) {
       setSelectedPid(null);
       return;
     }
-    if (selectedPid && sortedProcesses.some((proc) => proc.pid === selectedPid)) return;
-    setSelectedPid(sortedProcesses[0].pid);
-  }, [sortedProcesses, selectedPid]);
+    if (selectedPid && pagedProcesses.some((proc) => proc.pid === selectedPid)) return;
+    if (selectedPid && sortedProcesses.some((proc) => proc.pid === selectedPid)) {
+      setSelectedPid(pagedProcesses[0]?.pid ?? sortedProcesses[0].pid);
+      return;
+    }
+    setSelectedPid(pagedProcesses[0]?.pid ?? sortedProcesses[0].pid);
+  }, [pagedProcesses, selectedPid, sortedProcesses]);
 
   useEffect(() => {
     setActionMessage(null);
@@ -366,7 +393,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
               <div className="volume-bar">
                 <span className="volume-fill" style={{ width: `${clampPct(volume.usedPct)}%` }} />
               </div>
-              <div className="volume-meta">{volume.usedPct}% 已使用</div>
+              <div className="volume-meta">{volume.usedPct.toFixed(2)}% 已使用</div>
             </div>
           ))}
         </div>
@@ -376,7 +403,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
         <div className="section-title">
           <h2>进程列表 / 资源占用</h2>
           <span>
-            展示 {sortedProcesses.length} / {processes.length}
+            展示 {pagedProcesses.length} / {sortedProcesses.length} · 总 {processes.length}
           </span>
         </div>
         <div className="toolbar">
@@ -429,8 +456,8 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
                 </tr>
               </thead>
               <tbody>
-                {sortedProcesses.length ? (
-                  sortedProcesses.map((proc) => (
+                {pagedProcesses.length ? (
+                  pagedProcesses.map((proc) => (
                     <tr
                       key={proc.pid}
                       className={proc.pid === selectedPid ? "selected" : ""}
@@ -485,6 +512,23 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
               </tbody>
             </table>
           </div>
+        </div>
+        <div className="table-actions">
+          <span className="muted small">
+            第 {pageSafe} / {pageCount} 页 · 每页 {PROCESS_PAGE_SIZE} 条
+          </span>
+          <button className="btn secondary" type="button" disabled={pageSafe <= 1} onClick={() => setProcPage(1)}>
+            首页
+          </button>
+          <button className="btn secondary" type="button" disabled={pageSafe <= 1} onClick={() => setProcPage((prev) => Math.max(1, prev - 1))}>
+            上一页
+          </button>
+          <button className="btn secondary" type="button" disabled={pageSafe >= pageCount} onClick={() => setProcPage((prev) => Math.min(pageCount, prev + 1))}>
+            下一页
+          </button>
+          <button className="btn secondary" type="button" disabled={pageSafe >= pageCount} onClick={() => setProcPage(pageCount)}>
+            末页
+          </button>
         </div>
       </section>
 

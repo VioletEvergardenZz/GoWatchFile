@@ -3,8 +3,10 @@ package sysinfo
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -16,6 +18,7 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	gnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -238,16 +241,56 @@ func collectLoadLabel() string {
 }
 
 func buildCPUInfoLabel() string {
-	infos, err := cpu.Info()
 	cores := runtime.NumCPU()
-	if err != nil || len(infos) == 0 {
-		return fmt.Sprintf("%d 核", cores)
+	mhz := detectCPUMHz()
+	if mhz <= 0 {
+		infos, err := cpu.Info()
+		if err == nil && len(infos) > 0 {
+			if freq := sanitizeMHz(infos[0].Mhz); freq > 0 {
+				mhz = freq
+			}
+			if mhz <= 0 {
+				mhz = parseBrandMHz(infos[0].ModelName)
+			}
+		}
 	}
-	mhz := infos[0].Mhz
 	if mhz <= 0 {
 		return fmt.Sprintf("%d 核", cores)
 	}
 	return fmt.Sprintf("%d 核 · %.1f GHz", cores, mhz/1000)
+}
+
+func detectCPUMHz() float64 {
+	if runtime.GOOS == "darwin" {
+		if freq, err := unix.SysctlUint64("hw.cpufrequency"); err == nil && freq > 0 {
+			return float64(freq) / 1e6
+		}
+	}
+	return 0
+}
+
+func sanitizeMHz(mhz float64) float64 {
+	// 部分平台会返回极小值（如 24 MHz），直接视为未知
+	if mhz < 100 {
+		return 0
+	}
+	return mhz
+}
+
+func parseBrandMHz(brand string) float64 {
+	if strings.TrimSpace(brand) == "" {
+		return 0
+	}
+	re := regexp.MustCompile(`(?i)([0-9]+(?:\\.[0-9]+)?)\\s*ghz`)
+	matches := re.FindStringSubmatch(brand)
+	if len(matches) < 2 {
+		return 0
+	}
+	val, err := strconv.ParseFloat(matches[1], 64)
+	if err != nil {
+		return 0
+	}
+	return val * 1000
 }
 
 // collectCPUUsage 基于两次采样的差值计算 CPU 使用率
@@ -312,9 +355,16 @@ func collectMemoryGauge() (ResourceGauge, string, string) {
 		}, "--", "--"
 	}
 	swap, _ := mem.SwapMemory()
+	cache := vm.Cached
+	if cache <= 0 && vm.Inactive > 0 {
+		cache = vm.Inactive
+	}
+	if cache <= 0 && vm.Buffers > 0 {
+		cache = vm.Buffers
+	}
 	usedLabel := formatBytes(float64(vm.Used))
 	totalLabel := fmt.Sprintf("总计 %s", formatBytes(float64(vm.Total)))
-	subLabel := fmt.Sprintf("缓存 %s · 交换 %s/%s", formatBytes(float64(vm.Cached)), formatBytes(float64(swap.Used)), formatBytes(float64(swap.Total)))
+	subLabel := fmt.Sprintf("缓存 %s · 交换 %s/%s", formatBytes(float64(cache)), formatBytes(float64(swap.Used)), formatBytes(float64(swap.Total)))
 	trend := fmt.Sprintf("可用 %s", formatBytes(float64(vm.Available)))
 	return ResourceGauge{
 		UsedPct:    clampPct(vm.UsedPercent),
@@ -334,18 +384,19 @@ func collectVolumes() ([]Volume, diskTotals) {
 	if err != nil {
 		return []Volume{}, diskTotals{usedPct: 0, usedLabel: "--", totalLabel: "总计 --"}
 	}
-	seen := make(map[string]struct{})
+	seenMount := make(map[string]struct{})
+	seenDevice := make(map[string]struct{})
 	volumes := make([]Volume, 0, len(partitions))
 	var total uint64
 	var used uint64
 	for _, part := range partitions {
-		if part.Mountpoint == "" {
+		if part.Mountpoint == "" || shouldSkipVolume(part) {
 			continue
 		}
-		if _, ok := seen[part.Mountpoint]; ok {
+		if _, ok := seenMount[part.Mountpoint]; ok {
 			continue
 		}
-		seen[part.Mountpoint] = struct{}{}
+		seenMount[part.Mountpoint] = struct{}{}
 		usage, err := disk.Usage(part.Mountpoint)
 		if err != nil || usage.Total == 0 {
 			continue
@@ -356,8 +407,12 @@ func collectVolumes() ([]Volume, diskTotals) {
 			Used:    formatBytes(float64(usage.Used)),
 			Total:   formatBytes(float64(usage.Total)),
 		})
-		total += usage.Total
-		used += usage.Used
+		// 同一物理设备可能挂载多个 APFS 卷，避免累计总量时重复计算
+		if _, ok := seenDevice[part.Device]; !ok {
+			total += usage.Total
+			used += usage.Used
+			seenDevice[part.Device] = struct{}{}
+		}
 	}
 	sort.Slice(volumes, func(i, j int) bool {
 		return volumes[i].Mount < volumes[j].Mount
@@ -371,6 +426,22 @@ func collectVolumes() ([]Volume, diskTotals) {
 		usedLabel:  formatBytes(float64(used)),
 		totalLabel: fmt.Sprintf("总计 %s", formatBytes(float64(total))),
 	}
+}
+
+func shouldSkipVolume(part disk.PartitionStat) bool {
+	mount := strings.TrimSpace(part.Mountpoint)
+	if mount == "" {
+		return true
+	}
+	// 跳过设备与虚拟卷，避免伪分区撑高总量
+	if mount == "/dev" || strings.HasPrefix(mount, "/dev/") {
+		return true
+	}
+	// macOS 会暴露大量 APFS 卷（Preboot/VM 等），仅保留常规挂载
+	if runtime.GOOS == "darwin" && strings.HasPrefix(mount, "/System/Volumes/") {
+		return true
+	}
+	return false
 }
 
 // collectDiskRates 根据磁盘 IO 累计值计算读写速率
@@ -482,6 +553,10 @@ func collectProcesses(opts collectProcessOptions) (int, []Process, map[int32]pro
 	nextSamples := make(map[int32]procSample, len(procs))
 
 	deltaTotal := opts.currCPU.total - opts.prevCPU.total
+	numCPU := float64(runtime.NumCPU())
+	if numCPU < 1 {
+		numCPU = 1
+	}
 	for _, proc := range procs {
 		pid := proc.Pid
 		name, _ := proc.Name()
@@ -513,15 +588,27 @@ func collectProcesses(opts collectProcessOptions) (int, []Process, map[int32]pro
 			exe = "--"
 		}
 
+		// 某些进程（尤其是受限权限的系统进程）可能返回 nil 的 CPU 时间，需做防御性判空
 		cpuTimes, _ := proc.Times()
-		cpuTotal := cpuTimes.User + cpuTimes.System
+		cpuTotal := 0.0
+		if cpuTimes != nil {
+			cpuTotal = cpuTimes.User + cpuTimes.System
+		}
 		nextSamples[pid] = procSample{cpuTotal: cpuTotal}
 
 		cpuPct := 0.0
 		prev, ok := opts.prevProc[pid]
 		if ok && deltaTotal > 0 && cpuTotal >= prev.cpuTotal {
 			// 以 CPU 总量差值估算进程占用比例，避免逐进程阻塞采样
-			cpuPct = (cpuTotal - prev.cpuTotal) / deltaTotal * 100
+			cpuPct = (cpuTotal - prev.cpuTotal) / deltaTotal * 100 * numCPU
+			if cpuPct < 0 {
+				cpuPct = 0
+			}
+		}
+
+		// macOS 上很多进程状态标记为 sleeping，但若 CPU 明显占用则视为运行中，方便前端筛选
+		if status != "running" && cpuPct >= 1.0 {
+			status = "running"
 		}
 
 		memPct, _ := proc.MemoryPercent()
@@ -538,7 +625,7 @@ func collectProcesses(opts collectProcessOptions) (int, []Process, map[int32]pro
 			command:   cmdline,
 			user:      user,
 			status:    status,
-			cpuPct:    clampPct(cpuPct),
+			cpuPct:    cpuPct,
 			memPct:    clampPct(float64(memPct)),
 			rss:       rss,
 			threads:   threads,
@@ -572,6 +659,10 @@ func collectProcesses(opts collectProcessOptions) (int, []Process, map[int32]pro
 		ioRead, ioWrite, ioSample := collectProcessIO(candidate.proc, opts.prevProc[candidate.pid], interval)
 		envs := collectProcessEnv(candidate.proc, opts.envLimit)
 		ports := opts.portMap[candidate.pid]
+		status := candidate.status
+		if status != "running" && len(ports) > 0 {
+			status = "running"
+		}
 		note := buildProcessNote(candidate.cpuPct, candidate.memPct)
 		startLabel := "--"
 		uptimeLabel := "--"
@@ -594,7 +685,7 @@ func collectProcesses(opts collectProcessOptions) (int, []Process, map[int32]pro
 			Name:    candidate.name,
 			Command: candidate.command,
 			User:    candidate.user,
-			Status:  candidate.status,
+			Status:  status,
 			CPU:     candidate.cpuPct,
 			Mem:     candidate.memPct,
 			RSS:     formatBytes(float64(candidate.rss)),
