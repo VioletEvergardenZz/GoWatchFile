@@ -257,6 +257,14 @@
   min-width: 720px;
 }
 
+.process-pagination {
+  justify-content: flex-end;
+}
+
+.process-pagination .pagination-meta {
+  margin-right: auto;
+}
+
 .process-table th:nth-child(1),
 .process-table td:nth-child(1) {
   width: 26%;

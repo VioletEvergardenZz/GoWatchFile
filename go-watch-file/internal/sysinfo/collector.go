@@ -431,7 +431,71 @@ func shouldSkipVolume(part disk.PartitionStat) bool {
 	if runtime.GOOS == "darwin" && strings.HasPrefix(mount, "/System/Volumes/") {
 		return true
 	}
+	if runtime.GOOS == "linux" {
+		fstype := strings.ToLower(strings.TrimSpace(part.Fstype))
+		if isPseudoFSType(fstype) {
+			return true
+		}
+	}
 	return false
+}
+
+func isPseudoFSType(fstype string) bool {
+	switch fstype {
+	case "proc", "sysfs", "devtmpfs", "devpts", "tmpfs", "cgroup", "cgroup2", "mqueue",
+		"hugetlbfs", "pstore", "securityfs", "debugfs", "tracefs", "configfs", "fusectl",
+		"rpc_pipefs", "nsfs", "ramfs", "selinuxfs", "autofs", "squashfs":
+		return true
+	default:
+		return false
+	}
+}
+
+func shouldSkipDiskCounter(name string) bool {
+	if name == "" {
+		return true
+	}
+	if runtime.GOOS != "linux" {
+		return false
+	}
+	switch {
+	case strings.HasPrefix(name, "loop"),
+		strings.HasPrefix(name, "ram"),
+		strings.HasPrefix(name, "fd"),
+		strings.HasPrefix(name, "sr"),
+		strings.HasPrefix(name, "zram"):
+		return true
+	default:
+		return false
+	}
+}
+
+func baseDiskDevice(name string) string {
+	if strings.HasPrefix(name, "nvme") || strings.HasPrefix(name, "mmcblk") {
+		if idx := strings.LastIndex(name, "p"); idx > 0 && idx < len(name)-1 && isDigits(name[idx+1:]) {
+			return name[:idx]
+		}
+		return name
+	}
+	base := strings.TrimRightFunc(name, func(r rune) bool {
+		return r >= '0' && r <= '9'
+	})
+	if base == "" {
+		return name
+	}
+	return base
+}
+
+func isDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 // collectDiskRates 根据磁盘 IO 累计值计算读写速率
@@ -440,10 +504,23 @@ func collectDiskRates(prev map[string]diskSample, prevSample time.Time, now time
 	if err != nil || len(current) == 0 {
 		return "--", "--", map[string]diskSample{}
 	}
+	deviceNames := make(map[string]struct{}, len(current))
+	for name := range current {
+		deviceNames[name] = struct{}{}
+	}
 	deltaRead := uint64(0)
 	deltaWrite := uint64(0)
 	next := make(map[string]diskSample, len(current))
 	for name, stat := range current {
+		if shouldSkipDiskCounter(name) {
+			continue
+		}
+		base := baseDiskDevice(name)
+		if base != name {
+			if _, ok := deviceNames[base]; ok {
+				continue
+			}
+		}
 		next[name] = diskSample{readBytes: stat.ReadBytes, writeBytes: stat.WriteBytes}
 		prevStat, ok := prev[name]
 		if !ok {
@@ -491,9 +568,6 @@ func collectConnections(includePorts bool) (connectionStats, string, map[int32][
 	}
 
 	stats.total = countNonListen(counts)
-	if stats.total == 0 {
-		stats.total = len(conns)
-	}
 	connBreakdown = formatConnectionBreakdown(counts)
 	if includePorts {
 		for pid, ports := range portMap {
@@ -770,7 +844,11 @@ func copyProcSamples(src map[int32]procSample) map[int32]procSample {
 }
 
 func sumCPUTimes(t cpu.TimesStat) float64 {
-	return t.User + t.System + t.Idle + t.Nice + t.Iowait + t.Irq + t.Softirq + t.Steal + t.Guest + t.GuestNice
+	total := t.User + t.System + t.Idle + t.Nice + t.Iowait + t.Irq + t.Softirq + t.Steal + t.Guest + t.GuestNice
+	if runtime.GOOS == "linux" {
+		total -= t.Guest + t.GuestNice
+	}
+	return total
 }
 
 func fallbackString(value, fallback string) string {

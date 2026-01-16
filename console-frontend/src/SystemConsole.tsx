@@ -513,8 +513,8 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
             </table>
           </div>
         </div>
-        <div className="table-actions">
-          <span className="muted small">
+        <div className="table-actions process-pagination">
+          <span className="muted small pagination-meta">
             第 {pageSafe} / {pageCount} 页 · 每页 {PROCESS_PAGE_SIZE} 条
           </span>
           <button className="btn secondary" type="button" disabled={pageSafe <= 1} onClick={() => setProcPage(1)}>
