@@ -18,7 +18,6 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 	gnet "github.com/shirou/gopsutil/v3/net"
 	"github.com/shirou/gopsutil/v3/process"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -258,15 +257,6 @@ func buildCPUInfoLabel() string {
 		return fmt.Sprintf("%d 核", cores)
 	}
 	return fmt.Sprintf("%d 核 · %.1f GHz", cores, mhz/1000)
-}
-
-func detectCPUMHz() float64 {
-	if runtime.GOOS == "darwin" {
-		if freq, err := unix.SysctlUint64("hw.cpufrequency"); err == nil && freq > 0 {
-			return float64(freq) / 1e6
-		}
-	}
-	return 0
 }
 
 func sanitizeMHz(mhz float64) float64 {
