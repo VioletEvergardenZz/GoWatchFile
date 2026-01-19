@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -557,9 +558,12 @@ func collectConnections(includePorts bool) (connectionStats, string, map[int32][
 
 	counts := make(map[string]int)
 	for _, conn := range conns {
-		status := strings.ToUpper(conn.Status)
+		status := strings.ToUpper(strings.TrimSpace(conn.Status))
+		if status == "" {
+			status = "NONE"
+		}
 		counts[status]++
-		if includePorts && status == "LISTEN" && conn.Pid > 0 {
+		if includePorts && conn.Pid > 0 && isPortBinding(status, conn.Type) {
 			addr := formatAddr(conn.Laddr.IP, conn.Laddr.Port)
 			if addr != "" {
 				portMap[conn.Pid] = append(portMap[conn.Pid], addr)
@@ -575,6 +579,16 @@ func collectConnections(includePorts bool) (connectionStats, string, map[int32][
 		}
 	}
 	return stats, connBreakdown, portMap
+}
+
+func isPortBinding(status string, sockType uint32) bool {
+	if status == "LISTEN" || status == "LISTENING" {
+		return true
+	}
+	if sockType == syscall.SOCK_DGRAM && (status == "NONE" || status == "") {
+		return true
+	}
+	return false
 }
 
 type collectProcessOptions struct {
@@ -631,7 +645,7 @@ func collectProcesses(opts collectProcessOptions) (int, []Process, map[int32]pro
 		status := normalizeStatus(strings.Join(statusRaw, " "))
 		cmdline, _ := proc.Cmdline()
 		if cmdline == "" {
-			cmdline = name
+			cmdline = "--"
 		}
 		user, _ := proc.Username()
 		if user == "" {

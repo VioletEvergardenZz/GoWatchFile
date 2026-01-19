@@ -182,7 +182,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
       fetchingRef.current = true;
       // 拉取系统资源快照，避免并发请求叠加
       try {
-        const resp = await fetch(`${API_BASE}/api/system`, { cache: "no-store" });
+        const resp = await fetch(`${API_BASE}/api/system?limit=0`, { cache: "no-store" });
         if (!resp.ok) {
           throw new Error(`HTTP ${resp.status}`);
         }
