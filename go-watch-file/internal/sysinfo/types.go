@@ -1,3 +1,4 @@
+// 本文件用于定义系统资源面板的数据结构
 package sysinfo
 
 // Overview 表示系统概览信息

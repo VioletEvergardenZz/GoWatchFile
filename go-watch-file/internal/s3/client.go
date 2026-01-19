@@ -1,4 +1,4 @@
-// Package s3 提供对 S3 的简单封装。
+// 本文件用于 S3 客户端封装与上传
 package s3
 
 import (
@@ -17,13 +17,13 @@ import (
 	"file-watch/internal/pathutil"
 )
 
-// Client 封装 S3 SDK 客户端及相关配置。
+// Client 封装 S3 SDK 客户端及相关配置
 type Client struct {
 	s3Client *s3.S3
 	config   *models.Config
 }
 
-// NewClient 创建并初始化 S3 客户端。
+// NewClient 创建并初始化 S3 客户端
 func NewClient(config *models.Config) (*Client, error) {
 	logger.Info("初始化S3客户端...")
 	awsConfig := &aws.Config{
@@ -45,7 +45,7 @@ func NewClient(config *models.Config) (*Client, error) {
 	}, nil
 }
 
-// UploadFile 上传文件到 S3 并返回下载链接。
+// UploadFile 上传文件到 S3 并返回下载链接
 func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error) {
 	logger.Info("开始上传文件到S3: %s", filePath)
 	file, err := os.Open(filePath)
@@ -110,7 +110,7 @@ func (c *Client) buildDownloadURL(objectKey string) string {
 	)
 }
 
-// GetClient 返回底层的 S3 SDK 客户端。
+// GetClient 返回底层的 S3 SDK 客户端
 func (c *Client) GetClient() *s3.S3 {
 	return c.s3Client
 }

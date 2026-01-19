@@ -1,3 +1,4 @@
+// 本文件用于钉钉机器人通知
 package dingtalk
 
 import (
@@ -16,7 +17,7 @@ import (
 	"file-watch/internal/logger"
 )
 
-// Robot 钉钉机器人。
+// Robot 钉钉机器人
 type Robot struct {
 	webhook string
 	secret  string
@@ -37,7 +38,7 @@ type response struct {
 	ErrMsg  string `json:"errmsg"`
 }
 
-// NewRobot 创建钉钉机器人实例。
+// NewRobot 创建钉钉机器人实例
 func NewRobot(webhook, secret string) *Robot {
 	return &Robot{
 		webhook: strings.TrimSpace(webhook),
@@ -45,7 +46,7 @@ func NewRobot(webhook, secret string) *Robot {
 	}
 }
 
-// SendMessage 发送钉钉机器人消息。
+// SendMessage 发送钉钉机器人消息
 func (r *Robot) SendMessage(ctx context.Context, downloadURL, fileName string) error {
 	if r.webhook == "" {
 		return fmt.Errorf("钉钉 webhook 为空")

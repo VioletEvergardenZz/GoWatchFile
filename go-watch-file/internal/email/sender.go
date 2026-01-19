@@ -1,3 +1,4 @@
+// 本文件用于邮件通知发送
 package email
 
 import (

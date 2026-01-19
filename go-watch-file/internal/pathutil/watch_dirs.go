@@ -1,3 +1,4 @@
+// 本文件用于监控目录拆分与清理
 package pathutil
 
 import (

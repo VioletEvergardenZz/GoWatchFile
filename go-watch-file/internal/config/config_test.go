@@ -1,3 +1,4 @@
+// 本文件用于配置加载的单元测试
 package config
 
 import (
@@ -199,6 +200,129 @@ func TestValidateConfig(t *testing.T) {
 
 		if err := ValidateConfig(invalidConfig); err == nil {
 			t.Fatal("无效日志级别应该验证失败")
+		}
+	})
+}
+
+func TestValidateConfig_InvalidFields(t *testing.T) {
+	newValidConfig := func(t *testing.T) *models.Config {
+		t.Helper()
+		watchDir := filepath.ToSlash(t.TempDir())
+		return &models.Config{
+			WatchDir: watchDir,
+			FileExt:  ".log",
+			Bucket:   "test-bucket",
+			AK:       "test-ak",
+			SK:       "test-sk",
+			Endpoint: "https://test-endpoint.com",
+			Region:   "test-region",
+			LogLevel: "info",
+			APIBind:  ":8080",
+		}
+	}
+
+	t.Run("missing watch dir", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		cfg.WatchDir = ""
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("缺少监控目录应该报错")
+		}
+	})
+
+	t.Run("watch dir not exists", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		cfg.WatchDir = filepath.Join(t.TempDir(), "missing")
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("监控目录不存在应该报错")
+		}
+	})
+
+	t.Run("watch dir is file", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		tempFile := filepath.Join(t.TempDir(), "file.txt")
+		if err := os.WriteFile(tempFile, []byte("data"), 0o644); err != nil {
+			t.Fatalf("写入文件失败: %v", err)
+		}
+		cfg.WatchDir = tempFile
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("监控目录为文件应该报错")
+		}
+	})
+
+	t.Run("missing bucket", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		cfg.Bucket = ""
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("缺少 bucket 应该报错")
+		}
+	})
+
+	t.Run("missing ak sk", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		cfg.AK = ""
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("缺少 AK/SK 应该报错")
+		}
+	})
+
+	t.Run("invalid endpoint", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		cfg.Endpoint = "http://%"
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("无效 endpoint 应该报错")
+		}
+	})
+
+	t.Run("missing region", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		cfg.Region = ""
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("缺少 region 应该报错")
+		}
+	})
+
+	t.Run("missing api bind", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		cfg.APIBind = ""
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("缺少 API 监听地址应该报错")
+		}
+	})
+
+	t.Run("alert enabled missing rules file", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		cfg.AlertEnabled = true
+		cfg.AlertLogPaths = "/var/log/app/error.log"
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("告警规则文件为空应该报错")
+		}
+	})
+
+	t.Run("alert enabled missing log paths", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		rulesPath := filepath.Join(t.TempDir(), "rules.yaml")
+		if err := os.WriteFile(rulesPath, []byte("version: 1\nrules:\n  - id: test\n    level: ignore\n    keywords: [\"x\"]\n"), 0o644); err != nil {
+			t.Fatalf("写入规则文件失败: %v", err)
+		}
+		cfg.AlertEnabled = true
+		cfg.AlertRulesFile = rulesPath
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("告警日志路径为空应该报错")
+		}
+	})
+
+	t.Run("alert enabled invalid poll interval", func(t *testing.T) {
+		cfg := newValidConfig(t)
+		rulesPath := filepath.Join(t.TempDir(), "rules.yaml")
+		if err := os.WriteFile(rulesPath, []byte("version: 1\nrules:\n  - id: test\n    level: ignore\n    keywords: [\"x\"]\n"), 0o644); err != nil {
+			t.Fatalf("写入规则文件失败: %v", err)
+		}
+		cfg.AlertEnabled = true
+		cfg.AlertRulesFile = rulesPath
+		cfg.AlertLogPaths = "/var/log/app/error.log"
+		cfg.AlertPollInterval = "0s"
+		if err := ValidateConfig(cfg); err == nil {
+			t.Fatal("告警轮询间隔无效应该报错")
 		}
 	})
 }

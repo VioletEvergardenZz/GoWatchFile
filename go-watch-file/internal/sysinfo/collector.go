@@ -1,3 +1,4 @@
+// 本文件用于系统资源采集器与快照逻辑
 package sysinfo
 
 import (

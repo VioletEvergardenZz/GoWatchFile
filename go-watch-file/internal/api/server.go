@@ -1,3 +1,4 @@
+// 本文件用于 API 服务与路由处理
 package api
 
 import (

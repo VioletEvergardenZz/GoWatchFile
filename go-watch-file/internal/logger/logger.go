@@ -1,3 +1,4 @@
+// 本文件用于日志初始化与输出封装
 package logger
 
 import (
@@ -34,7 +35,7 @@ func init() {
 	logLevel.Store(levelInfo)
 }
 
-// InitLogger 初始化日志系统。
+// InitLogger 初始化日志系统
 func InitLogger(config *models.Config) error {
 	logToStd := defaultLogToStd
 	if config.LogToStd != nil {
@@ -91,32 +92,32 @@ func buildLogWriter(logFile string, logToStd bool) (io.Writer, *os.File, error) 
 	}
 }
 
-// Info 记录信息日志。
+// Info 记录信息日志
 func Info(format string, v ...interface{}) {
 	logWithLevel(levelInfo, "INFO", format, v...)
 }
 
-// Error 记录错误日志。
+// Error 记录错误日志
 func Error(format string, v ...interface{}) {
 	logWithLevel(levelError, "ERROR", format, v...)
 }
 
-// Warn 记录警告日志。
+// Warn 记录警告日志
 func Warn(format string, v ...interface{}) {
 	logWithLevel(levelWarn, "WARN", format, v...)
 }
 
-// Debug 记录调试日志。
+// Debug 记录调试日志
 func Debug(format string, v ...interface{}) {
 	logWithLevel(levelDebug, "DEBUG", format, v...)
 }
 
-// SetLogLevel 设置日志级别。
+// SetLogLevel 设置日志级别
 func SetLogLevel(level string) {
 	logLevel.Store(parseLogLevel(level))
 }
 
-// Close 释放底层日志文件句柄。
+// Close 释放底层日志文件句柄
 func Close() error {
 	logger := activeLogger.Swap(nil)
 	if logger == nil || logger.file == nil {

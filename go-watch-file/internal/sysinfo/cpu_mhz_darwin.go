@@ -1,6 +1,7 @@
 //go:build darwin
 // +build darwin
 
+// 本文件用于 macOS 下 CPU 频率读取
 package sysinfo
 
 import "golang.org/x/sys/unix"

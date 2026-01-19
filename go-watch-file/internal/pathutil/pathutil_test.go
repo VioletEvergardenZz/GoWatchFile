@@ -1,3 +1,4 @@
+// 本文件用于路径工具的单元测试
 package pathutil
 
 import (
@@ -140,6 +141,56 @@ func TestBuildDownloadURL_VirtualHostEndpointWithoutScheme(t *testing.T) {
 	want := "http://bucket.example.com:9000/base/a%20b.txt"
 	if u != want {
 		t.Fatalf("下载 URL 不符合预期:\n  实际: %s\n  期望: %s", u, want)
+	}
+}
+
+func TestRelativePath_AllowsNonExistentFile(t *testing.T) {
+	baseDir := t.TempDir()
+	newDir := filepath.Join(baseDir, "new")
+	if err := os.MkdirAll(newDir, 0o755); err != nil {
+		t.Fatalf("创建目录失败: %v", err)
+	}
+	filePath := filepath.Join(newDir, "file.txt")
+
+	rel, err := RelativePath(baseDir, filePath)
+	if err != nil {
+		t.Fatalf("相对路径计算失败: %v", err)
+	}
+	if rel != "new/file.txt" {
+		t.Fatalf("相对路径不符合预期，实际 %q", rel)
+	}
+}
+
+func TestSplitWatchDirs_TrimAndDedup(t *testing.T) {
+	dirA := t.TempDir()
+	dirB := t.TempDir()
+	raw := "  " + dirA + "  ," + dirA + string(os.PathSeparator) + ";\n" + dirB + " \r " + dirB + string(os.PathSeparator)
+
+	got := SplitWatchDirs(raw)
+	want := []string{filepath.Clean(dirA), filepath.Clean(dirB)}
+	if len(got) != len(want) {
+		t.Fatalf("目录数量不符合预期，实际 %d", len(got))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("目录内容不符合预期，实际 %v", got)
+		}
+	}
+}
+
+func TestSplitWatchDirs_EmptyInput(t *testing.T) {
+	cases := []string{
+		"",
+		"   ",
+		",,,",
+		";;\n\r",
+		" , ; \n \r ",
+	}
+	for _, raw := range cases {
+		got := SplitWatchDirs(raw)
+		if len(got) != 0 {
+			t.Fatalf("期望空列表，实际 %v", got)
+		}
 	}
 }
 

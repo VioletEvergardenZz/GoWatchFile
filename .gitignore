@@ -33,6 +33,7 @@ logs/
 
 # Environment files
 .env
+.codex.md
 
 
 # Temp files

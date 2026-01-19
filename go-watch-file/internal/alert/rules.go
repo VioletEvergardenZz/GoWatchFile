@@ -1,3 +1,4 @@
+// 本文件用于告警规则解析与加载
 package alert
 
 import (

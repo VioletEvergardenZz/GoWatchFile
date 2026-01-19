@@ -1,3 +1,4 @@
+// 本文件用于告警规则匹配与抑制逻辑
 package alert
 
 import (

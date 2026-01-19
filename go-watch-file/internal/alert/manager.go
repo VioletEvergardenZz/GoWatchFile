@@ -1,3 +1,4 @@
+// 本文件用于告警管理与调度
 package alert
 
 import (

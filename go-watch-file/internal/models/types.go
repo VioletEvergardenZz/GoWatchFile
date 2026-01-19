@@ -1,3 +1,4 @@
+// 本文件用于定义配置与业务模型
 package models
 
 import (

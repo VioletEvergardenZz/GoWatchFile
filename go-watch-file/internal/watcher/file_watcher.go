@@ -1,3 +1,4 @@
+// 本文件用于文件监听与入队触发
 package watcher
 
 import (

@@ -1,3 +1,4 @@
+// 本文件用于告警运行态与统计
 package alert
 
 import (

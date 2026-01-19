@@ -1,3 +1,4 @@
+// 本文件用于运行时状态聚合与统计
 package state
 
 import (

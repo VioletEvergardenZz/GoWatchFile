@@ -1,3 +1,4 @@
+// 本文件用于配置加载与校验
 package config
 
 import (
@@ -37,7 +38,7 @@ var allowedLogLevels = map[string]struct{}{
 	"error": {},
 }
 
-// LoadConfig 加载配置文件并应用默认值。
+// LoadConfig 加载配置文件并应用默认值
 func LoadConfig(configFile string) (*models.Config, error) {
 	envCandidates := []string{".env"}
 	if dir := filepath.Dir(configFile); dir != "" && dir != "." {
@@ -68,7 +69,7 @@ func LoadConfig(configFile string) (*models.Config, error) {
 	return &cfg, nil
 }
 
-// ValidateConfig 验证配置必填项。
+// ValidateConfig 验证配置必填项
 func ValidateConfig(config *models.Config) error {
 	if err := validateWatchDirs(config.WatchDir); err != nil {
 		return err

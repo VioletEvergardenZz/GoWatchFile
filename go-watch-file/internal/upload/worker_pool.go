@@ -1,4 +1,4 @@
-// Package upload
+// 本文件用于上传工作池与队列管理
 package upload
 
 import (
@@ -105,7 +105,7 @@ func (p *WorkerPool) worker(id int) {
 	}
 }
 
-// AddFile 添加文件到上传队列（非阻塞）。队列已满或已关闭时返回错误。
+// AddFile 添加文件到上传队列（非阻塞）。队列已满或已关闭时返回错误
 func (p *WorkerPool) AddFile(filePath string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -123,13 +123,13 @@ func (p *WorkerPool) AddFile(filePath string) error {
 	}
 }
 
-// Shutdown 关闭上传工作池，默认采用“先 drain 队列，再超时兜底”语义。
+// Shutdown 关闭上传工作池，默认采用“先 drain 队列，再超时兜底”语义
 func (p *WorkerPool) Shutdown() error {
 	return p.ShutdownGraceful(0)
 }
 
-// ShutdownGraceful 关闭上传工作池：先关闭队列并等待 worker 处理完已有任务。
-// timeout > 0 时，超过超时时间会触发 cancel 以尽快退出。
+// ShutdownGraceful 关闭上传工作池：先关闭队列并等待 worker 处理完已有任务
+// timeout > 0 时，超过超时时间会触发 cancel 以尽快退出
 func (p *WorkerPool) ShutdownGraceful(timeout time.Duration) error {
 	logger.Info("正在关闭上传工作池...")
 	p.mu.Lock()
@@ -169,7 +169,7 @@ func (p *WorkerPool) ShutdownGraceful(timeout time.Duration) error {
 	return nil
 }
 
-// ShutdownNow 立即关闭上传工作池：取消上下文并关闭队列，不保证 drain。
+// ShutdownNow 立即关闭上传工作池：取消上下文并关闭队列，不保证 drain
 func (p *WorkerPool) ShutdownNow() {
 	logger.Warn("立即关闭上传工作池（可能丢弃队列中任务）")
 	p.mu.Lock()

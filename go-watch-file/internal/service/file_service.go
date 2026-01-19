@@ -1,3 +1,4 @@
+// 本文件用于文件监控服务的核心协作流程
 package service
 
 import (
@@ -40,7 +41,7 @@ type FileService struct {
 
 const shutdownTimeout = 30 * time.Second
 
-// NewFileService 构造并初始化 FileService 的依赖。
+// NewFileService 构造并初始化 FileService 的依赖
 func NewFileService(config *models.Config) (*FileService, error) {
 	runtimeState := state.NewRuntimeState(config)
 	if err := runtimeState.BootstrapExisting(); err != nil {
@@ -407,7 +408,7 @@ func validateFileExt(ext string) error {
 	return nil
 }
 
-// Start 启动文件服务。
+// Start 启动文件服务
 func (fs *FileService) Start() error {
 	logger.Info("启动文件服务...")
 	// 先启动文件监听 再启动告警轮询
@@ -424,7 +425,7 @@ func (fs *FileService) Start() error {
 	return nil
 }
 
-// Stop 停止文件服务。
+// Stop 停止文件服务
 func (fs *FileService) Stop() error {
 	logger.Info("停止文件服务...")
 	fs.mu.Lock()
@@ -447,7 +448,7 @@ func (fs *FileService) Stop() error {
 	return nil
 }
 
-// processFile 处理单个文件：上传、触发构建、发送通知。
+// processFile 处理单个文件：上传、触发构建、发送通知
 func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	start := time.Now()
 	manual := fs.consumeManualOnce(filePath)
@@ -560,7 +561,7 @@ func (fs *FileService) sendEmailNotification(ctx context.Context, downloadURL, f
 	}
 }
 
-// GetStats 获取服务统计信息。
+// GetStats 获取服务统计信息
 func (fs *FileService) GetStats() models.UploadStats {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()

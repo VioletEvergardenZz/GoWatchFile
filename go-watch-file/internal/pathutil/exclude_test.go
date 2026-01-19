@@ -1,3 +1,4 @@
+// 本文件用于排除规则匹配的单元测试
 package pathutil
 
 import "testing"

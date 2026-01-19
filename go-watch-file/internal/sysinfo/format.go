@@ -1,3 +1,4 @@
+// 本文件用于提供系统资源格式化与辅助函数
 package sysinfo
 
 import (

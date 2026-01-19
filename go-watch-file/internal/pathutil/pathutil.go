@@ -1,3 +1,4 @@
+// 本文件用于路径规范化与对象 key 生成
 package pathutil
 
 import (
@@ -9,10 +10,10 @@ import (
 	"strings"
 )
 
-// ErrOutsideBaseDir 表示 fullPath 未落在 baseDir 下的错误。
+// ErrOutsideBaseDir 表示 fullPath 未落在 baseDir 下的错误
 var ErrOutsideBaseDir = errors.New("文件路径不在监控目录下")
 
-// RelativePath 返回从 baseDir 到 fullPath 的相对路径，使用 / 分隔。
+// RelativePath 返回从 baseDir 到 fullPath 的相对路径，使用 / 分隔
 func RelativePath(baseDir, fullPath string) (string, error) {
 	base, err := resolvePath(baseDir)
 	if err != nil {
@@ -35,7 +36,7 @@ func RelativePath(baseDir, fullPath string) (string, error) {
 	return toSlashPath(rel), nil
 }
 
-// BuildObjectKeyStrict 基于 watchDir 与 filePath 构造稳定的 S3 对象 key。
+// BuildObjectKeyStrict 基于 watchDir 与 filePath 构造稳定的 S3 对象 key
 func BuildObjectKeyStrict(watchDir, filePath string) (string, error) {
 	rel, err := RelativePath(watchDir, filePath)
 	if err != nil {
@@ -50,8 +51,8 @@ func BuildObjectKeyStrict(watchDir, filePath string) (string, error) {
 	return trimLeadingSlash(rel), nil
 }
 
-// BuildObjectKeyPermissive 在 RelativePath 失败时会回退到 filePath 的清洗结果。
-// 仅在需要兼容遗留逻辑时使用，安全场景请使用 BuildObjectKeyStrict。
+// BuildObjectKeyPermissive 在 RelativePath 失败时会回退到 filePath 的清洗结果
+// 仅在需要兼容遗留逻辑时使用，安全场景请使用 BuildObjectKeyStrict
 func BuildObjectKeyPermissive(watchDir, filePath string) string {
 	key, err := BuildObjectKeyStrict(watchDir, filePath)
 	if err != nil {
@@ -60,12 +61,12 @@ func BuildObjectKeyPermissive(watchDir, filePath string) string {
 	return key
 }
 
-// BuildObjectKey 为兼容旧逻辑的宽松版本，等同于 BuildObjectKeyPermissive。
+// BuildObjectKey 为兼容旧逻辑的宽松版本，等同于 BuildObjectKeyPermissive
 func BuildObjectKey(watchDir, filePath string) string {
 	return BuildObjectKeyPermissive(watchDir, filePath)
 }
 
-// BuildDownloadURL 根据 bucket、endpoint 和对象 key 构造下载 URL。
+// BuildDownloadURL 根据 bucket、endpoint 和对象 key 构造下载 URL
 func BuildDownloadURL(endpoint, bucket, objectKey string, forcePathStyle, disableSSL bool) string {
 	scheme := "https"
 	if disableSSL {

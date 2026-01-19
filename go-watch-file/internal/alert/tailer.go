@@ -1,3 +1,4 @@
+// 本文件用于日志轮询读取与回调
 package alert
 
 import (
