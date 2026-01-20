@@ -1,0 +1,50 @@
+services:
+  gwf-backend:
+    build:
+      context: ./go-watch-file
+      args:
+        BASE_IMAGE_PREFIX: registry.cn-hangzhou.aliyuncs.com/library
+        GOPROXY: https://mirrors.aliyun.com/goproxy/,direct
+        APT_MIRROR: mirrors.aliyun.com
+    environment:
+      WATCH_DIR: /data/gwf/watch
+      WATCH_EXCLUDE: ""
+      FILE_EXT: ""
+      SILENCE_WINDOW: 10s
+      S3_BUCKET: ${S3_BUCKET}
+      S3_AK: ${S3_AK}
+      S3_SK: ${S3_SK}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_FORCE_PATH_STYLE: "false"
+      S3_DISABLE_SSL: "false"
+      LOG_LEVEL: info
+      LOG_TO_STD: "true"
+      API_BIND: :8080
+      ALERT_ENABLED: "true"
+      ALERT_SUPPRESS_ENABLED: "true"
+      ALERT_RULES_FILE: /etc/gwf/alert-rules.yaml
+      ALERT_LOG_PATHS: /var/log/app/error.log,/var/log/app/worker.error.log
+      ALERT_POLL_INTERVAL: 2s
+      ALERT_START_FROM_END: "true"
+      DINGTALK_WEBHOOK: ${DINGTALK_WEBHOOK}
+      DINGTALK_SECRET: ${DINGTALK_SECRET}
+    volumes:
+      - ./data/watch:/data/gwf/watch
+      - ./data/logs:/var/log/app
+      - ./go-watch-file/alert-rules.yaml:/etc/gwf/alert-rules.yaml:ro
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  gwf-frontend:
+    build:
+      context: ./console-frontend
+      args:
+        BASE_IMAGE_PREFIX: registry.cn-hangzhou.aliyuncs.com/library
+        NPM_REGISTRY: https://registry.npmmirror.com
+    depends_on:
+      - gwf-backend
+    ports:
+      - "8081:80"
+    restart: unless-stopped
