@@ -15,7 +15,7 @@ export type FileLogResponse = {
 
 type ConfigResponse = {
   ok?: boolean;
-  config?: { watchDir: string; fileExt: string; concurrency?: string; silence?: string };
+  config?: { watchDir: string; fileExt: string; concurrency?: string; silence?: string; systemResourceEnabled?: boolean };
 };
 
 const readErrorDetail = async (res: Response) => {
@@ -79,6 +79,7 @@ export const postConfig = async (payload: {
   uploadWorkers: number;
   uploadQueueSize: number;
   silence: string;
+  systemResourceEnabled: boolean;
 }): Promise<ConfigResponse> => {
   const res = await fetch(`${API_BASE}/api/config`, {
     method: "POST",

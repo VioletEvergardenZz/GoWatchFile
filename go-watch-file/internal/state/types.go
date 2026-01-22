@@ -44,6 +44,7 @@ type ConfigSnapshot struct {
 	FileExt     string `json:"fileExt"`
 	Silence     string `json:"silence"`
 	Concurrency string `json:"concurrency"`
+	SystemResourceEnabled bool   `json:"systemResourceEnabled"`
 }
 
 // HeroCopy 表示首页头部摘要信息

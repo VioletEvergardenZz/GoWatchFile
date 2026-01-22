@@ -234,6 +234,7 @@ export const configSnapshot: ConfigSnapshot = {
   fileExt: "关闭 · 全量目录",
   silence: "4s",
   concurrency: "workers=8 / queue=200",
+  systemResourceEnabled: false,
 };
 
 export const alertConfigSnapshot: AlertConfigSnapshot = {

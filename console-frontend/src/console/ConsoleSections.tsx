@@ -124,6 +124,20 @@ export function ConfigSection({ configForm, saving, saveMessage, onChange, onSav
             onChange={(e) => onChange({ concurrency: e.target.value })}
           />
         </div>
+        <div className="input">
+          <label>???????</label>
+          <div className="switch-group">
+            <span className="muted small">{configForm.systemResourceEnabled ? "???" : "???"}</span>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={configForm.systemResourceEnabled}
+                onChange={(e) => onChange({ systemResourceEnabled: e.target.checked })}
+              />
+              <span className="slider" />
+            </label>
+          </div>
+        </div>
       </div>
       <div className="toolbar config-actions">
         <div className="toolbar-actions">

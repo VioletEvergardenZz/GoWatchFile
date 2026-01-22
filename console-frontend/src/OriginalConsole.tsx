@@ -106,6 +106,7 @@ const emptyConfig: ConfigSnapshot = {
   fileExt: "",
   silence: "",
   concurrency: "",
+  systemResourceEnabled: false,
 };
 
 const emptyMetricCards: MetricCard[] = [];
@@ -717,6 +718,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
         uploadWorkers: workers,
         uploadQueueSize: queue,
         silence,
+        systemResourceEnabled: configForm.systemResourceEnabled,
       });
       const payloadConfig = data.config;
       const nextSuffix = fileExt ? `过滤 ${fileExt}` : "关闭 · 全量目录";
@@ -725,6 +727,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
         fileExt: payloadConfig?.fileExt ?? fileExt,
         concurrency: payloadConfig?.concurrency ?? configForm.concurrency,
         silence: payloadConfig?.silence ?? silence ?? configForm.silence,
+        systemResourceEnabled: payloadConfig?.systemResourceEnabled ?? configForm.systemResourceEnabled,
       };
       const nextWatchDirs = splitWatchDirs(nextConfig.watchDir);
       const nextRoot = nextWatchDirs.includes(currentRoot) ? currentRoot : nextWatchDirs[0] ?? "";
@@ -900,6 +903,13 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     ? fmt(activeNode.updated)
     : "--";
   const silenceValue = useMemo(() => heroState.silence?.replace(/静默/gi, "").trim() ?? "", [heroState.silence]);
+  const systemResourceEnabled = configForm.systemResourceEnabled;
+  const handleGoConfig = useCallback(() => {
+    onViewChange("console");
+    if (typeof window !== "undefined") {
+      window.location.hash = "#config";
+    }
+  }, [onViewChange]);
   const booting = view === "console" && !bootstrapped;
 
   if (booting) {
@@ -1009,7 +1019,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
           ) : view === "alert" ? (
             <AlertConsole embedded />
           ) : (
-            <SystemConsole embedded />
+            <SystemConsole embedded enabled={systemResourceEnabled} onGoConfig={handleGoConfig} />
           )}
         </div>
       </div>

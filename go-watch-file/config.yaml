@@ -38,6 +38,7 @@ upload_queue_size: 100
 
 # API bind
 api_bind: ":8080"
+system_resource_enabled: false
 
 # Alert config (managed in console)
 alert_enabled: false

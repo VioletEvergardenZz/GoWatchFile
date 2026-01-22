@@ -607,6 +607,7 @@ func (s *RuntimeState) ConfigSnapshot(cfg *models.Config) ConfigSnapshot {
 		FileExt:     formatExtList(cfg.FileExt),
 		Silence:     cfg.Silence,
 		Concurrency: fmt.Sprintf("workers=%d / queue=%d", cfg.UploadWorkers, cfg.UploadQueueSize),
+		SystemResourceEnabled: cfg.SystemResourceEnabled,
 	}
 }
 

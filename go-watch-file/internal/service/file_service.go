@@ -226,7 +226,7 @@ func (fs *FileService) persistRuntimeConfig(cfg *models.Config) {
 }
 
 // UpdateConfig updates runtime config and rebuilds watcher/upload pools.
-func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWorkers, uploadQueueSize int) (*models.Config, error) {
+func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWorkers, uploadQueueSize int, systemResourceEnabled *bool) (*models.Config, error) {
 	// 先加锁读取当前配置与组件引用
 	fs.mu.Lock()
 	if fs.config == nil {
@@ -273,6 +273,9 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	// 处理上传队列长度更新
 	if uploadQueueSize > 0 && uploadQueueSize != current.UploadQueueSize {
 		updated.UploadQueueSize = uploadQueueSize
+	}
+	if systemResourceEnabled != nil && *systemResourceEnabled != current.SystemResourceEnabled {
+		updated.SystemResourceEnabled = *systemResourceEnabled
 	}
 
 	// 基于新配置初始化运行态

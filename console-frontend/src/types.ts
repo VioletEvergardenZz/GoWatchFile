@@ -35,6 +35,7 @@ export type ConfigSnapshot = {
   fileExt: string;
   silence: string;
   concurrency: string;
+  systemResourceEnabled: boolean;
 };
 
 export type HeroCopy = {

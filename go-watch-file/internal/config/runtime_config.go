@@ -18,6 +18,7 @@ type runtimeConfig struct {
 	Silence              *string `yaml:"silence"`
 	UploadWorkers        *int    `yaml:"upload_workers"`
 	UploadQueueSize      *int    `yaml:"upload_queue_size"`
+	SystemResourceEnabled *bool   `yaml:"system_resource_enabled"`
 	AlertEnabled         *bool   `yaml:"alert_enabled"`
 	AlertSuppressEnabled *bool   `yaml:"alert_suppress_enabled"`
 	AlertRulesFile       *string `yaml:"alert_rules_file"`
@@ -75,6 +76,9 @@ func applyRuntimeConfig(cfg *models.Config, runtime *runtimeConfig) {
 	}
 	if runtime.UploadQueueSize != nil {
 		cfg.UploadQueueSize = *runtime.UploadQueueSize
+	}
+	if runtime.SystemResourceEnabled != nil {
+		cfg.SystemResourceEnabled = *runtime.SystemResourceEnabled
 	}
 	if runtime.AlertEnabled != nil {
 		cfg.AlertEnabled = *runtime.AlertEnabled
@@ -137,6 +141,7 @@ func buildRuntimeConfig(cfg *models.Config) *runtimeConfig {
 		Silence:              stringPtr(strings.TrimSpace(cfg.Silence)),
 		UploadWorkers:        intPtr(cfg.UploadWorkers),
 		UploadQueueSize:      intPtr(cfg.UploadQueueSize),
+		SystemResourceEnabled: boolPtr(cfg.SystemResourceEnabled),
 		AlertEnabled:         boolPtr(cfg.AlertEnabled),
 		AlertSuppressEnabled: boolPtr(suppressEnabled),
 		AlertRulesFile:       stringPtr(strings.TrimSpace(cfg.AlertRulesFile)),

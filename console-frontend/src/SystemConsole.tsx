@@ -130,6 +130,8 @@ const normalizeDashboard = (raw: Partial<SystemDashboard> | null | undefined) =>
 
 type SystemConsoleProps = {
   embedded?: boolean;
+  enabled?: boolean;
+  onGoConfig?: () => void;
 };
 
 const emptyOverview: SystemOverview = {
@@ -147,7 +149,7 @@ const emptyOverview: SystemOverview = {
   topProcess: "--",
 };
 
-export function SystemConsole({ embedded = false }: SystemConsoleProps) {
+export function SystemConsole({ embedded = false, enabled = true, onGoConfig }: SystemConsoleProps) {
   const [overview, setOverview] = useState<SystemOverview>(USE_MOCK ? mockSystemOverview : emptyOverview);
   const [gauges, setGauges] = useState<SystemResourceGauge[]>(USE_MOCK ? mockSystemGauges : []);
   const [volumes, setVolumes] = useState<SystemVolume[]>(USE_MOCK ? mockSystemVolumes : []);
@@ -177,10 +179,17 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
   }, []);
 
   useEffect(() => {
+    if (!enabled) {
+      fetchingRef.current = false;
+      setLoading(false);
+      setError(null);
+      setUsingMockData(false);
+      return;
+    }
     const refresh = async () => {
       if (fetchingRef.current || !aliveRef.current) return;
       fetchingRef.current = true;
-      // 拉取系统资源快照，避免并发请求叠加
+      // ?????????????????
       try {
         const resp = await fetch(`${API_BASE}/api/system?limit=0`, { cache: "no-store" });
         if (!resp.ok) {
@@ -197,7 +206,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
         setError(null);
       } catch (err) {
         if (!aliveRef.current) return;
-        setError((err as Error).message || "加载系统数据失败");
+        setError((err as Error).message || "????????");
       } finally {
         fetchingRef.current = false;
         if (aliveRef.current) {
@@ -208,7 +217,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
     void refresh();
     const timer = window.setInterval(() => void refresh(), POLL_MS);
     return () => window.clearInterval(timer);
-  }, []);
+  }, [enabled]);
 
   const filteredProcesses = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -288,7 +297,7 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
     return sortedProcesses.find((proc) => proc.pid === selectedPid) ?? null;
   }, [selectedPid, sortedProcesses]);
 
-  const showTopline = usingMockData || error;
+  const showTopline = (usingMockData || error) && enabled;
 
   const handleTerminate = () => {
     if (!selectedProcess) return;
@@ -309,7 +318,20 @@ export function SystemConsole({ embedded = false }: SystemConsoleProps) {
     );
 
   return (
-    <div className={`system-shell ${embedded ? "system-embedded" : ""}`}>
+    <div className={`system-shell ${embedded ? "system-embedded" : ""}${enabled ? "" : " is-disabled"}`}>
+      {!enabled ? (
+        <div className="system-disabled">
+          <div className="system-disabled-card">
+            <h2>??????????</h2>
+            <p>?????????????????? CPU????????????</p>
+            {onGoConfig ? (
+              <button className="btn" type="button" onClick={onGoConfig}>
+                ?????
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
       {showTopline ? (
         <div className="system-topline">
           {error ? <div className="badge ghost">{error}</div> : null}

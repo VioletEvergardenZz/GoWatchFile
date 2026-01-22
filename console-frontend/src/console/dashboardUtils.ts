@@ -137,6 +137,7 @@ export const normalizeConfigSnapshot = (value?: Partial<ConfigSnapshot>): Config
     fileExt: base.fileExt ?? "",
     silence: base.silence ?? "",
     concurrency: base.concurrency ?? "",
+    systemResourceEnabled: base.systemResourceEnabled ?? false,
   };
 };
 

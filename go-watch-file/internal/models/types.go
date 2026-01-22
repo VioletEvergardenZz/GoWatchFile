@@ -35,6 +35,7 @@ type Config struct {
 	UploadWorkers     int    `yaml:"upload_workers"`    // 上传工作池大小
 	UploadQueueSize   int    `yaml:"upload_queue_size"` // 上传队列大小
 	APIBind           string `yaml:"api_bind"`          // API 服务监听地址
+	SystemResourceEnabled bool `yaml:"system_resource_enabled"`
 	AlertEnabled      bool   `yaml:"alert_enabled"`
 	AlertSuppressEnabled *bool `yaml:"alert_suppress_enabled"`
 	AlertRulesFile    string `yaml:"alert_rules_file"`

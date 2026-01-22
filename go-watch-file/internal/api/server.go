@@ -257,13 +257,14 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		FileExt         string `json:"fileExt"`
 		UploadWorkers   int    `json:"uploadWorkers"`
 		UploadQueueSize int    `json:"uploadQueueSize"`
+		SystemResourceEnabled  *bool  `json:"systemResourceEnabled"`
 		Silence         string `json:"silence"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	cfg, err := h.fs.UpdateConfig(req.WatchDir, req.FileExt, strings.TrimSpace(req.Silence), req.UploadWorkers, req.UploadQueueSize)
+	cfg, err := h.fs.UpdateConfig(req.WatchDir, req.FileExt, strings.TrimSpace(req.Silence), req.UploadWorkers, req.UploadQueueSize, req.SystemResourceEnabled)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -372,6 +373,14 @@ func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	cfg := h.fs.Config()
+	if cfg == nil {
+		cfg = h.cfg
+	}
+	if cfg == nil || !cfg.SystemResourceEnabled {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "????????????????????????????????"})
 		return
 	}
 	if h.sys == nil {
