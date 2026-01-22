@@ -46,6 +46,7 @@ import {
   postConfig,
   postFileLog,
   postManualUpload,
+  postSystemResourceEnabled,
   type FileLogResponse,
   type LogMode,
 } from "./console/dashboardApi";
@@ -153,6 +154,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [loading, setLoading] = useState(!USE_MOCK);
   const [saving, setSaving] = useState(false);
   const [systemToggleSaving, setSystemToggleSaving] = useState(false);
+  const [pendingConfigScroll, setPendingConfigScroll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bootstrapped, setBootstrapped] = useState(USE_MOCK);
   const lastSavedConfig = useRef<ConfigSnapshot | null>(null);
@@ -759,14 +761,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     setSystemToggleSaving(true);
     setError(null);
     try {
-      const data = await postConfig({
-        watchDir: "",
-        fileExt: "",
-        uploadWorkers: 0,
-        uploadQueueSize: 0,
-        silence: "",
-        systemResourceEnabled: next,
-      });
+      const data = await postSystemResourceEnabled(next);
       const payloadConfig = data.config;
       const enabledValue = payloadConfig?.systemResourceEnabled ?? next;
       setConfigForm((prev) => ({ ...prev, systemResourceEnabled: enabledValue }));
@@ -931,17 +926,37 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const silenceValue = useMemo(() => heroState.silence?.replace(/静默/gi, "").trim() ?? "", [heroState.silence]);
   const systemResourceEnabled = configForm.systemResourceEnabled;
   const handleGoConfig = useCallback(() => {
+    setPendingConfigScroll(true);
     onViewChange("console");
+  }, [onViewChange]);
+  const booting = view === "console" && !bootstrapped;
+
+  useEffect(() => {
+    if (!pendingConfigScroll || view !== "console" || !bootstrapped) return;
     if (typeof window === "undefined") return;
-    window.setTimeout(() => {
+    let cancelled = false;
+    let attempts = 0;
+    const tryScroll = () => {
+      if (cancelled) return;
       const target = document.getElementById("config");
       if (target) {
         target.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.location.hash = "#config";
+        setPendingConfigScroll(false);
+        return;
       }
-      window.location.hash = "#config";
-    }, 0);
-  }, [onViewChange]);
-  const booting = view === "console" && !bootstrapped;
+      attempts += 1;
+      if (attempts < 20) {
+        window.requestAnimationFrame(tryScroll);
+      } else {
+        setPendingConfigScroll(false);
+      }
+    };
+    window.requestAnimationFrame(tryScroll);
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingConfigScroll, view, bootstrapped]);
 
   if (booting) {
     return (

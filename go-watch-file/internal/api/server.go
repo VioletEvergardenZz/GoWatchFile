@@ -253,18 +253,46 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		WatchDir        string `json:"watchDir"`
-		FileExt         string `json:"fileExt"`
-		UploadWorkers   int    `json:"uploadWorkers"`
-		UploadQueueSize int    `json:"uploadQueueSize"`
+		WatchDir        *string `json:"watchDir"`
+		FileExt         *string `json:"fileExt"`
+		UploadWorkers   *int    `json:"uploadWorkers"`
+		UploadQueueSize *int    `json:"uploadQueueSize"`
 		SystemResourceEnabled  *bool  `json:"systemResourceEnabled"`
-		Silence         string `json:"silence"`
+		Silence         *string `json:"silence"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	cfg, err := h.fs.UpdateConfig(req.WatchDir, req.FileExt, strings.TrimSpace(req.Silence), req.UploadWorkers, req.UploadQueueSize, req.SystemResourceEnabled)
+	current := h.fs.Config()
+	if current == nil {
+		current = h.cfg
+	}
+	if current == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "runtime config not ready"})
+		return
+	}
+	watchDir := current.WatchDir
+	if req.WatchDir != nil {
+		watchDir = *req.WatchDir
+	}
+	fileExt := current.FileExt
+	if req.FileExt != nil {
+		fileExt = *req.FileExt
+	}
+	silence := current.Silence
+	if req.Silence != nil {
+		silence = *req.Silence
+	}
+	uploadWorkers := current.UploadWorkers
+	if req.UploadWorkers != nil {
+		uploadWorkers = *req.UploadWorkers
+	}
+	uploadQueueSize := current.UploadQueueSize
+	if req.UploadQueueSize != nil {
+		uploadQueueSize = *req.UploadQueueSize
+	}
+	cfg, err := h.fs.UpdateConfig(watchDir, fileExt, strings.TrimSpace(silence), uploadWorkers, uploadQueueSize, req.SystemResourceEnabled)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

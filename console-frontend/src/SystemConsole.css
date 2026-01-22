@@ -47,6 +47,13 @@
   line-height: 1.5;
 }
 
+.system-disabled-actions {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .system-topline {
   display: flex;
   gap: 8px;

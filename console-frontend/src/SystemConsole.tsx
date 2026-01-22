@@ -327,11 +327,18 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
           <div className="system-disabled-card">
             <h2>系统资源控制台未启用</h2>
             <p>启用后可查看 CPU、内存、磁盘与进程占用情况。</p>
-            {onGoConfig ? (
-              <button className="btn" type="button" onClick={onGoConfig}>
-                去配置启用
-              </button>
-            ) : null}
+            <div className="system-disabled-actions">
+              {onToggleEnabled ? (
+                <button className="btn" type="button" onClick={() => onToggleEnabled(true)} disabled={toggleDisabled}>
+                  {toggleLoading ? "启用中..." : "立即启用"}
+                </button>
+              ) : null}
+              {onGoConfig ? (
+                <button className="btn secondary" type="button" onClick={onGoConfig}>
+                  去配置启用
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
       ) : null}

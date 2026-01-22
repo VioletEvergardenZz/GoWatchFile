@@ -90,6 +90,16 @@ export const postConfig = async (payload: {
   return (await res.json()) as ConfigResponse;
 };
 
+export const postSystemResourceEnabled = async (enabled: boolean): Promise<ConfigResponse> => {
+  const res = await fetch(`${API_BASE}/api/config`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ systemResourceEnabled: enabled }),
+  });
+  await ensureOk(res, "系统资源控制台开关更新");
+  return (await res.json()) as ConfigResponse;
+};
+
 export const postFileLog = async (payload: { path: string; query?: string }): Promise<FileLogResponse> => {
   const res = await fetch(`${API_BASE}/api/file-log`, {
     method: "POST",
