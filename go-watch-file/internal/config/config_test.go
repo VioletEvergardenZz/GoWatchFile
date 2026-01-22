@@ -224,8 +224,8 @@ func TestValidateConfig_InvalidFields(t *testing.T) {
 	t.Run("missing watch dir", func(t *testing.T) {
 		cfg := newValidConfig(t)
 		cfg.WatchDir = ""
-		if err := ValidateConfig(cfg); err == nil {
-			t.Fatal("缺少监控目录应该报错")
+		if err := ValidateConfig(cfg); err != nil {
+			t.Fatalf("missing watch dir should be allowed: %v", err)
 		}
 	})
 
@@ -379,15 +379,11 @@ region: "test-region"
 func TestLoadConfigEnvOverrides(t *testing.T) {
 	fileWatchDir := filepath.ToSlash(t.TempDir())
 	envWatchDir := filepath.ToSlash(t.TempDir())
-	alertRulePath := filepath.ToSlash(filepath.Join(t.TempDir(), "alert-rules.yaml"))
-	if err := os.WriteFile(alertRulePath, []byte("version: 1\nrules:\n  - id: test\n    level: ignore\n    keywords: [\"test\"]\n"), 0644); err != nil {
-		t.Fatalf("写入临时规则文件失败: %v", err)
-	}
 
 	baseConfig := fmt.Sprintf(`
 watch_dir: "%s"
+watch_exclude: ".git,node_modules"
 file_ext: ".hprof"
-robot_key: "test-key"
 bucket: "test-bucket"
 ak: "file-ak"
 sk: "file-sk"
@@ -401,58 +397,95 @@ log_level: "info"
 
 	t.Setenv("WATCH_DIR", envWatchDir)
 	t.Setenv("WATCH_EXCLUDE", ".git,.cache")
+	t.Setenv("LOG_LEVEL", "error")
+	t.Setenv("ALERT_ENABLED", "true")
+	t.Setenv("S3_BUCKET", "env-bucket")
+	t.Setenv("S3_ENDPOINT", "https://env-endpoint.com")
+	t.Setenv("S3_REGION", "env-region")
+	t.Setenv("S3_FORCE_PATH_STYLE", "true")
+	t.Setenv("S3_DISABLE_SSL", "true")
 	t.Setenv("S3_AK", "env-ak")
 	t.Setenv("S3_SK", "env-sk")
-	t.Setenv("UPLOAD_WORKERS", "7")
-	t.Setenv("LOG_LEVEL", "error")
-	t.Setenv("API_BIND", ":18080")
-	t.Setenv("ALERT_ENABLED", "true")
-	t.Setenv("ALERT_SUPPRESS_ENABLED", "false")
-	t.Setenv("ALERT_RULES_FILE", alertRulePath)
-	t.Setenv("ALERT_LOG_PATHS", "/var/log/app/error.log")
-	t.Setenv("ALERT_POLL_INTERVAL", "5s")
-	t.Setenv("ALERT_START_FROM_END", "false")
+	t.Setenv("DINGTALK_SECRET", "env-secret")
 
 	config, err := LoadConfig(configPath)
 	if err != nil {
-		t.Fatalf("加载配置失败: %v", err)
+		t.Fatalf("load config failed: %v", err)
 	}
 
-	if config.WatchDir != envWatchDir {
-		t.Errorf("WatchDir 应从环境变量覆盖, 实际 %s", config.WatchDir)
+	if config.WatchDir != fileWatchDir {
+		t.Errorf("WatchDir should keep file value, got %s", config.WatchDir)
 	}
-	if config.WatchExclude != ".git,.cache" {
-		t.Errorf("WatchExclude 应从环境变量覆盖, 实际 %s", config.WatchExclude)
+	if config.WatchExclude != ".git,node_modules" {
+		t.Errorf("WatchExclude should keep file value, got %s", config.WatchExclude)
+	}
+	if config.LogLevel != "info" {
+		t.Errorf("LogLevel should keep file value, got %s", config.LogLevel)
+	}
+	if config.AlertEnabled != false {
+		t.Errorf("AlertEnabled should not be overridden by env, got %v", config.AlertEnabled)
+	}
+	if config.Bucket != "env-bucket" {
+		t.Errorf("Bucket should be overridden by env, got %s", config.Bucket)
+	}
+	if config.Endpoint != "https://env-endpoint.com" {
+		t.Errorf("Endpoint should be overridden by env, got %s", config.Endpoint)
+	}
+	if config.Region != "env-region" {
+		t.Errorf("Region should be overridden by env, got %s", config.Region)
+	}
+	if config.ForcePathStyle != true {
+		t.Errorf("ForcePathStyle should be overridden by env, got %v", config.ForcePathStyle)
+	}
+	if config.DisableSSL != true {
+		t.Errorf("DisableSSL should be overridden by env, got %v", config.DisableSSL)
 	}
 	if config.AK != "env-ak" || config.SK != "env-sk" {
-		t.Errorf("AK/SK 应从环境变量覆盖, 实际 ak=%s sk=%s", config.AK, config.SK)
+		t.Errorf("AK/SK should be overridden by env, got ak=%s sk=%s", config.AK, config.SK)
 	}
-	if config.UploadWorkers != 7 {
-		t.Errorf("UploadWorkers 应从环境变量覆盖为 7, 实际 %d", config.UploadWorkers)
+	if config.DingTalkSecret != "env-secret" {
+		t.Errorf("DingTalkSecret should be overridden by env, got %s", config.DingTalkSecret)
 	}
-	if config.LogLevel != "error" {
-		t.Errorf("LogLevel 应从环境变量覆盖为 error, 实际 %s", config.LogLevel)
+}
+
+func TestLoadConfigRuntimeOverrides(t *testing.T) {
+	baseWatchDir := filepath.ToSlash(t.TempDir())
+	runtimeWatchDir := filepath.ToSlash(t.TempDir())
+
+	baseConfig := fmt.Sprintf(`
+watch_dir: "%s"
+file_ext: ".hprof"
+bucket: "test-bucket"
+ak: "test-ak"
+sk: "test-sk"
+endpoint: "https://test-endpoint.com"
+region: "test-region"
+log_level: "info"
+`, baseWatchDir)
+
+	configPath := writeTempConfig(t, baseConfig)
+	runtimePath := runtimeConfigPath(configPath)
+	if runtimePath == "" {
+		t.Fatal("runtime config path is empty")
 	}
-	if config.APIBind != ":18080" {
-		t.Errorf("APIBind 应从环境变量覆盖为 :18080, 实际 %s", config.APIBind)
+	runtimeContent := fmt.Sprintf(`
+watch_dir: "%s"
+file_ext: ".log"
+`, runtimeWatchDir)
+	if err := os.WriteFile(runtimePath, []byte(runtimeContent), 0o644); err != nil {
+		t.Fatalf("write runtime config failed: %v", err)
 	}
-	if config.AlertEnabled != true {
-		t.Errorf("AlertEnabled 应从环境变量覆盖为 true, 实际 %v", config.AlertEnabled)
+	t.Cleanup(func() { _ = os.Remove(runtimePath) })
+
+	config, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("load config failed: %v", err)
 	}
-	if config.AlertSuppressEnabled == nil || *config.AlertSuppressEnabled != false {
-		t.Errorf("AlertSuppressEnabled 应从环境变量覆盖为 false, 实际 %v", config.AlertSuppressEnabled)
+	if config.WatchDir != runtimeWatchDir {
+		t.Errorf("WatchDir should come from runtime config, got %s", config.WatchDir)
 	}
-	if config.AlertRulesFile != alertRulePath {
-		t.Errorf("AlertRulesFile 应从环境变量覆盖, 实际 %s", config.AlertRulesFile)
-	}
-	if config.AlertLogPaths != "/var/log/app/error.log" {
-		t.Errorf("AlertLogPaths 应从环境变量覆盖, 实际 %s", config.AlertLogPaths)
-	}
-	if config.AlertPollInterval != "5s" {
-		t.Errorf("AlertPollInterval 应从环境变量覆盖为 5s, 实际 %s", config.AlertPollInterval)
-	}
-	if config.AlertStartFromEnd == nil || *config.AlertStartFromEnd != false {
-		t.Errorf("AlertStartFromEnd 应从环境变量覆盖为 false, 实际 %v", config.AlertStartFromEnd)
+	if config.FileExt != ".log" {
+		t.Errorf("FileExt should come from runtime config, got %s", config.FileExt)
 	}
 }
 
@@ -462,6 +495,12 @@ func TestStringFromEnv_Trims(t *testing.T) {
 	got := stringFromEnv("TEST_STR", "fallback")
 	if got != "/tmp/dir" {
 		t.Fatalf("期望 '/tmp/dir'，实际 '%s'", got)
+	}
+	os.Setenv("TEST_EMPTY", "   ")
+	defer os.Unsetenv("TEST_EMPTY")
+	gotEmpty := stringFromEnv("TEST_EMPTY", "fallback")
+	if gotEmpty != "fallback" {
+		t.Fatalf("期望 'fallback'，实际 '%s'", gotEmpty)
 	}
 }
 
@@ -491,6 +530,12 @@ func TestIntFromEnv(t *testing.T) {
 	if err == nil {
 		t.Fatalf("期望无效整数时返回错误")
 	}
+	os.Setenv("INT_EMPTY", "   ")
+	defer os.Unsetenv("INT_EMPTY")
+	_, ok, err = intFromEnv("INT_EMPTY")
+	if err != nil || ok {
+		t.Fatalf("期望空值时返回 ok=false, err=nil")
+	}
 }
 
 func TestBoolFromEnv_Trims(t *testing.T) {
@@ -500,17 +545,56 @@ func TestBoolFromEnv_Trims(t *testing.T) {
 	if err != nil || !ok || v != true {
 		t.Fatalf("期望 true, true, nil；实际 %v, %v, %v", v, ok, err)
 	}
+	os.Setenv("BOOL_EMPTY", "   ")
+	defer os.Unsetenv("BOOL_EMPTY")
+	_, ok, err = boolFromEnv("BOOL_EMPTY")
+	if err != nil || ok {
+		t.Fatalf("期望空值时返回 ok=false, err=nil")
+	}
 }
 
-func TestApplyEnvOverrides_UploadWorkers(t *testing.T) {
-	os.Setenv("UPLOAD_WORKERS", "7")
-	defer os.Unsetenv("UPLOAD_WORKERS")
-	cfg := &models.Config{}
-	if err := applyEnvOverrides(cfg); err != nil {
-		t.Fatalf("意外错误: %v", err)
+func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
+	t.Setenv("S3_BUCKET", "env-bucket")
+	t.Setenv("S3_ENDPOINT", "https://env-endpoint.com")
+	t.Setenv("S3_REGION", "env-region")
+	t.Setenv("S3_FORCE_PATH_STYLE", "true")
+	t.Setenv("S3_DISABLE_SSL", "true")
+	t.Setenv("S3_AK", "env-ak")
+	t.Setenv("S3_SK", "env-sk")
+	t.Setenv("EMAIL_PASS", "env-pass")
+	cfg := &models.Config{
+		Bucket:         "file-bucket",
+		Endpoint:       "https://file-endpoint.com",
+		Region:         "file-region",
+		ForcePathStyle: false,
+		DisableSSL:     false,
+		AK:             "file-ak",
+		SK:             "file-sk",
+		EmailPass:      "file-pass",
 	}
-	if cfg.UploadWorkers != 7 {
-		t.Fatalf("期望 UploadWorkers=7，实际 %d", cfg.UploadWorkers)
+	if err := applyEnvOverrides(cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Bucket != "env-bucket" {
+		t.Fatalf("Bucket should be overridden by env, got %s", cfg.Bucket)
+	}
+	if cfg.Endpoint != "https://env-endpoint.com" {
+		t.Fatalf("Endpoint should be overridden by env, got %s", cfg.Endpoint)
+	}
+	if cfg.Region != "env-region" {
+		t.Fatalf("Region should be overridden by env, got %s", cfg.Region)
+	}
+	if cfg.ForcePathStyle != true {
+		t.Fatalf("ForcePathStyle should be overridden by env, got %v", cfg.ForcePathStyle)
+	}
+	if cfg.DisableSSL != true {
+		t.Fatalf("DisableSSL should be overridden by env, got %v", cfg.DisableSSL)
+	}
+	if cfg.AK != "env-ak" || cfg.SK != "env-sk" {
+		t.Fatalf("AK/SK should be overridden by env, got ak=%s sk=%s", cfg.AK, cfg.SK)
+	}
+	if cfg.EmailPass != "env-pass" {
+		t.Fatalf("EmailPass should be overridden by env, got %s", cfg.EmailPass)
 	}
 }
 

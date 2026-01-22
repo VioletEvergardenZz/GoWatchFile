@@ -83,6 +83,11 @@ func NewFileWatcher(config *models.Config, uploadPool UploadPool) (*FileWatcher,
 func (fw *FileWatcher) Start() error {
 	logger.Info("初始化文件监控器...")
 	watchDirs := pathutil.SplitWatchDirs(fw.config.WatchDir)
+	if len(watchDirs) == 0 {
+		logger.Warn("watch dir not configured; watcher is idle")
+		fw.startEventLoop()
+		return nil
+	}
 	logger.Info("开始监控目录: %s", strings.Join(watchDirs, ", "))
 
 	// 多目录场景下逐个加入监听
@@ -387,7 +392,7 @@ func (fw *FileWatcher) isExcludedPath(path string) bool {
 
 func (fw *FileWatcher) addWatchRecursivelyForDirs(dirs []string) error {
 	if len(dirs) == 0 {
-		return errors.New("watch dir is empty")
+		return nil
 	}
 	var limitReached bool
 	for _, dir := range dirs {

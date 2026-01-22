@@ -20,14 +20,14 @@ import (
 )
 
 const (
-	defaultUploadWorkers     = 3
-	defaultUploadQueueSize   = 100
-	defaultLogLevel          = "info"
-	defaultLogToStd          = true
-	defaultAPIBind           = ":8080"
-	defaultSilence           = "10s"
-	defaultAlertPollInterval = "2s"
-	defaultAlertStartFromEnd = true
+	defaultUploadWorkers        = 3
+	defaultUploadQueueSize      = 100
+	defaultLogLevel             = "info"
+	defaultLogToStd             = true
+	defaultAPIBind              = ":8080"
+	defaultSilence              = "10s"
+	defaultAlertPollInterval    = "2s"
+	defaultAlertStartFromEnd    = true
 	defaultAlertSuppressEnabled = true
 )
 
@@ -58,6 +58,12 @@ func LoadConfig(configFile string) (*models.Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("解析配置文件失败: %w", err)
 	}
+
+	runtimeCfg, err := loadRuntimeConfig(configFile)
+	if err != nil {
+		return nil, err
+	}
+	applyRuntimeConfig(&cfg, runtimeCfg)
 
 	if err := applyEnvOverrides(&cfg); err != nil {
 		return nil, err
@@ -103,88 +109,46 @@ func ValidateConfig(config *models.Config) error {
 }
 
 func applyEnvOverrides(cfg *models.Config) error {
-	cfg.WatchDir = stringFromEnv("WATCH_DIR", cfg.WatchDir)
-	cfg.WatchExclude = stringFromEnv("WATCH_EXCLUDE", cfg.WatchExclude)
-	cfg.FileExt = stringFromEnv("FILE_EXT", cfg.FileExt)
-	cfg.Silence = stringFromEnv("SILENCE_WINDOW", cfg.Silence)
+	cfg.WatchDir = sanitizeConfigString(cfg.WatchDir)
+	cfg.WatchExclude = sanitizeConfigString(cfg.WatchExclude)
+	cfg.FileExt = sanitizeConfigString(cfg.FileExt)
+	cfg.Silence = sanitizeConfigString(cfg.Silence)
+	cfg.EmailHost = sanitizeConfigString(cfg.EmailHost)
+	cfg.EmailFrom = sanitizeConfigString(cfg.EmailFrom)
+	cfg.EmailTo = sanitizeConfigString(cfg.EmailTo)
+	cfg.Bucket = sanitizeConfigString(cfg.Bucket)
+	cfg.Endpoint = sanitizeConfigString(cfg.Endpoint)
+	cfg.Region = sanitizeConfigString(cfg.Region)
+	cfg.LogLevel = sanitizeConfigString(cfg.LogLevel)
+	cfg.LogFile = sanitizeConfigString(cfg.LogFile)
+	cfg.APIBind = sanitizeConfigString(cfg.APIBind)
+	cfg.AlertRulesFile = sanitizeConfigString(cfg.AlertRulesFile)
+	cfg.AlertLogPaths = sanitizeConfigString(cfg.AlertLogPaths)
+	cfg.AlertPollInterval = sanitizeConfigString(cfg.AlertPollInterval)
 	cfg.RobotKey = stringFromEnv("ROBOT_KEY", cfg.RobotKey)
 	cfg.DingTalkWebhook = stringFromEnv("DINGTALK_WEBHOOK", cfg.DingTalkWebhook)
 	cfg.DingTalkSecret = stringFromEnv("DINGTALK_SECRET", cfg.DingTalkSecret)
-	cfg.EmailHost = stringFromEnv("EMAIL_HOST", cfg.EmailHost)
-	if parsed, ok, err := intFromEnv("EMAIL_PORT"); err != nil {
-		return err
-	} else if ok {
-		cfg.EmailPort = parsed
-	}
 	cfg.EmailUser = stringFromEnv("EMAIL_USER", cfg.EmailUser)
 	cfg.EmailPass = stringFromEnv("EMAIL_PASS", cfg.EmailPass)
-	cfg.EmailFrom = stringFromEnv("EMAIL_FROM", cfg.EmailFrom)
-	cfg.EmailTo = stringFromEnv("EMAIL_TO", cfg.EmailTo)
-	if parsed, ok, err := boolFromEnv("EMAIL_USE_TLS"); err != nil {
-		return err
-	} else if ok {
-		cfg.EmailUseTLS = parsed
-	}
 	cfg.Bucket = stringFromEnv("S3_BUCKET", cfg.Bucket)
-	cfg.AK = stringFromEnv("S3_AK", cfg.AK)
-	cfg.SK = stringFromEnv("S3_SK", cfg.SK)
 	cfg.Endpoint = stringFromEnv("S3_ENDPOINT", cfg.Endpoint)
 	cfg.Region = stringFromEnv("S3_REGION", cfg.Region)
-	if parsed, ok, err := boolFromEnv("S3_FORCE_PATH_STYLE"); err != nil {
+	forcePathStyle, ok, err := boolFromEnv("S3_FORCE_PATH_STYLE")
+	if err != nil {
 		return err
-	} else if ok {
-		cfg.ForcePathStyle = parsed
 	}
-	if parsed, ok, err := boolFromEnv("S3_DISABLE_SSL"); err != nil {
+	if ok {
+		cfg.ForcePathStyle = forcePathStyle
+	}
+	disableSSL, ok, err := boolFromEnv("S3_DISABLE_SSL")
+	if err != nil {
 		return err
-	} else if ok {
-		cfg.DisableSSL = parsed
 	}
-	cfg.LogLevel = stringFromEnv("LOG_LEVEL", cfg.LogLevel)
-	cfg.LogFile = stringFromEnv("LOG_FILE", cfg.LogFile)
-	if parsed, ok, err := boolFromEnv("LOG_SHOW_CALLER"); err != nil {
-		return err
-	} else if ok {
-		cfg.LogShowCaller = parsed
+	if ok {
+		cfg.DisableSSL = disableSSL
 	}
-
-	if parsed, ok, err := boolFromEnv("LOG_TO_STD"); err != nil {
-		return err
-	} else if ok {
-		// LogToStd 用 *bool，因为它的默认值想设为 true
-		cfg.LogToStd = boolPtr(parsed)
-	}
-
-	if parsed, ok, err := intFromEnv("UPLOAD_WORKERS"); err != nil {
-		return err
-	} else if ok {
-		cfg.UploadWorkers = parsed
-	}
-	if parsed, ok, err := intFromEnv("UPLOAD_QUEUE_SIZE"); err != nil {
-		return err
-	} else if ok {
-		cfg.UploadQueueSize = parsed
-	}
-	cfg.APIBind = stringFromEnv("API_BIND", cfg.APIBind)
-	if parsed, ok, err := boolFromEnv("ALERT_ENABLED"); err != nil {
-		return err
-	} else if ok {
-		cfg.AlertEnabled = parsed
-	}
-	if parsed, ok, err := boolFromEnv("ALERT_SUPPRESS_ENABLED"); err != nil {
-		return err
-	} else if ok {
-		cfg.AlertSuppressEnabled = boolPtr(parsed)
-	}
-	cfg.AlertRulesFile = stringFromEnv("ALERT_RULES_FILE", cfg.AlertRulesFile)
-	cfg.AlertLogPaths = stringFromEnv("ALERT_LOG_PATHS", cfg.AlertLogPaths)
-	cfg.AlertPollInterval = stringFromEnv("ALERT_POLL_INTERVAL", cfg.AlertPollInterval)
-	if parsed, ok, err := boolFromEnv("ALERT_START_FROM_END"); err != nil {
-		return err
-	} else if ok {
-		cfg.AlertStartFromEnd = boolPtr(parsed)
-	}
-
+	cfg.AK = stringFromEnv("S3_AK", cfg.AK)
+	cfg.SK = stringFromEnv("S3_SK", cfg.SK)
 	return nil
 }
 
@@ -224,7 +188,10 @@ func boolPtr(v bool) *bool {
 
 func stringFromEnv(envKey, current string) string {
 	if val, ok := os.LookupEnv(envKey); ok {
-		return strings.TrimSpace(val)
+		trimmed := strings.TrimSpace(val)
+		if trimmed != "" {
+			return trimmed
+		}
 	}
 	return strings.TrimSpace(resolveEnvPlaceholder(current))
 }
@@ -233,6 +200,9 @@ func boolFromEnv(envKey string) (bool, bool, error) {
 	val, ok := os.LookupEnv(envKey)
 	// 环境变量不存在
 	if !ok {
+		return false, false, nil
+	}
+	if strings.TrimSpace(val) == "" {
 		return false, false, nil
 	}
 	// 把环境变量里的字符串解析成布尔值（允许前后空格）
@@ -246,6 +216,9 @@ func boolFromEnv(envKey string) (bool, bool, error) {
 func intFromEnv(envKey string) (int, bool, error) {
 	val, ok := os.LookupEnv(envKey)
 	if !ok {
+		return 0, false, nil
+	}
+	if strings.TrimSpace(val) == "" {
 		return 0, false, nil
 	}
 	parsed, err := strconv.Atoi(strings.TrimSpace(val))
@@ -278,6 +251,9 @@ func validateWatchDir(path string) error {
 }
 
 func validateWatchDirs(raw string) error {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
 	dirs := pathutil.SplitWatchDirs(raw)
 	if len(dirs) == 0 {
 		return requireValue("", "监控目录")
@@ -384,9 +360,21 @@ func parseAlertInterval(raw string) (time.Duration, error) {
 	return 0, fmt.Errorf("时间间隔必须大于零")
 }
 
+func sanitizeConfigString(value string) string {
+	trimmed := strings.TrimSpace(value)
+	if isEnvPlaceholder(trimmed) {
+		return ""
+	}
+	return trimmed
+}
+
+func isEnvPlaceholder(value string) bool {
+	return strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}")
+}
+
 func resolveEnvPlaceholder(value string) string {
 	trimmed := strings.TrimSpace(value)
-	if strings.HasPrefix(trimmed, "${") && strings.HasSuffix(trimmed, "}") {
+	if isEnvPlaceholder(trimmed) {
 		envKey := strings.TrimSuffix(strings.TrimPrefix(trimmed, "${"), "}")
 		if envVal, ok := os.LookupEnv(envKey); ok {
 			return strings.TrimSpace(envVal)

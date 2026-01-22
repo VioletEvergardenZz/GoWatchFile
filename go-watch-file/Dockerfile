@@ -1,6 +1,8 @@
 # 本文件用于构建 go-watch-file 后端镜像
-ARG BASE_IMAGE_PREFIX=registry.cn-hangzhou.aliyuncs.com/library
-FROM ${BASE_IMAGE_PREFIX}/golang:1.23 AS builder
+ARG BASE_IMAGE_PREFIX=docker.io/library
+ARG GOLANG_IMAGE=${BASE_IMAGE_PREFIX}/golang:1.23
+ARG DEBIAN_IMAGE=${BASE_IMAGE_PREFIX}/debian:bookworm-slim
+FROM ${GOLANG_IMAGE} AS builder
 
 WORKDIR /src
 
@@ -13,7 +15,7 @@ RUN go mod download
 COPY . .
 RUN go build -o /out/file-watch cmd/main.go
 
-FROM ${BASE_IMAGE_PREFIX}/debian:bookworm-slim
+FROM ${DEBIAN_IMAGE}
 
 WORKDIR /app
 

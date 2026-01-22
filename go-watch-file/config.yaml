@@ -1,55 +1,48 @@
-# 文件监控配置
-watch_dir: "${WATCH_DIR}"
-# 排除目录（可选），逗号或分号分隔
-watch_exclude: "${WATCH_EXCLUDE}"
-# 多后缀支持，逗号/空格分隔。示例：.log,.txt,.zip
-file_ext: "${FILE_EXT}"
+# File watch config
+watch_dir: ""
+watch_exclude: ""
+file_ext: ""
 
-# 通知机器人配置（可选）
+# Notifications (optional)
 robot_key: "${ROBOT_KEY}"
 dingtalk_webhook: "${DINGTALK_WEBHOOK}"
 dingtalk_secret: "${DINGTALK_SECRET}"
 
-# 邮件通知配置（可选）
-email_host: "${EMAIL_HOST}"
+# Email notifications (optional)
+email_host: "smtp.qq.com"
 email_user: "${EMAIL_USER}"
 email_pass: "${EMAIL_PASS}"
-email_from: "${EMAIL_FROM}"
-email_to: "${EMAIL_TO}"
+email_from: ""
+email_to: ""
 email_port: 587
 email_use_tls: true
 
-# S3兼容对象存储配置
-bucket: "${S3_BUCKET}"
+# S3 config
+bucket: "go-watch-file"
 ak: "${S3_AK}"
 sk: "${S3_SK}"
-# endpoint 可带协议或不带协议（如 https://s3.example.com 或 s3.example.com）
-endpoint: "${S3_ENDPOINT}"
-region: "${S3_REGION}"
-# 可被环境变量 S3_FORCE_PATH_STYLE / S3_DISABLE_SSL 覆盖
+endpoint: "oss-cn-hangzhou.aliyuncs.com"
+region: "cn-hangzhou"
 force_path_style: false
 disable_ssl: false
 
-# 日志配置
-log_level: "${LOG_LEVEL}"
-log_file: "${LOG_FILE}"
-# 标准输出开关（可被 LOG_TO_STD 覆盖）
+# Logging
+log_level: "info"
+log_file: "logs/file-monitor.log"
 log_to_std: true
-# 是否显示调用文件和行号（开启会有额外开销）
 log_show_caller: false
 
-# 上传工作池配置
-## 上传工作线程数（并发从队列取文件）
-upload_workers: 3
-## 上传队列大小（存放待上传的文件路径）
+# Upload pool
+upload_workers: 10
 upload_queue_size: 100
 
-# API 服务监听地址
-api_bind: "${API_BIND}"
+# API bind
+api_bind: ":8080"
 
-# 告警决策配置
-alert_enabled: true
-alert_rules_file: "${ALERT_RULES_FILE}"
-alert_log_paths: "${ALERT_LOG_PATHS}"
-alert_poll_interval: "${ALERT_POLL_INTERVAL}"
+# Alert config (managed in console)
+alert_enabled: false
+alert_suppress_enabled: true
+alert_rules_file: ""
+alert_log_paths: ""
+alert_poll_interval: "2s"
 alert_start_from_end: true

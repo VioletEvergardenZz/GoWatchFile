@@ -7,29 +7,20 @@ services:
         GOPROXY: https://mirrors.aliyun.com/goproxy/,direct
         APT_MIRROR: mirrors.aliyun.com
     environment:
-      WATCH_DIR: /data/gwf/watch
-      WATCH_EXCLUDE: ""
-      FILE_EXT: ""
-      SILENCE_WINDOW: 10s
       S3_BUCKET: ${S3_BUCKET}
-      S3_AK: ${S3_AK}
-      S3_SK: ${S3_SK}
       S3_ENDPOINT: ${S3_ENDPOINT}
       S3_REGION: ${S3_REGION}
-      S3_FORCE_PATH_STYLE: "false"
-      S3_DISABLE_SSL: "false"
-      LOG_LEVEL: info
-      LOG_TO_STD: "true"
-      API_BIND: :8080
-      ALERT_ENABLED: "true"
-      ALERT_SUPPRESS_ENABLED: "true"
-      ALERT_RULES_FILE: /etc/gwf/alert-rules.yaml
-      ALERT_LOG_PATHS: /var/log/app/error.log,/var/log/app/worker.error.log
-      ALERT_POLL_INTERVAL: 2s
-      ALERT_START_FROM_END: "true"
+      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}
+      S3_DISABLE_SSL: ${S3_DISABLE_SSL}
+      S3_AK: ${S3_AK}
+      S3_SK: ${S3_SK}
       DINGTALK_WEBHOOK: ${DINGTALK_WEBHOOK}
       DINGTALK_SECRET: ${DINGTALK_SECRET}
+      ROBOT_KEY: ${ROBOT_KEY}
+      EMAIL_USER: ${EMAIL_USER}
+      EMAIL_PASS: ${EMAIL_PASS}
     volumes:
+      - ./go-watch-file/config.yaml:/etc/gwf/config.yaml:ro
       - ./data/watch:/data/gwf/watch
       - ./data/logs:/var/log/app
       - ./go-watch-file/alert-rules.yaml:/etc/gwf/alert-rules.yaml:ro

@@ -1,3 +1,4 @@
+// 本文件用于程序启动入口
 package main
 
 import (
@@ -39,7 +40,7 @@ func run() error {
 
 	logConfig(cfg)
 
-	fileService, err := service.NewFileService(cfg)
+	fileService, err := service.NewFileService(cfg, configPath)
 	if err != nil {
 		logger.Error("创建文件服务失败: %v", err)
 		return err
@@ -70,7 +71,11 @@ func loadAndValidateConfig(configPath string) (*models.Config, error) {
 
 func logConfig(cfg *models.Config) {
 	logger.Info("配置加载成功")
-	logger.Info("监控目录: %s", cfg.WatchDir)
+	if strings.TrimSpace(cfg.WatchDir) == "" {
+		logger.Warn("监控目录未配置，请在控制台设置")
+	} else {
+		logger.Info("监控目录: %s", cfg.WatchDir)
+	}
 	if strings.TrimSpace(cfg.WatchExclude) != "" {
 		logger.Info("监控排除: %s", cfg.WatchExclude)
 	}

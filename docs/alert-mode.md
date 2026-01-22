@@ -46,7 +46,7 @@ alert_start_from_end: true
 说明：
 - `alert_log_paths` 会做路径清理与去重。
 - 规则文件必须存在；否则启动时报错。
-- 告警相关配置不支持 `/api/config` 热更新，但可通过 `/api/alert-config` 运行时更新（仅内存生效，重启后以配置文件为准）。
+- 告警相关配置不支持 `/api/config` 热更新，但可通过 `/api/alert-config` 运行时更新（可持久化到 `config.runtime.yaml`，重启后读取）。
 - 规则文件内容支持热加载（修改后下次轮询自动生效）。
 
 ## 4. 规则文件结构
@@ -145,7 +145,9 @@ rules:
   - `rules`：规则摘要与加载状态。
   - `polling`：轮询摘要（最近轮询、下次轮询、错误信息）。
 - `GET /api/alert-config`：读取告警配置快照。
-- `POST /api/alert-config`：更新告警配置（仅内存生效，重启后以配置文件为准）。
+- `POST /api/alert-config`：更新告警配置（如可写则持久化到 `config.runtime.yaml`，重启后读取）。
+  - Persists to `config.runtime.yaml` when writable.
+
 - 若告警未启用，API 返回 `error: "告警未启用"`。
 
 ## 9. 常见问题

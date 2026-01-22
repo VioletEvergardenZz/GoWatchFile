@@ -186,7 +186,7 @@ sequenceDiagram
 **8) 告警配置**
 - `GET /api/alert-config`
 - `POST /api/alert-config`
-- 用途：读取与更新告警配置（仅内存生效）
+- 用途：读取与更新告警配置（如可写则持久化到 `config.runtime.yaml`）
 
 **9) 系统资源面板**
 - `GET /api/system`
@@ -196,8 +196,8 @@ sequenceDiagram
 ---
 
 ## 5. 注意事项
-- `/api/config` 仅更新运行态配置，S3 与通知配置需改文件并重启。
-- `/api/alert-config` 仅更新告警相关配置，不写回 `config.yaml`。
+- `/api/config` 更新运行态配置，并在可写时持久化到 `config.runtime.yaml`；S3 与通知配置需改 `.env` 并重启。
+- `/api/alert-config` 更新告警相关配置，并在可写时持久化到 `config.runtime.yaml`（不写回 `config.yaml`）。
 - 告警概览统计窗口为最近 24 小时。
 - 前端的 `concurrency` 字段是字符串（例如 `workers=3 / queue=100`），保存时解析成数值。
 - 如需完整字段解释与格式约定，参考 `docs/state-types-visual.md`。

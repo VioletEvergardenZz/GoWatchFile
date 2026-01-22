@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"file-watch/internal/alert"
+	"file-watch/internal/config"
 	"file-watch/internal/dingtalk"
 	"file-watch/internal/email"
 	"file-watch/internal/logger"
@@ -27,6 +28,7 @@ import (
 // FileService 负责协调文件监控、上传与通知流程
 type FileService struct {
 	config        *models.Config
+	configPath    string
 	s3Client      *s3.Client
 	dingtalkRobot *dingtalk.Robot
 	emailSender   *email.Sender
@@ -42,7 +44,7 @@ type FileService struct {
 const shutdownTimeout = 30 * time.Second
 
 // NewFileService 构造并初始化 FileService 的依赖
-func NewFileService(config *models.Config) (*FileService, error) {
+func NewFileService(config *models.Config, configPath string) (*FileService, error) {
 	runtimeState := state.NewRuntimeState(config)
 	if err := runtimeState.BootstrapExisting(); err != nil {
 		logger.Warn("预加载历史文件失败: %v", err)
@@ -55,6 +57,7 @@ func NewFileService(config *models.Config) (*FileService, error) {
 
 	fileService := &FileService{
 		config:        config,
+		configPath:    strings.TrimSpace(configPath),
 		s3Client:      s3Client,
 		dingtalkRobot: newDingTalkRobot(config),
 		emailSender:   newEmailSender(config),
@@ -209,7 +212,20 @@ func (fs *FileService) Config() *models.Config {
 	return &cfgCopy
 }
 
-// UpdateConfig 运行时更新配置并重建 watcher 和上传池
+// persistRuntimeConfig writes console-managed config to the runtime config file.
+func (fs *FileService) persistRuntimeConfig(cfg *models.Config) {
+	if cfg == nil {
+		return
+	}
+	if strings.TrimSpace(fs.configPath) == "" {
+		return
+	}
+	if err := config.SaveRuntimeConfig(fs.configPath, cfg); err != nil {
+		logger.Warn("write runtime config failed: %v", err)
+	}
+}
+
+// UpdateConfig updates runtime config and rebuilds watcher/upload pools.
 func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWorkers, uploadQueueSize int) (*models.Config, error) {
 	// 先加锁读取当前配置与组件引用
 	fs.mu.Lock()
@@ -354,6 +370,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 		updated.UploadQueueSize,
 	)
 
+	fs.persistRuntimeConfig(&updated)
 	return fs.Config(), nil
 }
 
@@ -659,6 +676,7 @@ func (fs *FileService) UpdateAlertConfig(enabled bool, suppressEnabled bool, rul
 	fs.alertManager = manager
 	fs.mu.Unlock()
 
+	fs.persistRuntimeConfig(&updated)
 	return fs.Config(), nil
 }
 

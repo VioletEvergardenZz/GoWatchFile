@@ -389,7 +389,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
         <div className="section-header">
           <div>
             <h2>告警配置</h2>
-            <p className="muted">支持热更新，仅在内存生效</p>
+            <p className="muted">Hot reload; persisted to config.runtime.yaml.</p>
           </div>
           <div className="section-meta">{configStatusLabel}</div>
         </div>

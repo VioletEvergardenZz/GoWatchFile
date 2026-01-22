@@ -10,14 +10,14 @@
 ```bash
 cd go-watch-file
 cp .env.example .env
-# 根据注释填写 WATCH_DIR、FILE_EXT、S3、通知等配置
+# Configure config.yaml for non-secret settings; secrets live in .env; watch_dir/alert config are set in the console.
 
 go build -o bin/file-watch cmd/main.go
 ./bin/file-watch -config config.yaml
 ```
 
 ### 配置要点
-- `watch_dir` 必须存在且为目录。
+- `watch_dir` 为空时由控制台配置；如已设置则必须存在且为目录。
 - `watch_dir` 支持多目录（逗号或分号分隔）。
 - `file_ext` 支持多后缀（逗号或空格分隔），可留空表示不过滤。
 - `silence`/`SILENCE_WINDOW` 默认 `10s`，支持 `10s` / `10秒` / `10`。
@@ -25,7 +25,7 @@ go build -o bin/file-watch cmd/main.go
 - `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
 
 ### 告警模式配置要点
-- `alert_rules_file` 与 `alert_log_paths` 为必填项，`alert_enabled` 用于显式开关。
+- alert rules/log paths are configured in the console and persisted to `config.runtime.yaml` when possible.
 - `alert_start_from_end=true` 表示只处理新写入日志，避免历史告警。
 - `alert_suppress_enabled=false` 可关闭抑制，所有命中都会发送通知。
 - 规则文件支持热加载，修改后在下次轮询生效。
@@ -49,9 +49,9 @@ npm run dev
 - `watchDir` / `fileExt` / `silence`
 - `uploadWorkers` / `uploadQueueSize`
 
-S3 与通知配置需要修改 `.env`/`config.yaml` 并重启后端。
+S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env`，变更后需重启后端。
 
-告警配置通过 `/api/alert-config` 更新，仅影响内存并实时生效。
+告警配置通过 `/api/alert-config` 更新，实时生效，且在可写时持久化到 `config.runtime.yaml`。
 
 ## 运行测试
 ```bash

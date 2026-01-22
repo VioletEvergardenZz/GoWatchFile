@@ -21,9 +21,10 @@
    ```bash
    cd go-watch-file
    cp .env.example .env
-   # 填写 WATCH_DIR、FILE_EXT、S3、DINGTALK 等
+   # 填写密钥相关变量（S3_AK/S3_SK、DINGTALK_*、EMAIL_*）
+   # 如需覆盖 S3 参数，可设置 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL
    ```
-   `config.yaml` 使用环境变量占位符，实际值来自 `.env` 或系统环境变量。
+   `config.yaml` 在密钥字段使用环境变量占位符，S3 连接参数默认在配置文件，也可用环境变量覆盖；其他配置通过控制台设置并持久化到 `config.runtime.yaml`。
 3) 启动：
    ```bash
    go build -o bin/file-watch cmd/main.go
