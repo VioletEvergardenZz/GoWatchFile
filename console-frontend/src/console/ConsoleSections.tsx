@@ -125,9 +125,9 @@ export function ConfigSection({ configForm, saving, saveMessage, onChange, onSav
           />
         </div>
         <div className="input">
-          <label>???????</label>
+          <label>系统资源控制台</label>
           <div className="switch-group">
-            <span className="muted small">{configForm.systemResourceEnabled ? "???" : "???"}</span>
+            <span className="muted small">{configForm.systemResourceEnabled ? "已启用" : "未启用"}</span>
             <label className="switch">
               <input
                 type="checkbox"

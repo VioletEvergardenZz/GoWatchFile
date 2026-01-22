@@ -152,6 +152,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [uploadSearchTerm, setUploadSearchTerm] = useState("");
   const [loading, setLoading] = useState(!USE_MOCK);
   const [saving, setSaving] = useState(false);
+  const [systemToggleSaving, setSystemToggleSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bootstrapped, setBootstrapped] = useState(USE_MOCK);
   const lastSavedConfig = useRef<ConfigSnapshot | null>(null);
@@ -754,6 +755,31 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     }
   };
 
+  const handleSystemResourceToggle = useCallback(async (next: boolean) => {
+    setSystemToggleSaving(true);
+    setError(null);
+    try {
+      const data = await postConfig({
+        watchDir: "",
+        fileExt: "",
+        uploadWorkers: 0,
+        uploadQueueSize: 0,
+        silence: "",
+        systemResourceEnabled: next,
+      });
+      const payloadConfig = data.config;
+      const enabledValue = payloadConfig?.systemResourceEnabled ?? next;
+      setConfigForm((prev) => ({ ...prev, systemResourceEnabled: enabledValue }));
+      if (lastSavedConfig.current) {
+        lastSavedConfig.current = { ...lastSavedConfig.current, systemResourceEnabled: enabledValue };
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSystemToggleSaving(false);
+    }
+  }, []);
+
   const chartData = useMemo(
     () => ({
       labels: chartPointsState.map((p) => p.label),
@@ -906,9 +932,14 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const systemResourceEnabled = configForm.systemResourceEnabled;
   const handleGoConfig = useCallback(() => {
     onViewChange("console");
-    if (typeof window !== "undefined") {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      const target = document.getElementById("config");
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
       window.location.hash = "#config";
-    }
+    }, 0);
   }, [onViewChange]);
   const booting = view === "console" && !bootstrapped;
 
@@ -1019,7 +1050,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
           ) : view === "alert" ? (
             <AlertConsole embedded />
           ) : (
-            <SystemConsole embedded enabled={systemResourceEnabled} onGoConfig={handleGoConfig} />
+            <SystemConsole embedded enabled={systemResourceEnabled} toggleLoading={systemToggleSaving || saving} onGoConfig={handleGoConfig} onToggleEnabled={handleSystemResourceToggle} />
           )}
         </div>
       </div>

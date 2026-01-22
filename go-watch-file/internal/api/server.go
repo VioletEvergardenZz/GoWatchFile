@@ -380,7 +380,7 @@ func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
 		cfg = h.cfg
 	}
 	if cfg == nil || !cfg.SystemResourceEnabled {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "????????????????????????????????"})
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "系统资源未启用，请先在控制台配置开启"})
 		return
 	}
 	if h.sys == nil {

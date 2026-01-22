@@ -131,7 +131,9 @@ const normalizeDashboard = (raw: Partial<SystemDashboard> | null | undefined) =>
 type SystemConsoleProps = {
   embedded?: boolean;
   enabled?: boolean;
+  toggleLoading?: boolean;
   onGoConfig?: () => void;
+  onToggleEnabled?: (next: boolean) => void;
 };
 
 const emptyOverview: SystemOverview = {
@@ -149,7 +151,7 @@ const emptyOverview: SystemOverview = {
   topProcess: "--",
 };
 
-export function SystemConsole({ embedded = false, enabled = true, onGoConfig }: SystemConsoleProps) {
+export function SystemConsole({ embedded = false, enabled = true, toggleLoading = false, onGoConfig, onToggleEnabled }: SystemConsoleProps) {
   const [overview, setOverview] = useState<SystemOverview>(USE_MOCK ? mockSystemOverview : emptyOverview);
   const [gauges, setGauges] = useState<SystemResourceGauge[]>(USE_MOCK ? mockSystemGauges : []);
   const [volumes, setVolumes] = useState<SystemVolume[]>(USE_MOCK ? mockSystemVolumes : []);
@@ -189,7 +191,7 @@ export function SystemConsole({ embedded = false, enabled = true, onGoConfig }: 
     const refresh = async () => {
       if (fetchingRef.current || !aliveRef.current) return;
       fetchingRef.current = true;
-      // ?????????????????
+      // Only poll when enabled to avoid extra load.
       try {
         const resp = await fetch(`${API_BASE}/api/system?limit=0`, { cache: "no-store" });
         if (!resp.ok) {
@@ -206,7 +208,7 @@ export function SystemConsole({ embedded = false, enabled = true, onGoConfig }: 
         setError(null);
       } catch (err) {
         if (!aliveRef.current) return;
-        setError((err as Error).message || "????????");
+        setError((err as Error).message || "数据获取失败");
       } finally {
         fetchingRef.current = false;
         if (aliveRef.current) {
@@ -298,6 +300,7 @@ export function SystemConsole({ embedded = false, enabled = true, onGoConfig }: 
   }, [selectedPid, sortedProcesses]);
 
   const showTopline = (usingMockData || error) && enabled;
+  const toggleDisabled = !onToggleEnabled || toggleLoading;
 
   const handleTerminate = () => {
     if (!selectedProcess) return;
@@ -322,11 +325,11 @@ export function SystemConsole({ embedded = false, enabled = true, onGoConfig }: 
       {!enabled ? (
         <div className="system-disabled">
           <div className="system-disabled-card">
-            <h2>??????????</h2>
-            <p>?????????????????? CPU????????????</p>
+            <h2>系统资源控制台未启用</h2>
+            <p>启用后可查看 CPU、内存、磁盘与进程占用情况。</p>
             {onGoConfig ? (
               <button className="btn" type="button" onClick={onGoConfig}>
-                ?????
+                去配置启用
               </button>
             ) : null}
           </div>
@@ -342,7 +345,20 @@ export function SystemConsole({ embedded = false, enabled = true, onGoConfig }: 
         <div className="system-hero-main">
           <p className="eyebrow">System Resource Manager</p>
           <h1>系统资源管理器</h1>
-          <p className="subtitle">实时 CPU、内存、磁盘与进程资源概览，支持筛选与快速处置。</p>
+          <p className="subtitle">实时查看 CPU、内存、磁盘与进程占用情况</p>
+          <div className="system-toggle">
+            <span className="muted small">系统资源控制台</span>
+            <label className="switch">
+              <input
+                type="checkbox"
+                checked={enabled}
+                disabled={toggleDisabled}
+                onChange={(e) => onToggleEnabled?.(e.target.checked)}
+              />
+              <span className="slider" />
+            </label>
+            <span className={`pill mini-pill ${enabled ? "success" : "warning"}`}>{enabled ? "已启用" : "未启用"}</span>
+          </div>
           <div className="system-meta">
             <span className="badge ghost">主机 {overview.host}</span>
             <span className="badge ghost">IP {overview.ip}</span>

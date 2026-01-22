@@ -366,7 +366,7 @@ region: "test-region"
 		t.Errorf("APIBind 默认值期望 :8080, 实际 %s", config.APIBind)
 	}
 	if config.SystemResourceEnabled != false {
-		t.Errorf("SystemResourceEnabled ????????false, ??? %v", config.SystemResourceEnabled)
+		t.Errorf("SystemResourceEnabled 默认值应为 false, 实际 %v", config.SystemResourceEnabled)
 	}
 	if config.AlertPollInterval != "2s" {
 		t.Errorf("AlertPollInterval 默认值期望 2s, 实际 %s", config.AlertPollInterval)

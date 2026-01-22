@@ -131,6 +131,14 @@
   font-size: 14px;
 }
 
+.system-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 6px 0 12px;
+}
+
 .system-meta {
   display: flex;
   flex-wrap: wrap;
