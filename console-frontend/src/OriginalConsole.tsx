@@ -154,7 +154,6 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [loading, setLoading] = useState(!USE_MOCK);
   const [saving, setSaving] = useState(false);
   const [systemToggleSaving, setSystemToggleSaving] = useState(false);
-  const [pendingConfigScroll, setPendingConfigScroll] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [bootstrapped, setBootstrapped] = useState(USE_MOCK);
   const lastSavedConfig = useRef<ConfigSnapshot | null>(null);
@@ -925,38 +924,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     : "--";
   const silenceValue = useMemo(() => heroState.silence?.replace(/静默/gi, "").trim() ?? "", [heroState.silence]);
   const systemResourceEnabled = configForm.systemResourceEnabled;
-  const handleGoConfig = useCallback(() => {
-    setPendingConfigScroll(true);
-    onViewChange("console");
-  }, [onViewChange]);
   const booting = view === "console" && !bootstrapped;
-
-  useEffect(() => {
-    if (!pendingConfigScroll || view !== "console" || !bootstrapped) return;
-    if (typeof window === "undefined") return;
-    let cancelled = false;
-    let attempts = 0;
-    const tryScroll = () => {
-      if (cancelled) return;
-      const target = document.getElementById("config");
-      if (target) {
-        target.scrollIntoView({ behavior: "smooth", block: "start" });
-        window.location.hash = "#config";
-        setPendingConfigScroll(false);
-        return;
-      }
-      attempts += 1;
-      if (attempts < 20) {
-        window.requestAnimationFrame(tryScroll);
-      } else {
-        setPendingConfigScroll(false);
-      }
-    };
-    window.requestAnimationFrame(tryScroll);
-    return () => {
-      cancelled = true;
-    };
-  }, [pendingConfigScroll, view, bootstrapped]);
 
   if (booting) {
     return (
@@ -1065,7 +1033,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
           ) : view === "alert" ? (
             <AlertConsole embedded />
           ) : (
-            <SystemConsole embedded enabled={systemResourceEnabled} toggleLoading={systemToggleSaving || saving} onGoConfig={handleGoConfig} onToggleEnabled={handleSystemResourceToggle} />
+            <SystemConsole embedded enabled={systemResourceEnabled} toggleLoading={systemToggleSaving || saving} onToggleEnabled={handleSystemResourceToggle} />
           )}
         </div>
       </div>

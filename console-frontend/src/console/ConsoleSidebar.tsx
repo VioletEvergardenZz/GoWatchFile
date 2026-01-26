@@ -77,7 +77,7 @@ export function ConsoleSidebar({ view, activeSection, sectionIds, systemSectionI
           aria-selected={view === "system"}
           onClick={() => onViewChange("system")}
         >
-          系统资源管理器
+          系统资源控制台
         </button>
       </div>
       {view === "console" ? (

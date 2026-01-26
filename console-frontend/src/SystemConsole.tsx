@@ -132,7 +132,6 @@ type SystemConsoleProps = {
   embedded?: boolean;
   enabled?: boolean;
   toggleLoading?: boolean;
-  onGoConfig?: () => void;
   onToggleEnabled?: (next: boolean) => void;
 };
 
@@ -151,7 +150,7 @@ const emptyOverview: SystemOverview = {
   topProcess: "--",
 };
 
-export function SystemConsole({ embedded = false, enabled = true, toggleLoading = false, onGoConfig, onToggleEnabled }: SystemConsoleProps) {
+export function SystemConsole({ embedded = false, enabled = true, toggleLoading = false, onToggleEnabled }: SystemConsoleProps) {
   const [overview, setOverview] = useState<SystemOverview>(USE_MOCK ? mockSystemOverview : emptyOverview);
   const [gauges, setGauges] = useState<SystemResourceGauge[]>(USE_MOCK ? mockSystemGauges : []);
   const [volumes, setVolumes] = useState<SystemVolume[]>(USE_MOCK ? mockSystemVolumes : []);
@@ -333,11 +332,6 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
                   {toggleLoading ? "启用中..." : "立即启用"}
                 </button>
               ) : null}
-              {onGoConfig ? (
-                <button className="btn secondary" type="button" onClick={onGoConfig}>
-                  去配置启用
-                </button>
-              ) : null}
             </div>
           </div>
         </div>
@@ -350,8 +344,8 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
       ) : null}
       <section className="system-hero" id="system-overview">
         <div className="system-hero-main">
-          <p className="eyebrow">System Resource Manager</p>
-          <h1>系统资源管理器</h1>
+          <p className="eyebrow">System Resource Console</p>
+          <h1>系统资源控制台</h1>
           <p className="subtitle">实时查看 CPU、内存、磁盘与进程占用情况</p>
           <div className="system-toggle">
             <span className="muted small">系统资源控制台</span>
