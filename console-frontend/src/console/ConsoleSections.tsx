@@ -99,7 +99,7 @@ export function ConfigSection({ configForm, saving, saveMessage, onChange, onSav
         <div className="input">
           <label>监控目录</label>
           <input
-            placeholder={'Enter directories separated by space/comma/semicolon; quote paths with spaces (e.g. "/data/my logs" /data/other)'}
+            placeholder={'支持空格/逗号/分号分隔，包含空格的路径请加引号（如 "/data/my logs" /data/other）'}
             value={configForm.watchDir}
             onChange={(e) => onChange({ watchDir: e.target.value })}
           />
@@ -123,20 +123,6 @@ export function ConfigSection({ configForm, saving, saveMessage, onChange, onSav
             value={configForm.concurrency}
             onChange={(e) => onChange({ concurrency: e.target.value })}
           />
-        </div>
-        <div className="input">
-          <label>系统资源控制台</label>
-          <div className="switch-group">
-            <span className="muted small">{configForm.systemResourceEnabled ? "已启用" : "未启用"}</span>
-            <label className="switch">
-              <input
-                type="checkbox"
-                checked={configForm.systemResourceEnabled}
-                onChange={(e) => onChange({ systemResourceEnabled: e.target.checked })}
-              />
-              <span className="slider" />
-            </label>
-          </div>
         </div>
       </div>
       <div className="toolbar config-actions">

@@ -1,18 +1,36 @@
+# 本文件用于告警规则示例 复制为 alert-rules.yaml 后按需调整
+# level 取值 ignore business system fatal
+
 version: 1
+# 默认匹配配置
 defaults:
+  # 告警抑制窗口 同一规则在窗口内只通知一次
   suppress_window: 5m
+  # 是否区分大小写
   match_case: false
 
+# 异常升级配置
 escalation:
+  # 是否启用异常升级
   enabled: true
+  # 升级级别
   level: fatal
+  # 统计窗口
   window: 5m
+  # 触发阈值
   threshold: 20
+  # 升级抑制窗口
   suppress_window: 5m
+  # 升级规则标识
   rule_id: system_spike
+  # 升级标题
   title: 系统异常激增
+  # 升级内容
   message: 系统异常在5分钟内达到20次
 
+# 告警规则列表
+# keywords 命中关键字即可触发
+# excludes 命中排除词则忽略
 rules:
   - id: ignore_debug
     title: 低优先级忽略

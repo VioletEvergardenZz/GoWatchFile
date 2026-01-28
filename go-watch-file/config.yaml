@@ -1,14 +1,24 @@
-# File watch config
-watch_dir: ""
-watch_exclude: ""
-file_ext: ""
+# 本文件用于后端静态配置与默认值
+# 运行中可由控制台覆盖的字段会写入 config.runtime.yaml
 
-# Notifications (optional)
+# 文件监控配置
+# 监控目录 留空则由控制台设置 支持多个目录 逗号或分号分隔
+watch_dir: ""
+# 排除目录 目录名或绝对路径 逗号或分号分隔
+watch_exclude: ""
+# 文件后缀过滤 逗号或空格分隔 为空表示不过滤
+file_ext: ""
+# 写入完成判定窗口 为空则使用默认值
+silence: "10s"
+
+# 通知配置 可选
+# 机器人预留字段 当前未使用
 robot_key: "${ROBOT_KEY}"
+# 钉钉机器人
 dingtalk_webhook: "${DINGTALK_WEBHOOK}"
 dingtalk_secret: "${DINGTALK_SECRET}"
 
-# Email notifications (optional)
+# 邮件通知 可选
 email_host: "smtp.qq.com"
 email_user: "${EMAIL_USER}"
 email_pass: "${EMAIL_PASS}"
@@ -17,7 +27,7 @@ email_to: ""
 email_port: 587
 email_use_tls: true
 
-# S3 config
+# S3 存储配置
 bucket: "go-watch-file"
 ak: "${S3_AK}"
 sk: "${S3_SK}"
@@ -26,24 +36,29 @@ region: "cn-hangzhou"
 force_path_style: false
 disable_ssl: false
 
-# Logging
+# 日志配置
 log_level: "info"
 log_file: "logs/file-monitor.log"
 log_to_std: true
 log_show_caller: false
 
-# Upload pool
+# 上传并发配置
 upload_workers: 10
 upload_queue_size: 100
 
-# API bind
+# API 服务配置
+# API 监听地址 控制台通过此地址访问接口
 api_bind: ":8080"
-system_resource_enabled: false
 
-# Alert config (managed in console)
+# 告警配置 仅在需要告警时填写
+# 启用告警时必须同时配置规则文件与日志路径
 alert_enabled: false
 alert_suppress_enabled: true
+# 告警规则文件路径 支持 YAML 或 JSON
 alert_rules_file: ""
+# 需要监控的日志路径 逗号或分号分隔
 alert_log_paths: ""
+# 告警轮询间隔 支持 2s 2秒 2
 alert_poll_interval: "2s"
+# true 表示从文件末尾开始 仅处理新内容
 alert_start_from_end: true
