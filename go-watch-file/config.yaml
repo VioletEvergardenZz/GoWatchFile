@@ -49,6 +49,8 @@ upload_queue_size: 100
 # API 服务配置
 # API 监听地址 控制台通过此地址访问接口
 api_bind: ":8080"
+# 系统资源面板开关 默认关闭
+system_resource_enabled: false
 
 # 告警配置 仅在需要告警时填写
 # 启用告警时必须同时配置规则文件与日志路径

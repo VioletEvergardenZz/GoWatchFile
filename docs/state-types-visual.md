@@ -58,7 +58,7 @@ flowchart TB
 ```
 
 **补充说明**
-- DashboardData 不包含文件内容 Tail，文件内容通过 `/api/file-log` 获取。
+- DashboardData 不包含文件内容 Tail/检索，文件内容通过 `/api/file-log` 获取。
 - 内存列表有上限：`uploadRecords` 200、`chartPoints` 32。
 
 ---
@@ -72,7 +72,7 @@ flowchart TB
   B[config 配置] --> B1[configSnapshot]
   C[directory 目录树] --> C1[directoryTree]
   D[files 文件列表] --> D1[files]
-  E[tail 文件日志] --> E1[/api/file-log]
+  E[文件日志/检索] --> E1[/api/file-log]
   F[failures 上传记录] --> F1[uploadRecords]
   G[monitor 监控] --> G1[monitorSummary]
   G --> G2[monitorNotes]
@@ -194,12 +194,14 @@ class ConfigSnapshot {
   string fileExt
   string silence
   string concurrency
+  bool systemResourceEnabled
 }
 ```
 
 说明：
 - `concurrency` 为字符串，格式类似 `workers=3 / queue=100`。
 - 前端保存时解析为数值并提交 `/api/config`。
+- `systemResourceEnabled` 控制系统资源面板开关，需开启后才能访问 `/api/system`。
 
 ---
 

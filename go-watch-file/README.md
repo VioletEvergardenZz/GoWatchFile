@@ -1,10 +1,10 @@
 # File Watch Service（go-watch-file）
 
-一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到 S3 兼容存储，并支持钉钉机器人通知与邮件通知。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail 与运行时配置。
+一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到 S3 兼容存储，并支持钉钉机器人通知与邮件通知。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail/检索、系统资源面板与运行时配置。
 
 ## 配置说明（控制台优先）
 
-- 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
+- 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
 - `config.yaml` 保留静态配置（S3 连接参数/日志/API bind），也可被环境变量覆盖。
 - 环境变量主要用于密钥（S3_AK/S3_SK, DINGTALK_*, EMAIL_*），并支持可选覆盖 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL。
 
@@ -33,13 +33,14 @@
 5) 停止：`Ctrl + C`，服务会优雅退出并等待队列 drain。
 
 配置优先级：config.yaml -> config.runtime.yaml -> 环境变量覆盖 -> 默认值。
+环境变量仅覆盖 S3 与通知相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
 
 `.env` 读取策略：会尝试加载当前目录的 `.env`，以及配置文件同目录的 `.env`；仅在系统环境未设置时生效。
 
 ## 配置详解
 
 ### 必填字段
-- `watch_dir`：监控目录（支持多目录 逗号或分号分隔）
+- `watch_dir`：监控目录（支持多目录 逗号或分号分隔，可为空由控制台设置）
 - `bucket` / `ak` / `sk` / `endpoint` / `region`：S3 访问配置。
 - `log_level`：`debug|info|warn|error`。
 - `api_bind`：API 监听地址（默认 `:8080`）。
@@ -49,8 +50,8 @@
 - `file_ext`：后缀过滤，支持多值（逗号/空格分隔，如 `.log,.txt`），为空则不过滤。
 - `silence`：写入完成判定窗口，默认 `10s`。
   - 支持写法：`10s` / `10秒` / `10`。
-  - `config.yaml` 默认模板未包含此字段，可自行添加。
 - `upload_workers` / `upload_queue_size`：上传并发与队列容量。
+- `system_resource_enabled`：系统资源面板开关（默认 false，开启后 `/api/system` 可用）。
 - `force_path_style` / `disable_ssl`：S3 兼容性开关。
 - `dingtalk_webhook` / `dingtalk_secret`：钉钉机器人（可选）。
 - `email_host` / `email_port` / `email_user` / `email_pass` / `email_from` / `email_to` / `email_use_tls`：SMTP 邮件通知（与钉钉同内容，可选）。
@@ -99,6 +100,7 @@ log_show_caller: false
 upload_workers: 10
 upload_queue_size: 100
 api_bind: ":8080"
+system_resource_enabled: false
 
 alert_enabled: false
 alert_suppress_enabled: true
@@ -145,10 +147,11 @@ alert_start_from_end: true
     "fileExt": ".log",
     "silence": "10s",
     "uploadWorkers": 3,
-    "uploadQueueSize": 100
+    "uploadQueueSize": 100,
+    "systemResourceEnabled": true
   }
   ```
-- 说明：仅更新目录/后缀/静默窗口/并发/队列。S3 与通知配置需改配置文件并重启。
+- 说明：仅更新目录/后缀/静默窗口/并发/队列/系统资源开关。S3 与通知配置需改配置文件并重启。
 
 ### 6) 健康检查
 - `GET /api/health` → `{ "queue": n, "workers": n }`
@@ -181,7 +184,7 @@ alert_start_from_end: true
   - `mode=lite` → 仅返回概览/指标/分区，不返回进程列表
   - `limit=200` → 限制返回的进程数量，`0` 表示不限制
 - 返回：`{ systemOverview, systemGauges, systemVolumes, systemProcesses }`
-- 说明：部分字段依赖系统权限与支持程度，无法采集时会返回 `--` 或空列表。
+- 说明：需开启 `systemResourceEnabled`，否则返回 403；部分字段依赖系统权限与支持程度，无法采集时会返回 `--` 或空列表。
 
 ## 运行时配置更新说明
 `/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。该接口不会写回 `config.yaml`。

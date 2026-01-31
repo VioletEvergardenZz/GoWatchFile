@@ -31,6 +31,7 @@
 - **轻量刷新**（`refreshLiveData`）：每 3 秒执行，只更新指标卡、上传记录、监控摘要与趋势图。
 
 这样避免频繁扫描目录导致前端闪动或后台负载升高。
+轻量刷新实际调用 `GET /api/dashboard?mode=light` 或 `mode=lite`。
 
 ## 2.2 告警控制台刷新机制（实际实现）
 - 告警概览与决策列表：每 3 秒轮询 `/api/alerts`。
@@ -96,9 +97,11 @@ sequenceDiagram
   participant API as API Server
 
   UI->>API: POST /api/file-log {path}
-  API-->>UI: { lines: [...] }
-  Note over UI: 选中后每 2 秒轮询一次
+  API-->>UI: { mode: "tail", lines: [...] }
+  Note over UI: Tail 模式选中后每 2 秒轮询一次
 ```
+
+补充：传入 `query` 会进入检索模式，返回 `mode: "search"`、`matched`、`truncated` 与 `lines`。
 
 ### 3.5 告警控制台刷新与配置
 
@@ -137,6 +140,7 @@ sequenceDiagram
 ```
 
 补充说明：
+- 需在控制台开启 `systemResourceEnabled`，否则 `/api/system` 返回 403。
 - `mode=lite` 会跳过进程列表采集，降低采样开销。
 - `limit` 控制返回的进程数量；`0` 表示不限制。
 - IO/CPU 速率为相邻两次采样的差值计算，首次请求可能为 `--`。
@@ -147,6 +151,7 @@ sequenceDiagram
 
 **1) 获取仪表盘**
 - `GET /api/dashboard`
+- 可选：`mode=light` / `mode=lite` 返回轻量数据（不含目录树/文件列表）
 - 返回：`DashboardData`
 
 **2) 切换自动上传**
@@ -166,14 +171,15 @@ sequenceDiagram
     "fileExt": ".log",
     "uploadWorkers": 3,
     "uploadQueueSize": 100,
-    "silence": "10s"
+    "silence": "10s",
+    "systemResourceEnabled": true
   }
   ```
 
 **5) 文件 Tail**
 - `POST /api/file-log`
-- 请求体：`{ "path": "..." }`
-- 限制：最多 512KB / 500 行，仅文本文件。
+- 请求体：`{ "path": "...", "query": "keyword", "limit": 500, "caseSensitive": false }`
+- 说明：不传 `query` 时读取文件尾部（最多 512KB / 500 行）；传入 `query` 时全文检索（默认最多 2000 行）。
 
 **6) 健康检查**
 - `GET /api/health`
@@ -192,6 +198,7 @@ sequenceDiagram
 - `GET /api/system`
 - Query：`mode=lite` / `limit`
 - 返回：`SystemDashboard`
+- 说明：需开启 `systemResourceEnabled`，否则返回 403。
 
 ---
 

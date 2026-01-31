@@ -22,6 +22,9 @@ Query 参数：
 }
 ```
 
+启用要求：
+- 需在控制台开启 `systemResourceEnabled`（`/api/config` 可更新），否则接口返回 403。
+
 ---
 
 ## 2. 字段说明

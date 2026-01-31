@@ -10,7 +10,8 @@
 ```bash
 cd go-watch-file
 cp .env.example .env
-# Configure config.yaml for non-secret settings; secrets live in .env; watch_dir/alert config are set in the console.
+# config.yaml 放非密钥配置 密钥放在 .env
+# watch_dir/告警配置建议在控制台配置并持久化
 
 go build -o bin/file-watch cmd/main.go
 ./bin/file-watch -config config.yaml
@@ -23,9 +24,14 @@ go build -o bin/file-watch cmd/main.go
 - `silence`/`SILENCE_WINDOW` 默认 `10s`，支持 `10s` / `10秒` / `10`。
 - `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
 - `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
+- `system_resource_enabled` 默认 `false`，需在控制台开启后才能访问 `/api/system`。
+
+### 环境变量覆盖范围
+- 仅会覆盖 S3 与通知相关字段（`S3_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`）。
+- `watch_dir` / `file_ext` / `watch_exclude` / `log_level` / `alert_*` 不会被环境变量覆盖。
 
 ### 告警模式配置要点
-- alert rules/log paths are configured in the console and persisted to `config.runtime.yaml` when possible.
+- 告警规则与日志路径可在控制台配置，并在可写时持久化到 `config.runtime.yaml`。
 - `alert_start_from_end=true` 表示只处理新写入日志，避免历史告警。
 - `alert_suppress_enabled=false` 可关闭抑制，所有命中都会发送通知。
 - 规则文件支持热加载，修改后在下次轮询生效。
@@ -44,14 +50,39 @@ npm run dev
 
 前端默认通过 Vite 代理 `/api` 到 `http://localhost:8080`；若后端地址不同可设置 `VITE_API_BASE`。
 
+## Docker Compose 启动（可选）
+```bash
+cp .env.example .env
+mkdir -p data/watch data/logs
+# 如需固定监控目录 可将 go-watch-file/config.yaml 的 watch_dir 改为 /data/gwf/watch
+docker compose up --build -d
+```
+
+访问地址：
+- 后端 API：`http://localhost:8080`
+- 前端控制台：`http://localhost:8081`
+
+停止：
+```bash
+docker compose down
+```
+
 ## 运行时配置更新
 控制台保存配置会调用 `/api/config`，仅更新：
 - `watchDir` / `fileExt` / `silence`
 - `uploadWorkers` / `uploadQueueSize`
+- `systemResourceEnabled`
 
 S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env`，变更后需重启后端。
 
 告警配置通过 `/api/alert-config` 更新，实时生效，且在可写时持久化到 `config.runtime.yaml`。
+
+## 文件内容读取与检索
+- `POST /api/file-log` 读取文件尾部（最多 512KB / 500 行）。
+- 传入 `query` 可进行全文检索（最多 2000 行），支持 `limit` 与 `caseSensitive`。
+
+## 仪表盘轻量刷新
+- `GET /api/dashboard?mode=light` 或 `mode=lite` 返回不含目录树与文件列表的轻量数据，适合高频轮询。
 
 ## 运行测试
 ```bash

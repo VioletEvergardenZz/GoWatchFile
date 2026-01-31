@@ -9,9 +9,9 @@
 - 内存队列 + worker pool 并发上传到 S3 兼容存储。
 - 钉钉机器人/邮件通知（可选）。
 - 告警决策：日志轮询、规则匹配、抑制/升级、告警概览与决策列表。
-- 控制台 API：仪表盘、目录树、文件列表、自动上传开关、手动上传、文件 Tail、运行时配置、告警面板与配置。
+- 控制台 API：仪表盘、目录树、文件列表、自动上传开关、手动上传、文件 Tail/检索、运行时配置、告警面板与配置、系统资源面板。
 - 路径安全：相对路径校验、防止目录穿越、对象 Key 归一化。
-- 控制台前端：目录树、上传历史、队列趋势、Tail 查看、运行时配置、告警控制台。
+- 控制台前端：目录树、上传历史、队列趋势、Tail/检索、运行时配置、告警控制台、系统资源控制台。
 
 ## 快速开始
 
@@ -40,6 +40,23 @@ npm run dev
 
 默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。若后端地址不同，可设置 `VITE_API_BASE`。
 
+### Docker Compose（可选）
+```bash
+cp .env.example .env
+mkdir -p data/watch data/logs
+# 如需固定监控目录 可将 go-watch-file/config.yaml 的 watch_dir 改为 /data/gwf/watch
+docker compose up --build -d
+```
+
+访问地址：
+- 后端 API：`http://localhost:8080`
+- 前端控制台：`http://localhost:8081`
+
+停止：
+```bash
+docker compose down
+```
+
 ## 仓库结构
 - `go-watch-file/`：Go Agent 源码、配置模板与脚本。
 - `console-frontend/`：控制台前端（React + TS + Vite）。
@@ -59,8 +76,9 @@ npm run dev
 ## 现阶段限制（与代码一致）
 - 支持多监控目录（`watch_dir` 可用逗号或分号分隔），多后缀已支持。
 - 上传队列在内存中，重启会清空；没有自动重试与断点续传。
-- 仅支持钉钉通知，企业微信等仅保留配置字段。
+- 通知渠道有限：钉钉/邮件，企业微信等仅保留配置字段。
 - 控制面为本地 API + 前端，不包含多 Agent 管理与编排。
+- 系统资源面板默认关闭，需要在控制台开启后才能访问 `/api/system`。
 
 如需了解规划内容，参考 `todo.md` 与 `大纲.md`。
 
