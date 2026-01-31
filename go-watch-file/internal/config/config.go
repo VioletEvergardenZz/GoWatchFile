@@ -130,6 +130,23 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.DingTalkSecret = stringFromEnv("DINGTALK_SECRET", cfg.DingTalkSecret)
 	cfg.EmailUser = stringFromEnv("EMAIL_USER", cfg.EmailUser)
 	cfg.EmailPass = stringFromEnv("EMAIL_PASS", cfg.EmailPass)
+	cfg.EmailHost = stringFromEnv("EMAIL_HOST", cfg.EmailHost)
+	cfg.EmailFrom = stringFromEnv("EMAIL_FROM", cfg.EmailFrom)
+	cfg.EmailTo = stringFromEnv("EMAIL_TO", cfg.EmailTo)
+	emailPort, ok, err := intFromEnv("EMAIL_PORT")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.EmailPort = emailPort
+	}
+	emailUseTLS, ok, err := boolFromEnv("EMAIL_USE_TLS")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.EmailUseTLS = emailUseTLS
+	}
 	cfg.Bucket = stringFromEnv("S3_BUCKET", cfg.Bucket)
 	cfg.Endpoint = stringFromEnv("S3_ENDPOINT", cfg.Endpoint)
 	cfg.Region = stringFromEnv("S3_REGION", cfg.Region)

@@ -627,6 +627,11 @@
   align-items: center;
 }
 
+.toolbar-actions .btn {
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+}
+
 .search,
 .select {
   padding: 9px 10px;
@@ -1168,6 +1173,74 @@
 
 .tail-line {
   display: block;
+}
+
+.tail-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 20% 15%, rgba(249, 115, 22, 0.18), transparent 45%),
+    radial-gradient(circle at 80% 20%, rgba(34, 211, 238, 0.18), transparent 40%),
+    var(--overlay-bg);
+  backdrop-filter: blur(8px);
+  z-index: 70;
+}
+
+.tail-modal {
+  width: min(1200px, 96vw);
+  max-height: 92vh;
+  background: var(--panel-strong);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--card-glow);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.tail-modal-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.tail-modal-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.tail-modal-sub {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.tail-modal-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.tail-modal-box {
+  flex: 1;
+  background: var(--log-bg);
+  padding: 12px;
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 13px;
+  color: var(--log-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+  align-content: start;
 }
 
 .highlight {

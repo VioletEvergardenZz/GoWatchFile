@@ -382,6 +382,7 @@ type TailSectionProps = {
   onRunSearch: () => void;
   onLogQueryChange: (value: string) => void;
   onClear: () => void;
+  onOpenZoom: () => void;
   onScroll: () => void;
   renderLogLine: (line: string) => ReactNode;
 };
@@ -398,6 +399,7 @@ export function TailSection({
   onRunSearch,
   onLogQueryChange,
   onClear,
+  onOpenZoom,
   onScroll,
   renderLogLine,
 }: TailSectionProps) {
@@ -435,6 +437,9 @@ export function TailSection({
           </button>
           <button className="btn secondary" type="button" onClick={onClear}>
             清除
+          </button>
+          <button className="btn secondary" type="button" onClick={onOpenZoom}>
+            放大
           </button>
         </div>
       </div>

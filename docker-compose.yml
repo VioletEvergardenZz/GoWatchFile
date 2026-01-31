@@ -19,6 +19,11 @@ services:
       ROBOT_KEY: ${ROBOT_KEY}
       EMAIL_USER: ${EMAIL_USER}
       EMAIL_PASS: ${EMAIL_PASS}
+      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_PORT: ${EMAIL_PORT}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_TO: ${EMAIL_TO}
+      EMAIL_USE_TLS: ${EMAIL_USE_TLS}
     volumes:
       - ./go-watch-file/config.yaml:/etc/gwf/config.yaml:ro
       - ./data/watch:/data/gwf/watch

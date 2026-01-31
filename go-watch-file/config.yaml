@@ -22,8 +22,8 @@ dingtalk_secret: "${DINGTALK_SECRET}"
 email_host: "smtp.qq.com"
 email_user: "${EMAIL_USER}"
 email_pass: "${EMAIL_PASS}"
-email_from: ""
-email_to: ""
+email_from: "${EMAIL_FROM}"
+email_to: "${EMAIL_TO}"
 email_port: 587
 email_use_tls: true
 

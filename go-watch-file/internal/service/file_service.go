@@ -529,12 +529,30 @@ func normalizeManualPath(path string) string {
 	return filepath.Clean(abs)
 }
 
+func formatHostPath(filePath string) string {
+	host, err := os.Hostname()
+	if err != nil {
+		host = ""
+	}
+	host = strings.TrimSpace(host)
+	if host == "" {
+		host = "unknown-host"
+	}
+	cleaned := filepath.ToSlash(filepath.Clean(filePath))
+	cleaned = strings.TrimPrefix(cleaned, "/")
+	if cleaned == "" {
+		return host
+	}
+	return host + "/" + cleaned
+}
+
 // sendDingTalk 发送钉钉通知
 func (fs *FileService) sendDingTalk(ctx context.Context, downloadURL, fileName string) {
 	if fs.dingtalkRobot == nil {
 		return
 	}
-	if err := fs.dingtalkRobot.SendMessage(ctx, downloadURL, fileName); err != nil {
+	displayName := formatHostPath(fileName)
+	if err := fs.dingtalkRobot.SendMessage(ctx, downloadURL, displayName); err != nil {
 		logger.Error("发送钉钉消息失败: %v", err)
 		return
 	}
@@ -557,7 +575,7 @@ func (fs *FileService) sendEmailNotification(ctx context.Context, downloadURL, f
 		"Time: %s\nHost: %s\nFile: %s\nDownload: %s\n",
 		time.Now().Format("2006-01-02 15:04:05"),
 		host,
-		filepath.Clean(filePath),
+		formatHostPath(filePath),
 		downloadURL,
 	)
 	// 发送邮件通知
@@ -663,12 +681,12 @@ func (fs *FileService) UpdateAlertConfig(enabled bool, suppressEnabled bool, rul
 		}
 	} else {
 		if err := manager.UpdateConfig(alert.ConfigUpdate{
-			Enabled:      enabled,
+			Enabled:         enabled,
 			SuppressEnabled: suppressEnabled,
-			RulesFile:    updated.AlertRulesFile,
-			LogPaths:     updated.AlertLogPaths,
-			PollInterval: updated.AlertPollInterval,
-			StartFromEnd: startFromEnd,
+			RulesFile:       updated.AlertRulesFile,
+			LogPaths:        updated.AlertLogPaths,
+			PollInterval:    updated.AlertPollInterval,
+			StartFromEnd:    startFromEnd,
 		}, running); err != nil {
 			return nil, err
 		}

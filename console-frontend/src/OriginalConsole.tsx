@@ -144,6 +144,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [logQueryApplied, setLogQueryApplied] = useState("");
   const [logTruncated, setLogTruncated] = useState(false);
   const [followTail, setFollowTail] = useState(true);
+  const [tailZoomOpen, setTailZoomOpen] = useState(false);
   const [uploadPage, setUploadPage] = useState(1);
   const [filePage, setFilePage] = useState(1);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -215,6 +216,17 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     dirPathsRef.current = new Set(dirPaths);
     lastRootRef.current = rootKey;
   }, [currentRoot, rootNodes, dirPaths]);
+
+  useEffect(() => {
+    if (!tailZoomOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setTailZoomOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [tailZoomOpen]);
 
   useEffect(() => {
     if (!dirPaths.length) return;
@@ -488,6 +500,14 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     setLogQueryApplied("");
     setLogTruncated(false);
     setFollowTail(true);
+  }, []);
+
+  const openTailZoom = useCallback(() => {
+    setTailZoomOpen(true);
+  }, []);
+
+  const closeTailZoom = useCallback(() => {
+    setTailZoomOpen(false);
   }, []);
 
   const runLogSearch = useCallback(() => {
@@ -1011,6 +1031,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
                 onRunSearch={runLogSearch}
                 onLogQueryChange={setLogQuery}
                 onClear={handleClearTail}
+                onOpenZoom={openTailZoom}
                 onScroll={handleTailScroll}
                 renderLogLine={renderLogLine}
               />
@@ -1029,6 +1050,44 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
                 chartData={chartData}
                 chartOptions={chartOptions}
               />
+              {tailZoomOpen ? (
+                <div className="tail-modal-overlay" onClick={closeTailZoom}>
+                  <div
+                    className="tail-modal"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                    }}
+                  >
+                    <div className="tail-modal-header">
+                      <div>
+                        <div className="tail-modal-title">文件内容 · 放大</div>
+                        <div className="tail-modal-sub">
+                          {activeLogPath ? `路径：${activeLogPath}` : "未选择文件"}
+                          {logMode === "search" && logQueryApplied
+                            ? ` · 关键词 ${logQueryApplied} · 匹配 ${tailLinesState.length} 行${logTruncated ? " · 已截断" : ""}`
+                            : ""}
+                        </div>
+                      </div>
+                      <div className="tail-modal-actions">
+                        <button className="btn secondary" type="button" onClick={closeTailZoom}>
+                          关闭
+                        </button>
+                      </div>
+                    </div>
+                    <div className="tail-modal-box">
+                      {logMode === "search" && logQueryApplied && tailLinesState.length === 0 ? (
+                        <div className="tail-line">未找到匹配内容</div>
+                      ) : (
+                        tailLinesState.map((line, idx) => (
+                          <div className="tail-line" key={`${line}-${idx}`}>
+                            {renderLogLine(line)}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </>
           ) : view === "alert" ? (
             <AlertConsole embedded />

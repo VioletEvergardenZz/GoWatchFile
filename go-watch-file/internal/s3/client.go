@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
@@ -21,6 +22,7 @@ import (
 type Client struct {
 	s3Client *s3.S3
 	config   *models.Config
+	hostName string
 }
 
 // NewClient 创建并初始化 S3 客户端
@@ -39,9 +41,11 @@ func NewClient(config *models.Config) (*Client, error) {
 	}
 	s3Client := s3.New(sess)
 	logger.Info("S3客户端初始化成功")
+	hostName := normalizeHostName()
 	return &Client{
 		s3Client: s3Client,
 		config:   config,
+		hostName: hostName,
 	}, nil
 }
 
@@ -97,7 +101,22 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 
 func (c *Client) buildObjectKey(filePath string) (string, error) {
 	watchDirs := pathutil.SplitWatchDirs(c.config.WatchDir)
-	return pathutil.BuildObjectKeyStrictForDirs(watchDirs, filePath)
+	objectKey, err := pathutil.BuildObjectKeyStrictForDirs(watchDirs, filePath)
+	if err != nil {
+		return "", err
+	}
+	hostName := strings.TrimSpace(c.hostName)
+	if hostName == "" {
+		hostName = "unknown-host"
+	}
+	hostName = strings.Trim(hostName, "/")
+	if hostName == "" {
+		hostName = "unknown-host"
+	}
+	if objectKey == "" {
+		return hostName, nil
+	}
+	return hostName + "/" + objectKey, nil
 }
 
 func (c *Client) buildDownloadURL(objectKey string) string {
@@ -108,6 +127,20 @@ func (c *Client) buildDownloadURL(objectKey string) string {
 		c.config.ForcePathStyle,
 		c.config.DisableSSL,
 	)
+}
+
+func normalizeHostName() string {
+	host, err := os.Hostname()
+	if err != nil {
+		return "unknown-host"
+	}
+	host = strings.TrimSpace(host)
+	host = strings.ReplaceAll(host, "/", "-")
+	host = strings.ReplaceAll(host, "\\", "-")
+	if host == "" {
+		return "unknown-host"
+	}
+	return host
 }
 
 // GetClient 返回底层的 S3 SDK 客户端
