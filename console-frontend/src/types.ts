@@ -171,6 +171,54 @@ export type AlertConfigResponse = {
   error?: string;
 };
 
+export type AlertRule = {
+  id: string;
+  title: string;
+  level: AlertLevel;
+  keywords: string[];
+  excludes?: string[];
+  suppress_window?: string;
+  match_case?: boolean;
+  notify?: boolean;
+};
+
+export type AlertRuleDefaults = {
+  suppress_window?: string;
+  match_case?: boolean;
+};
+
+export type AlertEscalationRule = {
+  enabled?: boolean;
+  level?: AlertLevel;
+  window?: string;
+  threshold?: number;
+  suppress_window?: string;
+  rule_id?: string;
+  title?: string;
+  message?: string;
+};
+
+export type AlertRuleset = {
+  version?: number;
+  defaults?: AlertRuleDefaults;
+  escalation?: AlertEscalationRule;
+  rules?: AlertRule[];
+};
+
+export type AlertRulesResponse = {
+  ok: boolean;
+  path?: string;
+  rules?: AlertRuleset;
+  error?: string;
+};
+
+export type AlertRulesSaveResponse = {
+  ok: boolean;
+  path?: string;
+  rules?: AlertRuleset;
+  error?: string;
+};
+
 export type SystemProcessStatus = "running" | "sleeping" | "stopped" | "zombie";
 
 export type SystemResourceGauge = {

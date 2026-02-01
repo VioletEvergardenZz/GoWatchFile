@@ -14,6 +14,7 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"file-watch/internal/alert"
 	"file-watch/internal/match"
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
@@ -332,20 +333,20 @@ func validateAlertConfig(config *models.Config) error {
 	if config == nil {
 		return nil
 	}
-	rulesFile := strings.TrimSpace(config.AlertRulesFile)
+	ruleset := config.AlertRules
 	logPaths := strings.TrimSpace(config.AlertLogPaths)
-	enabled := config.AlertEnabled || rulesFile != "" || logPaths != ""
+	enabled := config.AlertEnabled
 	if !enabled {
 		return nil
 	}
-	if rulesFile == "" {
-		return fmt.Errorf("告警规则文件不能为空")
+	if ruleset == nil {
+		return fmt.Errorf("告警规则不能为空")
 	}
 	if logPaths == "" {
 		return fmt.Errorf("告警日志路径不能为空")
 	}
-	if _, err := os.Stat(rulesFile); err != nil {
-		return fmt.Errorf("告警规则文件无效: %w", err)
+	if err := alert.NormalizeRuleset(ruleset); err != nil {
+		return fmt.Errorf("告警规则无效: %w", err)
 	}
 	if _, err := parseAlertInterval(config.AlertPollInterval); err != nil {
 		return fmt.Errorf("告警轮询间隔无效: %w", err)

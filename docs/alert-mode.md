@@ -1,57 +1,75 @@
 # 告警模式使用指南
 
 > 适用：`go-watch-file` 的告警决策模块（日志轮询 → 规则匹配 → 决策记录/通知）。
+> 规则由控制台维护，并持久化到 `config.runtime.yaml` 的 `alert_rules`。
 
 ## 1. 功能概览
 - 轮询指定日志文件，按规则匹配日志行，输出告警决策。
 - 支持规则级别、大小写、排除关键词、抑制窗口。
 - system 级别可触发“异常升级”告警。
 - 告警通知复用钉钉机器人与邮件配置（发送时机为“已发送”决策）。
+- 控制台提供规则编辑、分组折叠、保存/刷新与运行态概览。
 
 ## 2. 快速开始
-1) **准备规则文件**
-   - 参考 `go-watch-file/alert-rules.example.yaml`。
-2) **配置告警相关项**
-   - `alert_rules_file` 与 `alert_log_paths` 为必填项。
-3) **启动服务**
-   - 启动后日志会出现：`告警轮询已启动`。
+1) **配置告警日志路径**
+   - 在控制台“配置”页填写 `日志路径` 并保存。
+2) **配置规则**
+   - 在控制台“规则”页新增规则并保存。
+3) **启用告警**
+   - 在控制台“配置”页打开告警开关并保存。
 4) **验证 API**
-   - `GET /api/alerts` 返回告警概览、列表、统计、规则摘要与轮询摘要。
+   - `GET /api/alerts` 返回告警概览、列表、统计、轮询摘要。
 
-最小配置示例：
+最小运行时配置示例（写入 `config.runtime.yaml`）：
 ```yaml
 alert_enabled: true
 alert_suppress_enabled: true
-alert_rules_file: "/etc/gwf/alert-rules.yaml"
 alert_log_paths: "/var/log/app/error.log"
 alert_poll_interval: "2s"
 alert_start_from_end: true
+alert_rules:
+  version: 1
+  defaults:
+    suppress_window: 5m
+    match_case: false
+  escalation:
+    enabled: true
+    level: fatal
+    window: 5m
+    threshold: 20
+    suppress_window: 5m
+    rule_id: system_spike
+    title: 系统异常激增
+    message: 系统异常在5分钟内达到20次
+  rules:
+    - id: system_db
+      title: 数据库连接池耗尽
+      level: system
+      keywords: ["Connection is not available", "连接池耗尽"]
 ```
 
 ## 3. 告警配置项详解
 
 ### 3.1 开启条件
-以下任一条件满足时会启用告警模块：
-- `alert_enabled: true`
-- 或同时配置了 `alert_rules_file` 与 `alert_log_paths`
+- **必须显式开启**：`alert_enabled: true`。
 
 ### 3.2 配置项说明
 - `alert_enabled`：显式启用开关。
 - `alert_suppress_enabled`：是否开启告警抑制（默认 `true`）。
-- `alert_rules_file`：规则文件路径（YAML/JSON 均可）。
 - `alert_log_paths`：日志文件路径列表，支持逗号/分号/空白/中文“，/；”分隔。
 - `alert_poll_interval`：轮询间隔（默认 `2s`，支持 `2s`/`2秒`/`2`）。
 - `alert_start_from_end`：是否从文件末尾开始追踪；默认 `true`。
+- `alert_rules`：规则内容（仅在 `config.runtime.yaml` 中维护）。
 
 说明：
 - `alert_log_paths` 会做路径清理与去重。
-- 规则文件必须存在；否则启动时报错。
-- 告警相关配置不支持 `/api/config` 热更新，但可通过 `/api/alert-config` 运行时更新（可持久化到 `config.runtime.yaml`，重启后读取）。
-- 规则文件内容支持热加载（修改后下次轮询自动生效）。
+- 规则只在**点击“保存规则”**后生效并写入 `config.runtime.yaml`。
+- “刷新规则”会从 `config.runtime.yaml` 重新读取并覆盖当前未保存修改。
+- `alert_rules_file` 为**兼容字段**，当前不会使用。
 
-## 4. 规则文件结构
+## 4. 规则结构
 
-规则文件结构如下（字段均为可选/必填混合，示例为常用写法）：
+规则结构如下（字段均为可选/必填混合，示例为常用写法）：
 ```yaml
 version: 1
 defaults:
@@ -99,6 +117,8 @@ rules:
 - `ignore` 规则命中后 **不会记录**，但会“吞掉”该行（后续规则不再匹配）。
 - `excludes` 只影响当前规则；若排除命中，本行可能匹配后续规则。
 
+> 控制台里的“分组”只是展示方式，匹配仍按**全局编号顺序**执行。
+
 ## 5. 级别与决策状态
 
 ### 5.1 告警级别
@@ -135,26 +155,43 @@ rules:
 - **日志截断**：若文件变小（被截断/切割），读取游标会重置为 0。
 - **行处理**：空行忽略；单行消息会截断到 240 字符。
 - **记录上限**：告警列表只保留最近 200 条；统计为累计值。
-- **规则热更新**：规则文件改动后自动重载；抑制状态与升级计数会重置。
+- **规则更新**：仅在控制台点击“保存规则”后生效；不会自动热加载。
 
-## 8. API 与控制台
-- `GET /api/alerts`：
-  - `overview`：近 24 小时概览与风险等级，`window` 为窗口文案（如“最近24小时”）。
-  - `decisions`：告警列表（最新在前）。
-  - `stats`：累计统计（sent/suppressed/recorded）。
-  - `rules`：规则摘要与加载状态。
-  - `polling`：轮询摘要（最近轮询、下次轮询、错误信息）。
+## 8. 告警控制台说明（重点）
+详见 `docs/alert-console.md`。
+
+### 8.1 告警 Tab
+- **告警概览**：风险等级、级别统计、发送/抑制比例。
+- **告警列表**：展示最近决策与抑制原因，支持分页。
+- **告警运行态**：当前开关、抑制、轮询间隔、从末尾开始、日志路径。
+- **轮询摘要**：最近轮询时间与下次轮询时间。
+
+### 8.2 配置 Tab
+- 告警开关 / 抑制开关 / 从末尾开始。
+- 告警日志路径、轮询间隔。
+- 保存后实时生效，并写入 `config.runtime.yaml`。
+
+### 8.3 规则 Tab
+- **按级别分组**：致命 / 系统 / 业务 / 忽略。
+- **折叠/展开**：默认折叠规则卡片，点击展开编辑。
+- **分组新增**：每个分组都有“新增该级别规则”。
+- **保存规则**：写入 `config.runtime.yaml` 并立即生效。
+- **刷新规则**：从 `config.runtime.yaml` 重新加载，覆盖未保存修改。
+
+## 9. API 与控制台
+- `GET /api/alerts`：告警概览、列表、统计、轮询摘要。
 - `GET /api/alert-config`：读取告警配置快照。
-- `POST /api/alert-config`：更新告警配置（如可写则持久化到 `config.runtime.yaml`，重启后读取）。
-  - Persists to `config.runtime.yaml` when writable.
+- `POST /api/alert-config`：更新告警配置（持久化到 `config.runtime.yaml`）。
+- `GET /api/alert-rules`：读取规则内容。
+- `POST /api/alert-rules`：保存规则内容（持久化到 `config.runtime.yaml`）。
 
-- 若告警未启用，API 返回 `error: "告警未启用"`。
+若告警未启用，`/api/alerts` 返回 `error: "告警未启用"`。
 
-## 9. 常见问题
+## 10. 常见问题
+- **为什么删除规则后刷新又回来了？**
+  - 删除只是前端内存变更，需点击“保存规则”才会写入 `config.runtime.yaml`。
 - **为什么没有任何告警？**
   - 检查是否命中规则关键词，`alert_start_from_end` 是否忽略了历史日志。
 - **为什么没有通知？**
   - 规则的 `notify` 可能为 `false`，或处于抑制窗口内。
   - 钉钉/邮件配置未填或无效。
-- **规则生效顺序不对？**
-  - 规则按顺序匹配；把“忽略规则”放前面，精确规则放后面。

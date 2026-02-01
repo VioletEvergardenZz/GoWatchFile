@@ -8,7 +8,7 @@
 - 写入完成判定（silence window，默认 10s，支持 `10s` / `10秒` / `10`）。
 - 内存队列 + worker pool 并发上传到 S3 兼容存储。
 - 钉钉机器人/邮件通知（可选）。
-- 告警决策：日志轮询、规则匹配、抑制/升级、告警概览与决策列表。
+- 告警决策：日志轮询、规则匹配、抑制/升级、告警概览与决策列表（规则由控制台维护并写入 `config.runtime.yaml`）。
 - 控制台 API：仪表盘、目录树、文件列表、自动上传开关、手动上传、文件 Tail/检索、运行时配置、告警面板与配置、系统资源面板。
 - 路径安全：相对路径校验、防止目录穿越、对象 Key 归一化。
 - 控制台前端：目录树、上传历史、队列趋势、Tail/检索、运行时配置、告警控制台、系统资源控制台。
@@ -71,6 +71,7 @@ docker compose down
 - 队列与 worker：`docs/queue-worker-flow.md`
 - DTO 结构：`docs/state-types-visual.md`
 - 告警模式：`docs/alert-mode.md`
+- 告警控制台：`docs/alert-console.md`
 - FAQ：`docs/faq.md`
 
 ## 现阶段限制（与代码一致）

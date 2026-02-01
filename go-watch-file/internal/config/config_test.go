@@ -294,18 +294,23 @@ func TestValidateConfig_InvalidFields(t *testing.T) {
 		cfg.AlertEnabled = true
 		cfg.AlertLogPaths = "/var/log/app/error.log"
 		if err := ValidateConfig(cfg); err == nil {
-			t.Fatal("告警规则文件为空应该报错")
+			t.Fatal("告警规则为空应该报错")
 		}
 	})
 
 	t.Run("alert enabled missing log paths", func(t *testing.T) {
 		cfg := newValidConfig(t)
-		rulesPath := filepath.Join(t.TempDir(), "rules.yaml")
-		if err := os.WriteFile(rulesPath, []byte("version: 1\nrules:\n  - id: test\n    level: ignore\n    keywords: [\"x\"]\n"), 0o644); err != nil {
-			t.Fatalf("写入规则文件失败: %v", err)
+		cfg.AlertRules = &models.AlertRuleset{
+			Version: 1,
+			Rules: []models.AlertRule{
+				{
+					ID:       "test",
+					Level:    "ignore",
+					Keywords: []string{"x"},
+				},
+			},
 		}
 		cfg.AlertEnabled = true
-		cfg.AlertRulesFile = rulesPath
 		if err := ValidateConfig(cfg); err == nil {
 			t.Fatal("告警日志路径为空应该报错")
 		}
@@ -313,12 +318,17 @@ func TestValidateConfig_InvalidFields(t *testing.T) {
 
 	t.Run("alert enabled invalid poll interval", func(t *testing.T) {
 		cfg := newValidConfig(t)
-		rulesPath := filepath.Join(t.TempDir(), "rules.yaml")
-		if err := os.WriteFile(rulesPath, []byte("version: 1\nrules:\n  - id: test\n    level: ignore\n    keywords: [\"x\"]\n"), 0o644); err != nil {
-			t.Fatalf("写入规则文件失败: %v", err)
+		cfg.AlertRules = &models.AlertRuleset{
+			Version: 1,
+			Rules: []models.AlertRule{
+				{
+					ID:       "test",
+					Level:    "ignore",
+					Keywords: []string{"x"},
+				},
+			},
 		}
 		cfg.AlertEnabled = true
-		cfg.AlertRulesFile = rulesPath
 		cfg.AlertLogPaths = "/var/log/app/error.log"
 		cfg.AlertPollInterval = "0s"
 		if err := ValidateConfig(cfg); err == nil {

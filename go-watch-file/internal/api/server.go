@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"file-watch/internal/alert"
 	"file-watch/internal/logger"
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
@@ -57,6 +58,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/config", h.updateConfig)
 	mux.HandleFunc("/api/alerts", h.alertDashboard)
 	mux.HandleFunc("/api/alert-config", h.alertConfig)
+	mux.HandleFunc("/api/alert-rules", h.alertRules)
 	mux.HandleFunc("/api/system", h.systemDashboard)
 	mux.HandleFunc("/api/health", h.health)
 
@@ -253,12 +255,12 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		WatchDir        *string `json:"watchDir"`
-		FileExt         *string `json:"fileExt"`
-		UploadWorkers   *int    `json:"uploadWorkers"`
-		UploadQueueSize *int    `json:"uploadQueueSize"`
-		SystemResourceEnabled  *bool  `json:"systemResourceEnabled"`
-		Silence         *string `json:"silence"`
+		WatchDir              *string `json:"watchDir"`
+		FileExt               *string `json:"fileExt"`
+		UploadWorkers         *int    `json:"uploadWorkers"`
+		UploadQueueSize       *int    `json:"uploadQueueSize"`
+		SystemResourceEnabled *bool   `json:"systemResourceEnabled"`
+		Silence               *string `json:"silence"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
@@ -398,6 +400,68 @@ func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *handler) alertRules(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	cfg := h.fs.Config()
+	if cfg == nil {
+		cfg = h.cfg
+	}
+	if cfg == nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "config not ready"})
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		ruleset := cfg.AlertRules
+		if ruleset == nil {
+			ruleset = alert.DefaultRuleset()
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":    true,
+			"rules": ruleset,
+		})
+		return
+	case http.MethodPost:
+		var req struct {
+			Rules *alert.Ruleset `json:"rules"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
+			return
+		}
+		if req.Rules == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "rules is required"})
+			return
+		}
+		if err := alert.NormalizeRuleset(req.Rules); err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		updated, err := h.fs.UpdateAlertRules(req.Rules)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+			return
+		}
+		h.cfg = updated
+		ruleset := req.Rules
+		if updated != nil && updated.AlertRules != nil {
+			ruleset = updated.AlertRules
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"ok":    true,
+			"rules": ruleset,
+		})
+		return
+	default:
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+}
+
 func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -463,7 +527,7 @@ func buildAlertConfigSnapshot(cfg *models.Config, enabled bool) map[string]any {
 	return map[string]any{
 		"enabled":         enabled,
 		"suppressEnabled": suppressEnabled,
-		"rulesFile":       strings.TrimSpace(cfg.AlertRulesFile),
+		"rulesFile":       "",
 		"logPaths":        strings.TrimSpace(cfg.AlertLogPaths),
 		"pollInterval":    pollInterval,
 		"startFromEnd":    startFromEnd,

@@ -7,47 +7,23 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v2"
+
+	"file-watch/internal/models"
 )
 
 const defaultSuppressWindow = "5m"
 
 // Ruleset 表示告警规则集
-type Ruleset struct {
-	Version    int            `yaml:"version" json:"version"`
-	Defaults   RuleDefaults   `yaml:"defaults" json:"defaults"`
-	Escalation EscalationRule `yaml:"escalation" json:"escalation"`
-	Rules      []Rule         `yaml:"rules" json:"rules"`
-}
+type Ruleset = models.AlertRuleset
 
 // RuleDefaults 表示规则默认配置
-type RuleDefaults struct {
-	SuppressWindow string `yaml:"suppress_window" json:"suppress_window"`
-	MatchCase      *bool  `yaml:"match_case" json:"match_case"`
-}
+type RuleDefaults = models.AlertRuleDefaults
 
 // EscalationRule 表示异常升级配置
-type EscalationRule struct {
-	Enabled        *bool  `yaml:"enabled" json:"enabled"`
-	Level          string `yaml:"level" json:"level"`
-	Window         string `yaml:"window" json:"window"`
-	Threshold      int    `yaml:"threshold" json:"threshold"`
-	SuppressWindow string `yaml:"suppress_window" json:"suppress_window"`
-	RuleID         string `yaml:"rule_id" json:"rule_id"`
-	Title          string `yaml:"title" json:"title"`
-	Message        string `yaml:"message" json:"message"`
-}
+type EscalationRule = models.AlertEscalationRule
 
 // Rule 表示单条匹配规则
-type Rule struct {
-	ID             string   `yaml:"id" json:"id"`
-	Title          string   `yaml:"title" json:"title"`
-	Level          string   `yaml:"level" json:"level"`
-	Keywords       []string `yaml:"keywords" json:"keywords"`
-	Excludes       []string `yaml:"excludes" json:"excludes"`
-	SuppressWindow string   `yaml:"suppress_window" json:"suppress_window"`
-	MatchCase      *bool    `yaml:"match_case" json:"match_case"`
-	Notify         *bool    `yaml:"notify" json:"notify"`
-}
+type Rule = models.AlertRule
 
 // LoadRules 读取并解析规则文件
 func LoadRules(path string) (*Ruleset, error) {
@@ -64,6 +40,11 @@ func LoadRules(path string) (*Ruleset, error) {
 		return nil, err
 	}
 	return &ruleset, nil
+}
+
+// NormalizeRuleset 校验并补全规则集默认值
+func NormalizeRuleset(ruleset *Ruleset) error {
+	return normalizeRuleset(ruleset)
 }
 
 func normalizeRuleset(ruleset *Ruleset) error {
@@ -101,6 +82,17 @@ func normalizeRuleset(ruleset *Ruleset) error {
 		rule.Excludes = cleanKeywords(rule.Excludes)
 	}
 	return nil
+}
+
+// DefaultRuleset 返回空的默认规则集
+func DefaultRuleset() *Ruleset {
+	return &Ruleset{
+		Version: 1,
+		Defaults: RuleDefaults{
+			SuppressWindow: defaultSuppressWindow,
+		},
+		Rules: []Rule{},
+	}
 }
 
 func cleanKeywords(values []string) []string {

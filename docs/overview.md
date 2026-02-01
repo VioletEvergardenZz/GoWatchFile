@@ -38,4 +38,5 @@
 - 前后端联动：`docs/frontend-backend-linkage.md`
 - DTO 结构：`docs/state-types-visual.md`
 - 告警模式：`docs/alert-mode.md`
+- 告警控制台：`docs/alert-console.md`
 - FAQ：`docs/faq.md`

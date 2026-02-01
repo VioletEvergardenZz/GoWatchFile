@@ -52,11 +52,12 @@ api_bind: ":8080"
 # 系统资源面板开关 默认关闭
 system_resource_enabled: false
 
-# 告警配置 仅在需要告警时填写
-# 启用告警时必须同时配置规则文件与日志路径
+# 告警配置（建议通过控制台设置）
+# 规则内容存于 config.runtime.yaml 的 alert_rules
+# 启用告警时必须配置日志路径并保存规则
 alert_enabled: false
 alert_suppress_enabled: true
-# 告警规则文件路径 支持 YAML 或 JSON
+# 告警规则文件路径（兼容字段，当前不再使用）
 alert_rules_file: ""
 # 需要监控的日志路径 逗号或分号分隔
 alert_log_paths: ""

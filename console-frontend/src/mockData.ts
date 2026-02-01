@@ -1,6 +1,7 @@
 import type {
   AlertConfigSnapshot,
   AlertDashboard,
+  AlertRuleset,
   ChartPoint,
   ConfigSnapshot,
   FileItem,
@@ -244,6 +245,55 @@ export const alertConfigSnapshot: AlertConfigSnapshot = {
   logPaths: "/var/log/app/error.log,/var/log/app/worker.error.log",
   pollInterval: "2s",
   startFromEnd: true,
+};
+
+export const alertRulesSnapshot: AlertRuleset = {
+  version: 1,
+  defaults: {
+    suppress_window: "5m",
+    match_case: false,
+  },
+  escalation: {
+    enabled: true,
+    level: "fatal",
+    window: "5m",
+    threshold: 20,
+    suppress_window: "5m",
+    rule_id: "system_spike",
+    title: "系统异常激增",
+    message: "系统异常在5分钟内达到20次",
+  },
+  rules: [
+    {
+      id: "ignore_debug",
+      title: "忽略调试噪音",
+      level: "ignore",
+      keywords: ["debug", "trace", "heartbeat"],
+      excludes: ["fatal", "system"],
+    },
+    {
+      id: "biz_validate",
+      title: "业务参数校验失败",
+      level: "business",
+      keywords: ["手机号无效", "参数校验失败", "validation failed"],
+      notify: false,
+      suppress_window: "10m",
+    },
+    {
+      id: "system_db",
+      title: "数据库连接异常",
+      level: "system",
+      keywords: ["Connection is not available", "连接池耗尽", "timeout"],
+      notify: true,
+    },
+    {
+      id: "fatal_oom",
+      title: "内存溢出",
+      level: "fatal",
+      keywords: ["OutOfMemoryError", "Java heap space", "内存溢出"],
+      notify: true,
+    },
+  ],
 };
 
 export const chartPoints: ChartPoint[] = [

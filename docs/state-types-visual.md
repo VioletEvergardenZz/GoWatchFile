@@ -359,9 +359,50 @@ class PollSummary {
 {
   "enabled": true,
   "suppressEnabled": true,
-  "rulesFile": "/etc/gwf/alert-rules.yaml",
+  "rulesFile": "",
   "logPaths": "/var/log/app/error.log",
   "pollInterval": "2s",
   "startFromEnd": true
+}
+```
+
+说明：
+- `rulesFile` 为兼容字段，当前不再使用。
+- 规则内容通过 `/api/alert-rules` 读取与保存。
+
+### 6.2 AlertRuleset（告警规则）
+
+`/api/alert-rules` 返回结构示例：
+```json
+{
+  "ok": true,
+  "rules": {
+    "version": 1,
+    "defaults": {
+      "suppress_window": "5m",
+      "match_case": false
+    },
+    "escalation": {
+      "enabled": true,
+      "level": "fatal",
+      "window": "5m",
+      "threshold": 20,
+      "suppress_window": "5m",
+      "rule_id": "system_spike",
+      "title": "系统异常激增",
+      "message": "系统异常在5分钟内达到20次"
+    },
+    "rules": [
+      {
+        "id": "system_db",
+        "title": "数据库连接池耗尽",
+        "level": "system",
+        "keywords": [
+          "Connection is not available",
+          "连接池耗尽"
+        ]
+      }
+    ]
+  }
 }
 ```

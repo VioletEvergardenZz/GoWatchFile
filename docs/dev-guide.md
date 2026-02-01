@@ -32,9 +32,9 @@ go build -o bin/file-watch cmd/main.go
 
 ### 告警模式配置要点
 - 告警规则与日志路径可在控制台配置，并在可写时持久化到 `config.runtime.yaml`。
+- `alert_rules` 只在 `config.runtime.yaml` 维护，规则更新需点击“保存规则”。
 - `alert_start_from_end=true` 表示只处理新写入日志，避免历史告警。
 - `alert_suppress_enabled=false` 可关闭抑制，所有命中都会发送通知。
-- 规则文件支持热加载，修改后在下次轮询生效。
 
 ### 本地 MinIO 示例（示意）
 - `S3_ENDPOINT=127.0.0.1:9000`
@@ -76,6 +76,7 @@ docker compose down
 S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env`，变更后需重启后端。
 
 告警配置通过 `/api/alert-config` 更新，实时生效，且在可写时持久化到 `config.runtime.yaml`。
+告警规则通过 `/api/alert-rules` 保存并写入 `config.runtime.yaml`。
 
 ## 文件内容读取与检索
 - `POST /api/file-log` 读取文件尾部（最多 512KB / 500 行）。

@@ -13,18 +13,19 @@ import (
 )
 
 type runtimeConfig struct {
-	WatchDir             *string `yaml:"watch_dir"`
-	FileExt              *string `yaml:"file_ext"`
-	Silence              *string `yaml:"silence"`
-	UploadWorkers        *int    `yaml:"upload_workers"`
-	UploadQueueSize      *int    `yaml:"upload_queue_size"`
-	SystemResourceEnabled *bool   `yaml:"system_resource_enabled"`
-	AlertEnabled         *bool   `yaml:"alert_enabled"`
-	AlertSuppressEnabled *bool   `yaml:"alert_suppress_enabled"`
-	AlertRulesFile       *string `yaml:"alert_rules_file"`
-	AlertLogPaths        *string `yaml:"alert_log_paths"`
-	AlertPollInterval    *string `yaml:"alert_poll_interval"`
-	AlertStartFromEnd    *bool   `yaml:"alert_start_from_end"`
+	WatchDir              *string              `yaml:"watch_dir"`
+	FileExt               *string              `yaml:"file_ext"`
+	Silence               *string              `yaml:"silence"`
+	UploadWorkers         *int                 `yaml:"upload_workers"`
+	UploadQueueSize       *int                 `yaml:"upload_queue_size"`
+	SystemResourceEnabled *bool                `yaml:"system_resource_enabled"`
+	AlertEnabled          *bool                `yaml:"alert_enabled"`
+	AlertSuppressEnabled  *bool                `yaml:"alert_suppress_enabled"`
+	AlertRules            *models.AlertRuleset `yaml:"alert_rules"`
+	AlertRulesFile        *string              `yaml:"alert_rules_file"`
+	AlertLogPaths         *string              `yaml:"alert_log_paths"`
+	AlertPollInterval     *string              `yaml:"alert_poll_interval"`
+	AlertStartFromEnd     *bool                `yaml:"alert_start_from_end"`
 }
 
 func runtimeConfigPath(configPath string) string {
@@ -86,6 +87,9 @@ func applyRuntimeConfig(cfg *models.Config, runtime *runtimeConfig) {
 	if runtime.AlertSuppressEnabled != nil {
 		cfg.AlertSuppressEnabled = boolPtr(*runtime.AlertSuppressEnabled)
 	}
+	if runtime.AlertRules != nil {
+		cfg.AlertRules = runtime.AlertRules
+	}
 	if runtime.AlertRulesFile != nil {
 		cfg.AlertRulesFile = strings.TrimSpace(*runtime.AlertRulesFile)
 	}
@@ -136,18 +140,19 @@ func buildRuntimeConfig(cfg *models.Config) *runtimeConfig {
 		pollInterval = defaultAlertPollInterval
 	}
 	return &runtimeConfig{
-		WatchDir:             stringPtr(strings.TrimSpace(cfg.WatchDir)),
-		FileExt:              stringPtr(strings.TrimSpace(cfg.FileExt)),
-		Silence:              stringPtr(strings.TrimSpace(cfg.Silence)),
-		UploadWorkers:        intPtr(cfg.UploadWorkers),
-		UploadQueueSize:      intPtr(cfg.UploadQueueSize),
+		WatchDir:              stringPtr(strings.TrimSpace(cfg.WatchDir)),
+		FileExt:               stringPtr(strings.TrimSpace(cfg.FileExt)),
+		Silence:               stringPtr(strings.TrimSpace(cfg.Silence)),
+		UploadWorkers:         intPtr(cfg.UploadWorkers),
+		UploadQueueSize:       intPtr(cfg.UploadQueueSize),
 		SystemResourceEnabled: boolPtr(cfg.SystemResourceEnabled),
-		AlertEnabled:         boolPtr(cfg.AlertEnabled),
-		AlertSuppressEnabled: boolPtr(suppressEnabled),
-		AlertRulesFile:       stringPtr(strings.TrimSpace(cfg.AlertRulesFile)),
-		AlertLogPaths:        stringPtr(strings.TrimSpace(cfg.AlertLogPaths)),
-		AlertPollInterval:    stringPtr(pollInterval),
-		AlertStartFromEnd:    boolPtr(startFromEnd),
+		AlertEnabled:          boolPtr(cfg.AlertEnabled),
+		AlertSuppressEnabled:  boolPtr(suppressEnabled),
+		AlertRules:            cfg.AlertRules,
+		AlertRulesFile:        stringPtr(strings.TrimSpace(cfg.AlertRulesFile)),
+		AlertLogPaths:         stringPtr(strings.TrimSpace(cfg.AlertLogPaths)),
+		AlertPollInterval:     stringPtr(pollInterval),
+		AlertStartFromEnd:     boolPtr(startFromEnd),
 	}
 }
 

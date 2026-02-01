@@ -4,7 +4,6 @@ package alert
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -62,32 +61,30 @@ func (n *NotifierSet) Notify(ctx context.Context, payload NotifyPayload) error {
 
 // Manager 管理告警规则加载与日志轮询
 type Manager struct {
-	mu           sync.Mutex
-	cfg          *models.Config
-	state        *State
-	engine       *Engine
-	tailer       *Tailer
-	notifier     Notifier
-	rulesPath    string
-	rulesModTime time.Time
-	logPaths     []string
-	pollInterval time.Duration
-	startFromEnd bool
+	mu              sync.Mutex
+	cfg             *models.Config
+	state           *State
+	engine          *Engine
+	tailer          *Tailer
+	notifier        Notifier
+	ruleset         *Ruleset
+	logPaths        []string
+	pollInterval    time.Duration
+	startFromEnd    bool
 	suppressEnabled bool
-	enabled      bool
-	running      bool
-	ctx          context.Context
-	cancel       context.CancelFunc
+	enabled         bool
+	running         bool
+	ctx             context.Context
+	cancel          context.CancelFunc
 }
 
 // ConfigUpdate 表示告警配置的运行时更新
 type ConfigUpdate struct {
-	Enabled      bool
+	Enabled         bool
 	SuppressEnabled bool
-	RulesFile    string
-	LogPaths     string
-	PollInterval string
-	StartFromEnd bool
+	LogPaths        string
+	PollInterval    string
+	StartFromEnd    bool
 }
 
 // NewManager 创建告警管理器
@@ -95,7 +92,7 @@ func NewManager(cfg *models.Config, notifier Notifier) (*Manager, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("告警配置为空")
 	}
-	enabled := cfg.AlertEnabled || (strings.TrimSpace(cfg.AlertRulesFile) != "" && strings.TrimSpace(cfg.AlertLogPaths) != "")
+	enabled := cfg.AlertEnabled
 	if !enabled {
 		return nil, nil
 	}
@@ -103,16 +100,11 @@ func NewManager(cfg *models.Config, notifier Notifier) (*Manager, error) {
 	if len(logPaths) == 0 {
 		return nil, fmt.Errorf("告警日志路径不能为空")
 	}
-	rulesPath := strings.TrimSpace(cfg.AlertRulesFile)
-	if rulesPath == "" {
-		return nil, fmt.Errorf("告警规则文件不能为空")
+	ruleset := cfg.AlertRules
+	if ruleset == nil {
+		return nil, fmt.Errorf("告警规则不能为空")
 	}
-	info, err := os.Stat(rulesPath)
-	if err != nil {
-		return nil, fmt.Errorf("告警规则文件无效: %w", err)
-	}
-	ruleset, err := LoadRules(rulesPath)
-	if err != nil {
+	if err := NormalizeRuleset(ruleset); err != nil {
 		return nil, err
 	}
 	engine, err := NewEngine(ruleset)
@@ -134,17 +126,16 @@ func NewManager(cfg *models.Config, notifier Notifier) (*Manager, error) {
 
 	state := NewState()
 	manager := &Manager{
-		cfg:          cfg,
-		state:        state,
-		engine:       engine,
-		notifier:     notifier,
-		rulesPath:    rulesPath,
-		rulesModTime: info.ModTime(),
-		logPaths:     logPaths,
-		pollInterval: pollInterval,
-		startFromEnd: startFromEnd,
+		cfg:             cfg,
+		state:           state,
+		engine:          engine,
+		notifier:        notifier,
+		ruleset:         ruleset,
+		logPaths:        logPaths,
+		pollInterval:    pollInterval,
+		startFromEnd:    startFromEnd,
 		suppressEnabled: suppressEnabled,
-		enabled:      enabled,
+		enabled:         enabled,
 	}
 	if manager.engine != nil {
 		manager.engine.SetSuppressionEnabled(suppressEnabled)
@@ -199,8 +190,6 @@ func (m *Manager) UpdateConfig(update ConfigUpdate, shouldRun bool) error {
 	if m == nil {
 		return fmt.Errorf("告警未初始化")
 	}
-
-	rulesPath := strings.TrimSpace(update.RulesFile)
 	logPathsRaw := strings.TrimSpace(update.LogPaths)
 	pollRaw := strings.TrimSpace(update.PollInterval)
 
@@ -211,8 +200,8 @@ func (m *Manager) UpdateConfig(update ConfigUpdate, shouldRun bool) error {
 
 	parsedLogPaths := parseLogPaths(logPathsRaw)
 	if update.Enabled {
-		if rulesPath == "" {
-			return fmt.Errorf("告警规则文件不能为空")
+		if m.ruleset == nil {
+			return fmt.Errorf("告警规则不能为空")
 		}
 		if len(parsedLogPaths) == 0 {
 			return fmt.Errorf("告警日志路径不能为空")
@@ -222,55 +211,17 @@ func (m *Manager) UpdateConfig(update ConfigUpdate, shouldRun bool) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	rulesPathChanged := rulesPath != m.rulesPath
 	logPathsChanged := !sameStringSlice(parsedLogPaths, m.logPaths)
 	pollChanged := pollInterval != m.pollInterval
 	startChanged := update.StartFromEnd != m.startFromEnd
 	enabledChanged := update.Enabled != m.enabled
 	suppressChanged := update.SuppressEnabled != m.suppressEnabled
 
-	var ruleset *Ruleset
-	var rulesModTime time.Time
-	if rulesPathChanged && rulesPath != "" {
-		info, err := os.Stat(rulesPath)
-		if err != nil {
-			return fmt.Errorf("告警规则文件无效: %w", err)
-		}
-		loaded, err := LoadRules(rulesPath)
-		if err != nil {
-			return err
-		}
-		ruleset = loaded
-		rulesModTime = info.ModTime()
-	}
-
-	if rulesPathChanged && ruleset != nil {
-		if m.engine == nil {
-			engine, err := NewEngine(ruleset)
-			if err != nil {
-				return err
-			}
-			engine.SetSuppressionEnabled(update.SuppressEnabled)
-			m.engine = engine
-		} else if err := m.engine.Reset(ruleset); err != nil {
-			return err
-		}
-	}
-
 	m.enabled = update.Enabled
 	if suppressChanged {
 		m.suppressEnabled = update.SuppressEnabled
 		if m.engine != nil {
 			m.engine.SetSuppressionEnabled(update.SuppressEnabled)
-		}
-	}
-	m.rulesPath = rulesPath
-	if rulesPathChanged {
-		m.rulesModTime = rulesModTime
-		if ruleset != nil {
-			m.updateRulesSummary(ruleset, "")
-		} else {
-			m.updateRulesSummary(nil, "")
 		}
 	}
 	m.logPaths = parsedLogPaths
@@ -303,6 +254,37 @@ func (m *Manager) UpdateConfig(update ConfigUpdate, shouldRun bool) error {
 		m.stopLocked()
 	}
 
+	return nil
+}
+
+// UpdateRules 运行时更新告警规则
+func (m *Manager) UpdateRules(ruleset *Ruleset) error {
+	if m == nil {
+		return fmt.Errorf("告警未初始化")
+	}
+	if ruleset == nil {
+		return fmt.Errorf("告警规则不能为空")
+	}
+	if err := NormalizeRuleset(ruleset); err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if m.engine == nil {
+		engine, err := NewEngine(ruleset)
+		if err != nil {
+			return err
+		}
+		engine.SetSuppressionEnabled(m.suppressEnabled)
+		m.engine = engine
+	} else if err := m.engine.Reset(ruleset); err != nil {
+		return err
+	}
+
+	m.ruleset = ruleset
+	m.updateRulesSummary(ruleset, "")
 	return nil
 }
 
@@ -368,7 +350,6 @@ func (m *Manager) handlePoll(at time.Time, pollErr error) {
 		return
 	}
 	m.updatePollSummary(at, pollErr)
-	m.maybeReloadRules()
 }
 
 func (m *Manager) updatePollSummary(at time.Time, pollErr error) {
@@ -388,35 +369,9 @@ func (m *Manager) updatePollSummary(at time.Time, pollErr error) {
 	m.state.UpdatePollSummary(summary)
 }
 
-func (m *Manager) maybeReloadRules() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	// 规则文件变更时自动热加载
-	info, err := os.Stat(m.rulesPath)
-	if err != nil {
-		m.updateRulesSummary(nil, err.Error())
-		return
-	}
-	if !info.ModTime().After(m.rulesModTime) {
-		return
-	}
-	ruleset, err := LoadRules(m.rulesPath)
-	if err != nil {
-		m.updateRulesSummary(nil, err.Error())
-		return
-	}
-	if err := m.engine.Reset(ruleset); err != nil {
-		m.updateRulesSummary(nil, err.Error())
-		return
-	}
-	m.rulesModTime = info.ModTime()
-	m.updateRulesSummary(ruleset, "")
-	logger.Info("告警规则已更新: %s", filepath.Base(m.rulesPath))
-}
-
 func (m *Manager) updateRulesSummary(ruleset *Ruleset, errMsg string) {
 	summary := RulesSummary{
-		Source:     m.rulesPath,
+		Source:     "控制台",
 		LastLoaded: formatTime(time.Now()),
 		Error:      errMsg,
 	}

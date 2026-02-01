@@ -656,7 +656,7 @@ func (fs *FileService) UpdateAlertConfig(enabled bool, suppressEnabled bool, rul
 	updated := current
 	updated.AlertEnabled = enabled
 	updated.AlertSuppressEnabled = &suppressEnabled
-	updated.AlertRulesFile = strings.TrimSpace(rulesFile)
+	updated.AlertRulesFile = ""
 	updated.AlertLogPaths = strings.TrimSpace(logPaths)
 	updated.AlertPollInterval = strings.TrimSpace(pollInterval)
 	updated.AlertStartFromEnd = &startFromEnd
@@ -683,7 +683,6 @@ func (fs *FileService) UpdateAlertConfig(enabled bool, suppressEnabled bool, rul
 		if err := manager.UpdateConfig(alert.ConfigUpdate{
 			Enabled:         enabled,
 			SuppressEnabled: suppressEnabled,
-			RulesFile:       updated.AlertRulesFile,
 			LogPaths:        updated.AlertLogPaths,
 			PollInterval:    updated.AlertPollInterval,
 			StartFromEnd:    startFromEnd,
@@ -698,6 +697,55 @@ func (fs *FileService) UpdateAlertConfig(enabled bool, suppressEnabled bool, rul
 	fs.mu.Unlock()
 
 	fs.persistRuntimeConfig(&updated)
+	return fs.Config(), nil
+}
+
+// UpdateAlertRules 运行时更新告警规则并持久化
+func (fs *FileService) UpdateAlertRules(ruleset *alert.Ruleset) (*models.Config, error) {
+	fs.mu.Lock()
+	if fs.config == nil {
+		fs.mu.Unlock()
+		return nil, fmt.Errorf("配置未初始化")
+	}
+	current := *fs.config
+	manager := fs.alertManager
+	running := fs.running
+	fs.mu.Unlock()
+
+	if ruleset == nil {
+		return nil, fmt.Errorf("告警规则不能为空")
+	}
+	if err := alert.NormalizeRuleset(ruleset); err != nil {
+		return nil, err
+	}
+	current.AlertRules = ruleset
+
+	if manager == nil {
+		if current.AlertEnabled {
+			newManager, err := alert.NewManager(&current, &alert.NotifierSet{
+				DingTalk: fs.dingtalkRobot,
+				Email:    fs.emailSender,
+			})
+			if err != nil {
+				return nil, err
+			}
+			manager = newManager
+			if running && manager != nil {
+				manager.Start()
+			}
+		}
+	} else {
+		if err := manager.UpdateRules(ruleset); err != nil {
+			return nil, err
+		}
+	}
+
+	fs.mu.Lock()
+	fs.config = &current
+	fs.alertManager = manager
+	fs.mu.Unlock()
+
+	fs.persistRuntimeConfig(&current)
 	return fs.Config(), nil
 }
 

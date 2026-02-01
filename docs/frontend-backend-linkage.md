@@ -36,6 +36,7 @@
 ## 2.2 告警控制台刷新机制（实际实现）
 - 告警概览与决策列表：每 3 秒轮询 `/api/alerts`。
 - 告警配置：首次加载时调用 `/api/alert-config`，保存时调用 `POST /api/alert-config`。
+- 告警规则：首次加载时调用 `/api/alert-rules`，保存时调用 `POST /api/alert-rules`。
 
 ---
 
@@ -125,6 +126,22 @@ sequenceDiagram
   API-->>UI: 更新后的配置
 ```
 
+规则加载与保存：
+```mermaid
+sequenceDiagram
+  participant UI as AlertConsole
+  participant API as API Server
+  participant FS as FileService
+
+  UI->>API: GET /api/alert-rules
+  API->>FS: Config()
+  API-->>UI: AlertRuleset
+
+  UI->>API: POST /api/alert-rules
+  API->>FS: UpdateAlertRules()
+  API-->>UI: 最新规则
+```
+
 ### 3.6 系统资源管理控制台刷新
 
 ```mermaid
@@ -194,7 +211,12 @@ sequenceDiagram
 - `POST /api/alert-config`
 - 用途：读取与更新告警配置（如可写则持久化到 `config.runtime.yaml`）
 
-**9) 系统资源面板**
+**9) 告警规则**
+- `GET /api/alert-rules`
+- `POST /api/alert-rules`
+- 用途：读取与保存告警规则（持久化到 `config.runtime.yaml`）
+
+**10) 系统资源面板**
 - `GET /api/system`
 - Query：`mode=lite` / `limit`
 - 返回：`SystemDashboard`
@@ -205,6 +227,7 @@ sequenceDiagram
 ## 5. 注意事项
 - `/api/config` 更新运行态配置，并在可写时持久化到 `config.runtime.yaml`；S3 与通知配置需改 `.env` 并重启。
 - `/api/alert-config` 更新告警相关配置，并在可写时持久化到 `config.runtime.yaml`（不写回 `config.yaml`）。
+- `/api/alert-rules` 保存规则后写入 `config.runtime.yaml`；未保存的规则刷新会被覆盖。
 - 告警概览统计窗口为最近 24 小时。
 - 前端的 `concurrency` 字段是字符串（例如 `workers=3 / queue=100`），保存时解析成数值。
 - 如需完整字段解释与格式约定，参考 `docs/state-types-visual.md`。
