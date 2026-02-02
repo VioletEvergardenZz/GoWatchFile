@@ -27,7 +27,6 @@ RUN sed -i "s#deb.debian.org#${APT_MIRROR}#g" /etc/apt/sources.list.d/debian.sou
 
 COPY --from=builder /out/file-watch /app/file-watch
 COPY config.yaml /etc/gwf/config.yaml
-COPY alert-rules.yaml /etc/gwf/alert-rules.yaml
 
 EXPOSE 8080
 

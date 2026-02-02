@@ -581,7 +581,6 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
 
   const overview = dashboard.overview;
   const stats = dashboard.stats;
-  const rules = dashboard.rules;
   const polling = dashboard.polling;
   const decisions = dashboard.decisions ?? [];
 

@@ -1,46 +1,33 @@
 services:
   gwf-backend:
+    container_name: gwf-backend
+    image: gwf-backend:local
     build:
       context: ./go-watch-file
-      args:
-        BASE_IMAGE_PREFIX: registry.cn-hangzhou.aliyuncs.com/library
-        GOPROXY: https://mirrors.aliyun.com/goproxy/,direct
-        APT_MIRROR: mirrors.aliyun.com
-    environment:
-      S3_BUCKET: ${S3_BUCKET}
-      S3_ENDPOINT: ${S3_ENDPOINT}
-      S3_REGION: ${S3_REGION}
-      S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}
-      S3_DISABLE_SSL: ${S3_DISABLE_SSL}
-      S3_AK: ${S3_AK}
-      S3_SK: ${S3_SK}
-      DINGTALK_WEBHOOK: ${DINGTALK_WEBHOOK}
-      DINGTALK_SECRET: ${DINGTALK_SECRET}
-      ROBOT_KEY: ${ROBOT_KEY}
-      EMAIL_USER: ${EMAIL_USER}
-      EMAIL_PASS: ${EMAIL_PASS}
-      EMAIL_HOST: ${EMAIL_HOST}
-      EMAIL_PORT: ${EMAIL_PORT}
-      EMAIL_FROM: ${EMAIL_FROM}
-      EMAIL_TO: ${EMAIL_TO}
-      EMAIL_USE_TLS: ${EMAIL_USE_TLS}
+    env_file:
+      - .env
     volumes:
-      - ./go-watch-file/config.yaml:/etc/gwf/config.yaml:ro
-      - ./data/watch:/data/gwf/watch
-      - ./data/logs:/var/log/app
-      - ./go-watch-file/alert-rules.yaml:/etc/gwf/alert-rules.yaml:ro
+      - /opt/gwf:/etc/gwf
+      - /opt/gwf/logs:/app/logs
     ports:
-      - "8080:8080"
+      - "${GWF_BACKEND_PORT:-8082}:8080"
     restart: unless-stopped
+    networks:
+      - gwf-net
 
   gwf-frontend:
+    container_name: gwf-frontend
+    image: gwf-frontend:local
     build:
       context: ./console-frontend
-      args:
-        BASE_IMAGE_PREFIX: registry.cn-hangzhou.aliyuncs.com/library
-        NPM_REGISTRY: https://registry.npmmirror.com
     depends_on:
       - gwf-backend
     ports:
-      - "8081:80"
+      - "${GWF_WEB_PORT:-8081}:80"
     restart: unless-stopped
+    networks:
+      - gwf-net
+
+networks:
+  gwf-net:
+    driver: bridge
