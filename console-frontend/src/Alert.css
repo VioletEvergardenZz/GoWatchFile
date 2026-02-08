@@ -441,6 +441,16 @@ body[data-theme="light"] .alert-shell .alert-banner {
   word-break: break-all;
 }
 
+.alert-shell .message-ai {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+  background: var(--panel);
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  padding: 6px 8px;
+}
+
 .alert-shell .badge {
   display: inline-flex;
   align-items: center;

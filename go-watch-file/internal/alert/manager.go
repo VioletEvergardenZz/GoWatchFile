@@ -76,6 +76,12 @@ type Manager struct {
 	running         bool
 	ctx             context.Context
 	cancel          context.CancelFunc
+	aiEnabled       bool
+	aiWindow        time.Duration
+	aiLimiter       chan struct{}
+	aiHistory       map[string]time.Time
+	lineBuffers     map[string]*lineBuffer
+	aiMu            sync.Mutex
 }
 
 // ConfigUpdate 表示告警配置的运行时更新
@@ -136,6 +142,11 @@ func NewManager(cfg *models.Config, notifier Notifier) (*Manager, error) {
 		startFromEnd:    startFromEnd,
 		suppressEnabled: suppressEnabled,
 		enabled:         enabled,
+		aiEnabled:       cfg.AIEnabled,
+		aiWindow:        alertAIDedupeWindow,
+		aiLimiter:       make(chan struct{}, alertAIWorkerLimit),
+		aiHistory:       make(map[string]time.Time),
+		lineBuffers:     make(map[string]*lineBuffer),
 	}
 	if manager.engine != nil {
 		manager.engine.SetSuppressionEnabled(suppressEnabled)
@@ -315,16 +326,25 @@ func (m *Manager) handleLine(path, line string) {
 		return
 	}
 	now := time.Now()
+	beforeLines, afterLines := m.captureLineContext(path, line)
 	// 规则匹配可能产生多条决策 包含升级告警
 	results := m.engine.Evaluate(line, path, now)
 	if len(results) == 0 {
 		return
 	}
+	contextLines := buildAlertContextLines(beforeLines, line, afterLines)
 	for _, result := range results {
 		// 决策写入运行态并按需触发通知
 		m.state.Record(result)
 		if result.status == StatusSent {
 			m.sendNotification(result)
+		}
+		if m.shouldRunAlertAI(result, line, now) {
+			signature := buildAlertAISignature(result, line)
+			if !m.allowAlertAI(signature, now) {
+				continue
+			}
+			m.enqueueAlertAI(result, line, contextLines)
 		}
 	}
 }

@@ -65,3 +65,11 @@ alert_log_paths: ""
 alert_poll_interval: "2s"
 # true 表示从文件末尾开始 仅处理新内容
 alert_start_from_end: true
+
+# AI 分析配置（默认关闭）
+ai_enabled: true
+ai_base_url: "${AI_BASE_URL}"
+ai_api_key: "${AI_API_KEY}"
+ai_model: "${AI_MODEL}"
+ai_timeout: "90s"
+ai_max_lines: 200

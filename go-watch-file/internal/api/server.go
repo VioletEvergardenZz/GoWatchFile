@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -55,6 +56,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/auto-upload", h.toggleAutoUpload)
 	mux.HandleFunc("/api/manual-upload", h.manualUpload)
 	mux.HandleFunc("/api/file-log", h.fileLog)
+	mux.HandleFunc("/api/ai/log-summary", h.aiLogSummary)
 	mux.HandleFunc("/api/config", h.updateConfig)
 	mux.HandleFunc("/api/alerts", h.alertDashboard)
 	mux.HandleFunc("/api/alert-config", h.alertConfig)
@@ -64,9 +66,9 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 
 	srv := &http.Server{
 		Addr:         cfg.APIBind,
-		Handler:      withCORS(mux),
+		Handler:      withRecovery(withCORS(mux)),
 		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
+		WriteTimeout: resolveWriteTimeout(cfg),
 	}
 	return &Server{httpServer: srv}
 }
@@ -552,6 +554,33 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func withRecovery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				logger.Error("API发生异常: %v\n%s", recovered, string(debug.Stack()))
+				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "服务器内部错误"})
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
+}
+
+func resolveWriteTimeout(cfg *models.Config) time.Duration {
+	base := 90 * time.Second
+	if cfg == nil {
+		return base
+	}
+	aiTimeout := parseAITimeout(cfg.AITimeout)
+	if aiTimeout > 0 {
+		candidate := aiTimeout + 5*time.Second
+		if candidate > base {
+			base = candidate
+		}
+	}
+	return base
 }
 
 // 读取目标文件内容

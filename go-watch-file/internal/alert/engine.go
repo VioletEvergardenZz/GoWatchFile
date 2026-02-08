@@ -37,6 +37,7 @@ type compiledEscalation struct {
 
 type decisionResult struct {
 	id      string
+	ruleID  string
 	rule    string
 	level   Level
 	file    string
@@ -48,15 +49,15 @@ type decisionResult struct {
 
 // Engine 负责规则匹配与抑制升级判定
 type Engine struct {
-	mu               sync.Mutex
-	rules            []compiledRule
-	escalation       compiledEscalation
-	lastAlert        map[string]time.Time
-	systemEvents     []time.Time
-	escalationActive bool
-	lastEscalationAt time.Time
+	mu                 sync.Mutex
+	rules              []compiledRule
+	escalation         compiledEscalation
+	lastAlert          map[string]time.Time
+	systemEvents       []time.Time
+	escalationActive   bool
+	lastEscalationAt   time.Time
 	suppressionEnabled bool
-	seq              atomic.Uint64
+	seq                atomic.Uint64
 }
 
 // NewEngine 构建告警规则引擎
@@ -66,10 +67,10 @@ func NewEngine(ruleset *Ruleset) (*Engine, error) {
 		return nil, err
 	}
 	return &Engine{
-		rules:        rules,
-		escalation:   escalation,
-		lastAlert:    make(map[string]time.Time),
-		systemEvents: make([]time.Time, 0, 32),
+		rules:              rules,
+		escalation:         escalation,
+		lastAlert:          make(map[string]time.Time),
+		systemEvents:       make([]time.Time, 0, 32),
 		suppressionEnabled: true,
 	}, nil
 }
@@ -125,6 +126,7 @@ func (e *Engine) Evaluate(line, filePath string, now time.Time) []decisionResult
 
 	result := decisionResult{
 		id:      e.nextID(),
+		ruleID:  rule.id,
 		rule:    rule.title,
 		level:   rule.level,
 		file:    filePath,
@@ -236,6 +238,7 @@ func (e *Engine) maybeEscalateLocked(now time.Time) *decisionResult {
 	}
 	return &decisionResult{
 		id:      e.nextID(),
+		ruleID:  e.escalation.ruleID,
 		rule:    e.escalation.title,
 		level:   e.escalation.level,
 		file:    "",

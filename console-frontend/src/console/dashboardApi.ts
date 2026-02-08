@@ -1,4 +1,4 @@
-import type { DashboardPayload } from "../types";
+import type { AiLogSummaryResponse, DashboardPayload } from "../types";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 export const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
@@ -108,4 +108,22 @@ export const postFileLog = async (payload: { path: string; query?: string }): Pr
   });
   await ensureOk(res, "文件内容读取");
   return (await res.json()) as FileLogResponse;
+};
+
+export type AiLogSummaryRequest = {
+  path: string;
+  mode?: LogMode;
+  query?: string;
+  limit?: number;
+  caseSensitive?: boolean;
+};
+
+export const postAiLogSummary = async (payload: AiLogSummaryRequest): Promise<AiLogSummaryResponse> => {
+  const res = await fetch(`${API_BASE}/api/ai/log-summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  await ensureOk(res, "AI日志分析");
+  return (await res.json()) as AiLogSummaryResponse;
 };

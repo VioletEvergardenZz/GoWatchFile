@@ -30,6 +30,8 @@ const (
 	defaultAlertPollInterval    = "2s"
 	defaultAlertStartFromEnd    = true
 	defaultAlertSuppressEnabled = true
+	defaultAIMaxLines           = 200
+	defaultAITimeout            = "20s"
 )
 
 var allowedLogLevels = map[string]struct{}{
@@ -105,6 +107,9 @@ func ValidateConfig(config *models.Config) error {
 	if err := validateAlertConfig(config); err != nil {
 		return err
 	}
+	if err := validateAIConfig(config); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -126,6 +131,10 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.AlertRulesFile = sanitizeConfigString(cfg.AlertRulesFile)
 	cfg.AlertLogPaths = sanitizeConfigString(cfg.AlertLogPaths)
 	cfg.AlertPollInterval = sanitizeConfigString(cfg.AlertPollInterval)
+	cfg.AIBaseURL = sanitizeConfigString(cfg.AIBaseURL)
+	cfg.AIAPIKey = sanitizeConfigString(cfg.AIAPIKey)
+	cfg.AIModel = sanitizeConfigString(cfg.AIModel)
+	cfg.AITimeout = sanitizeConfigString(cfg.AITimeout)
 	cfg.RobotKey = stringFromEnv("ROBOT_KEY", cfg.RobotKey)
 	cfg.DingTalkWebhook = stringFromEnv("DINGTALK_WEBHOOK", cfg.DingTalkWebhook)
 	cfg.DingTalkSecret = stringFromEnv("DINGTALK_SECRET", cfg.DingTalkSecret)
@@ -167,6 +176,24 @@ func applyEnvOverrides(cfg *models.Config) error {
 	}
 	cfg.AK = stringFromEnv("S3_AK", cfg.AK)
 	cfg.SK = stringFromEnv("S3_SK", cfg.SK)
+	aiEnabled, ok, err := boolFromEnv("AI_ENABLED")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.AIEnabled = aiEnabled
+	}
+	cfg.AIBaseURL = stringFromEnv("AI_BASE_URL", cfg.AIBaseURL)
+	cfg.AIAPIKey = stringFromEnv("AI_API_KEY", cfg.AIAPIKey)
+	cfg.AIModel = stringFromEnv("AI_MODEL", cfg.AIModel)
+	cfg.AITimeout = stringFromEnv("AI_TIMEOUT", cfg.AITimeout)
+	aiMaxLines, ok, err := intFromEnv("AI_MAX_LINES")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.AIMaxLines = aiMaxLines
+	}
 	return nil
 }
 
@@ -197,6 +224,12 @@ func applyDefaults(cfg *models.Config) {
 	}
 	if cfg.AlertStartFromEnd == nil {
 		cfg.AlertStartFromEnd = boolPtr(defaultAlertStartFromEnd)
+	}
+	if strings.TrimSpace(cfg.AITimeout) == "" {
+		cfg.AITimeout = defaultAITimeout
+	}
+	if cfg.AIMaxLines <= 0 {
+		cfg.AIMaxLines = defaultAIMaxLines
 	}
 }
 
@@ -350,6 +383,36 @@ func validateAlertConfig(config *models.Config) error {
 	}
 	if _, err := parseAlertInterval(config.AlertPollInterval); err != nil {
 		return fmt.Errorf("告警轮询间隔无效: %w", err)
+	}
+	return nil
+}
+
+func validateAIConfig(config *models.Config) error {
+	if config == nil {
+		return nil
+	}
+	if !config.AIEnabled {
+		return nil
+	}
+	baseURL := strings.TrimSpace(config.AIBaseURL)
+	if baseURL == "" {
+		return fmt.Errorf("AI_BASE_URL不能为空")
+	}
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("AI_BASE_URL无效: %s", baseURL)
+	}
+	if strings.TrimSpace(config.AIAPIKey) == "" {
+		return fmt.Errorf("AI_API_KEY不能为空")
+	}
+	if strings.TrimSpace(config.AIModel) == "" {
+		return fmt.Errorf("AI_MODEL不能为空")
+	}
+	if strings.TrimSpace(config.AITimeout) == "" {
+		return fmt.Errorf("AI_TIMEOUT不能为空")
+	}
+	if config.AIMaxLines <= 0 {
+		return fmt.Errorf("AI_MAX_LINES必须大于零")
 	}
 	return nil
 }

@@ -26,6 +26,9 @@ import {
   uploadRecords,
 } from "./mockData";
 import type {
+  AiLogSummary,
+  AiLogSummaryMeta,
+  AiStatus,
   ChartPoint,
   ConfigSnapshot,
   DashboardPayload,
@@ -42,6 +45,7 @@ import {
   USE_MOCK,
   fetchDashboard,
   fetchDashboardLite,
+  postAiLogSummary,
   postAutoUpload,
   postConfig,
   postFileLog,
@@ -143,6 +147,10 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [logQuery, setLogQuery] = useState("");
   const [logQueryApplied, setLogQueryApplied] = useState("");
   const [logTruncated, setLogTruncated] = useState(false);
+  const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
+  const [aiSummary, setAiSummary] = useState<AiLogSummary | null>(null);
+  const [aiMeta, setAiMeta] = useState<AiLogSummaryMeta | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [followTail, setFollowTail] = useState(true);
   const [tailZoomOpen, setTailZoomOpen] = useState(false);
   const [uploadPage, setUploadPage] = useState(1);
@@ -161,6 +169,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const actionTimerRef = useRef<number | undefined>(undefined);
   const tailBoxRef = useRef<HTMLDivElement | null>(null);
   const logRequestIdRef = useRef(0);
+  const aiRequestIdRef = useRef(0);
   const collapseInitRef = useRef(USE_MOCK);
   const lastSuffixFilterRef = useRef<string | null>(USE_MOCK ? heroCopy.suffixFilter : null);
   const lastRootRef = useRef<string | null>(USE_MOCK ? (treeSeed[0]?.path ?? "") : null);
@@ -427,6 +436,13 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     }, 3000);
   }, []);
 
+  const resetAiState = useCallback(() => {
+    setAiStatus("idle");
+    setAiSummary(null);
+    setAiMeta(null);
+    setAiError(null);
+  }, []);
+
   const fetchLogLines = useCallback(async (path: string, options: LogFetchOptions = {}) => {
     const requestId = ++logRequestIdRef.current;
     const trimmedQuery = options.query?.trim() ?? "";
@@ -488,6 +504,11 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   }, [activeLogPath]);
 
   useEffect(() => {
+    aiRequestIdRef.current += 1;
+    resetAiState();
+  }, [activeLogPath, logMode, logQueryApplied, resetAiState]);
+
+  useEffect(() => {
     if (!activeLogPath || logMode !== "tail" || !tailBoxRef.current || !followTail) return;
     const el = tailBoxRef.current;
     window.requestAnimationFrame(() => {
@@ -520,6 +541,40 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     setFollowTail(false);
     void fetchLogLines(activeLogPath, { mode: "search", query: trimmed });
   }, [activeLogPath, fetchLogLines, logQuery]);
+
+  const runAiSummary = useCallback(async () => {
+    if (!activeLogPath) return;
+    if (aiStatus === "loading") return;
+    if (logMode === "search" && !logQueryApplied) return;
+    const requestId = ++aiRequestIdRef.current;
+    setAiStatus("loading");
+    setAiSummary(null);
+    setAiMeta(null);
+    setAiError(null);
+    try {
+      const payload: { path: string; mode?: LogMode; query?: string } = {
+        path: activeLogPath,
+        mode: logMode,
+      };
+      if (logMode === "search" && logQueryApplied) {
+        payload.query = logQueryApplied;
+      }
+      const data = await postAiLogSummary(payload);
+      if (requestId !== aiRequestIdRef.current) return;
+      if (!data.ok || !data.analysis) {
+        setAiStatus("error");
+        setAiError(data.error || "AI 分析失败");
+        return;
+      }
+      setAiSummary(data.analysis);
+      setAiMeta(data.meta ?? null);
+      setAiStatus("success");
+    } catch (err) {
+      if (requestId !== aiRequestIdRef.current) return;
+      setAiStatus("error");
+      setAiError((err as Error).message || "AI 分析失败");
+    }
+  }, [activeLogPath, aiStatus, logMode, logQueryApplied]);
 
   const renderLogLine = useCallback(
     (line: string) => {
@@ -639,6 +694,12 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   }, [files, currentRoot]);
 
   const treeFilterBadge = useMemo(() => formatTreeFilterBadge(heroState.suffixFilter ?? ""), [heroState.suffixFilter]);
+  const canRunAI = !!activeLogPath && (logMode === "tail" || !!logQueryApplied);
+  const aiHint = !activeLogPath
+    ? "请选择文件后再进行 AI 总结"
+    : logMode === "search" && !logQueryApplied
+    ? "请先执行检索再进行 AI 总结"
+    : "点击“AI 总结”生成分析";
 
   const filteredFiles = useMemo(() => {
     return files
@@ -708,6 +769,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
 
   const handleClearTail = () => {
     logRequestIdRef.current += 1;
+    aiRequestIdRef.current += 1;
     setTailLinesState([]);
     setActiveLogPath(null);
     setLogMode("tail");
@@ -715,6 +777,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     setLogQueryApplied("");
     setLogTruncated(false);
     setFollowTail(true);
+    resetAiState();
   };
 
   const handleSaveSnapshot = async () => {
@@ -1027,8 +1090,15 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
                 tailLines={tailLinesState}
                 canSearch={!!activeLogPath && !!logQuery.trim()}
                 tailBoxRef={tailBoxRef}
+                aiStatus={aiStatus}
+                aiSummary={aiSummary}
+                aiMeta={aiMeta}
+                aiError={aiError}
+                canRunAI={canRunAI}
+                aiHint={aiHint}
                 onSwitchTail={switchToTail}
                 onRunSearch={runLogSearch}
+                onRunAI={() => void runAiSummary()}
                 onLogQueryChange={setLogQuery}
                 onClear={handleClearTail}
                 onOpenZoom={openTailZoom}

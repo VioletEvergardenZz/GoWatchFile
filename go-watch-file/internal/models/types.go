@@ -43,6 +43,12 @@ type Config struct {
 	AlertLogPaths         string        `yaml:"alert_log_paths"`
 	AlertPollInterval     string        `yaml:"alert_poll_interval"`
 	AlertStartFromEnd     *bool         `yaml:"alert_start_from_end"`
+	AIEnabled             bool          `yaml:"ai_enabled"`
+	AIBaseURL             string        `yaml:"ai_base_url"`
+	AIAPIKey              string        `yaml:"ai_api_key"`
+	AIModel               string        `yaml:"ai_model"`
+	AITimeout             string        `yaml:"ai_timeout"`
+	AIMaxLines            int           `yaml:"ai_max_lines"`
 }
 
 // FileEvent 文件事件结构体

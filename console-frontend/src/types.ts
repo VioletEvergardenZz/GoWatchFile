@@ -84,6 +84,30 @@ export type DashboardPayload = {
   chartPoints: ChartPoint[];
 };
 
+export type AiStatus = "idle" | "loading" | "success" | "error";
+
+export type AiLogSummary = {
+  summary: string;
+  severity: "low" | "medium" | "high";
+  keyErrors: string[];
+  causes: string[];
+  suggestions: string[];
+  confidence?: number;
+};
+
+export type AiLogSummaryMeta = {
+  usedLines: number;
+  truncated: boolean;
+  elapsedMs: number;
+};
+
+export type AiLogSummaryResponse = {
+  ok: boolean;
+  analysis?: AiLogSummary;
+  meta?: AiLogSummaryMeta;
+  error?: string;
+};
+
 export type AlertLevel = "ignore" | "business" | "system" | "fatal";
 
 export type AlertDecisionStatus = "sent" | "suppressed" | "recorded";
@@ -108,6 +132,7 @@ export type AlertDecision = {
   file: string;
   status: AlertDecisionStatus;
   reason?: string;
+  analysis?: string;
 };
 
 export type AlertStats = {

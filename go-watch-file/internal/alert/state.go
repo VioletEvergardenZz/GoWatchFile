@@ -35,14 +35,15 @@ type Overview struct {
 
 // Decision 表示告警列表项
 type Decision struct {
-	ID      string `json:"id"`
-	Time    string `json:"time"`
-	Level   string `json:"level"`
-	Rule    string `json:"rule"`
-	Message string `json:"message"`
-	File    string `json:"file"`
-	Status  string `json:"status"`
-	Reason  string `json:"reason,omitempty"`
+	ID       string `json:"id"`
+	Time     string `json:"time"`
+	Level    string `json:"level"`
+	Rule     string `json:"rule"`
+	Message  string `json:"message"`
+	File     string `json:"file"`
+	Status   string `json:"status"`
+	Reason   string `json:"reason,omitempty"`
+	Analysis string `json:"analysis,omitempty"`
 }
 
 // Stats 表示告警统计
@@ -81,14 +82,15 @@ type PollSummary struct {
 }
 
 type alertRecord struct {
-	id      string
-	at      time.Time
-	level   Level
-	rule    string
-	message string
-	file    string
-	status  DecisionStatus
-	reason  string
+	id       string
+	at       time.Time
+	level    Level
+	rule     string
+	message  string
+	file     string
+	status   DecisionStatus
+	reason   string
+	analysis string
 }
 
 // State 维护告警决策运行态
@@ -137,6 +139,21 @@ func (s *State) Record(result decisionResult) {
 	}
 }
 
+// AttachAnalysis 为指定告警记录追加AI分析
+func (s *State) AttachAnalysis(id string, analysis string) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.records {
+		if s.records[i].id == id {
+			s.records[i].analysis = analysis
+			return
+		}
+	}
+}
+
 // UpdateRulesSummary 更新规则摘要
 func (s *State) UpdateRulesSummary(summary RulesSummary) {
 	s.mu.Lock()
@@ -169,14 +186,15 @@ func (s *State) Dashboard() Dashboard {
 			file = "-"
 		}
 		decisions = append(decisions, Decision{
-			ID:      rec.id,
-			Time:    formatTime(rec.at),
-			Level:   string(rec.level),
-			Rule:    rec.rule,
-			Message: rec.message,
-			File:    file,
-			Status:  string(rec.status),
-			Reason:  rec.reason,
+			ID:       rec.id,
+			Time:     formatTime(rec.at),
+			Level:    string(rec.level),
+			Rule:     rec.rule,
+			Message:  rec.message,
+			File:     file,
+			Status:   string(rec.status),
+			Reason:   rec.reason,
+			Analysis: rec.analysis,
 		})
 	}
 

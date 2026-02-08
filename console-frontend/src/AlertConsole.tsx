@@ -1599,6 +1599,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
                       <div className="message-cell">
                         <span className="message-main">{decision.message}</span>
                         <span className="message-sub">{decision.file || "--"}</span>
+                        {decision.analysis ? <span className="message-ai">AI：{decision.analysis}</span> : null}
                       </div>
                     </td>
                     <td>

@@ -3,6 +3,9 @@ import { Line } from "react-chartjs-2";
 import type { ChartData, ChartOptions } from "chart.js";
 import type {
   ConfigSnapshot,
+  AiLogSummary,
+  AiLogSummaryMeta,
+  AiStatus,
   FileFilter,
   FileItem,
   FileNode,
@@ -378,8 +381,15 @@ type TailSectionProps = {
   tailLines: string[];
   canSearch: boolean;
   tailBoxRef: RefObject<HTMLDivElement | null>;
+  aiStatus: AiStatus;
+  aiSummary: AiLogSummary | null;
+  aiMeta: AiLogSummaryMeta | null;
+  aiError: string | null;
+  canRunAI: boolean;
+  aiHint: string;
   onSwitchTail: () => void;
   onRunSearch: () => void;
+  onRunAI: () => void;
   onLogQueryChange: (value: string) => void;
   onClear: () => void;
   onOpenZoom: () => void;
@@ -395,14 +405,28 @@ export function TailSection({
   tailLines,
   canSearch,
   tailBoxRef,
+  aiStatus,
+  aiSummary,
+  aiMeta,
+  aiError,
+  canRunAI,
+  aiHint,
   onSwitchTail,
   onRunSearch,
+  onRunAI,
   onLogQueryChange,
   onClear,
   onOpenZoom,
   onScroll,
   renderLogLine,
 }: TailSectionProps) {
+  const severityTone =
+    aiSummary?.severity === "low" ? "success" : aiSummary?.severity === "high" ? "danger" : aiSummary ? "warning" : "info";
+  const severityLabel = aiSummary?.severity === "low" ? "低" : aiSummary?.severity === "high" ? "高" : "中";
+  const confidenceText =
+    aiSummary?.confidence !== undefined && aiSummary?.confidence !== null
+      ? `可信度 ${Math.round(aiSummary.confidence * 100)}%`
+      : "";
   return (
     <section className="panel" id="tail">
       <div className="section-title">
@@ -441,6 +465,9 @@ export function TailSection({
           <button className="btn secondary" type="button" onClick={onOpenZoom}>
             放大
           </button>
+          <button className="btn secondary" type="button" onClick={onRunAI} disabled={!canRunAI || aiStatus === "loading"}>
+            {aiStatus === "loading" ? "分析中..." : "AI 总结"}
+          </button>
         </div>
       </div>
       <div className="tail-box" ref={tailBoxRef} onScroll={onScroll}>
@@ -453,6 +480,70 @@ export function TailSection({
             </div>
           ))
         )}
+      </div>
+      <div className="ai-panel">
+        <div className="ai-header">
+          <div className="ai-title">AI 分析</div>
+          {aiMeta ? (
+            <div className="ai-meta">
+              使用 {aiMeta.usedLines} 行 · 耗时 {aiMeta.elapsedMs}ms{aiMeta.truncated ? " · 已截断" : ""}
+            </div>
+          ) : null}
+        </div>
+        {aiStatus === "idle" ? <div className="ai-empty">{aiHint}</div> : null}
+        {aiStatus === "loading" ? <div className="ai-loading">AI 正在分析...</div> : null}
+        {aiStatus === "error" ? <div className="ai-error">{aiError || "AI 分析失败"}</div> : null}
+        {aiStatus === "success" && aiSummary ? (
+          <div className="ai-grid">
+            <div className="ai-block">
+              <div className="ai-label">严重等级</div>
+              <div className="ai-value">
+                <span className={`pill ${severityTone}`}>{severityLabel}</span>
+                {confidenceText ? <span className="ai-confidence">{confidenceText}</span> : null}
+              </div>
+            </div>
+            <div className="ai-block">
+              <div className="ai-label">摘要</div>
+              <div className="ai-value">{aiSummary.summary}</div>
+            </div>
+            <div className="ai-block">
+              <div className="ai-label">关键错误行</div>
+              {aiSummary.keyErrors?.length ? (
+                <ul className="ai-list">
+                  {aiSummary.keyErrors.map((item, index) => (
+                    <li key={`${item}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="ai-list-empty">未识别</div>
+              )}
+            </div>
+            <div className="ai-block">
+              <div className="ai-label">可能原因</div>
+              {aiSummary.causes?.length ? (
+                <ul className="ai-list">
+                  {aiSummary.causes.map((item, index) => (
+                    <li key={`${item}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="ai-list-empty">未识别</div>
+              )}
+            </div>
+            <div className="ai-block">
+              <div className="ai-label">建议动作</div>
+              {aiSummary.suggestions?.length ? (
+                <ul className="ai-list">
+                  {aiSummary.suggestions.map((item, index) => (
+                    <li key={`${item}-${index}`}>{item}</li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="ai-list-empty">未提供</div>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );
