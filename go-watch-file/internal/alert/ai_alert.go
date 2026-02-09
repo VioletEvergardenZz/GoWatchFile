@@ -102,7 +102,7 @@ type aiAlertResult struct {
 	Confidence  *float64 `json:"confidence,omitempty"`
 }
 
-func (m *Manager) shouldRunAlertAI(result decisionResult, line string, now time.Time) bool {
+func (m *Manager) shouldRunAlertAI(result decisionResult, line string) bool {
 	if m == nil || !m.aiEnabled {
 		return false
 	}

@@ -339,7 +339,7 @@ func (m *Manager) handleLine(path, line string) {
 		if result.status == StatusSent {
 			m.sendNotification(result)
 		}
-		if m.shouldRunAlertAI(result, line, now) {
+		if m.shouldRunAlertAI(result, line) {
 			signature := buildAlertAISignature(result, line)
 			if !m.allowAlertAI(signature, now) {
 				continue
