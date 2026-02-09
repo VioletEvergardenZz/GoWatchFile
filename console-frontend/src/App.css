@@ -1381,6 +1381,41 @@
   gap: 8px;
 }
 
+.config-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.config-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.config-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.inputs.config-inputs {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.config-span {
+  grid-column: 1 / -1;
+}
+
+.config-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+
 .input {
   display: flex;
   flex-direction: column;
@@ -1406,6 +1441,11 @@
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.2);
   outline: none;
+}
+
+.input-error {
+  color: #f87171;
+  font-size: 12px;
 }
 
 .stack {

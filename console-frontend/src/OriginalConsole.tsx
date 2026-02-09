@@ -63,6 +63,7 @@ import {
   matchUploadSearch,
   normalizeConfigSnapshot,
   normalizeWatchDirInput,
+  validateRetryDelays,
   resolveRecordTimestamp,
   splitWatchDirs,
   updateAutoUpload,
@@ -111,6 +112,8 @@ const emptyConfig: ConfigSnapshot = {
   fileExt: "",
   silence: "",
   concurrency: "",
+  uploadRetryDelays: "",
+  uploadRetryEnabled: true,
   systemResourceEnabled: false,
 };
 
@@ -135,6 +138,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [manualUploadMap, setManualUploadMap] = useState<Record<string, string>>({});
   const [activeSection, setActiveSection] = useState<string>(SECTION_IDS[0]);
   const [configForm, setConfigForm] = useState(USE_MOCK ? configSnapshot : emptyConfig);
+  const [retryDelayError, setRetryDelayError] = useState<string | null>(null);
   const [heroState, setHeroState] = useState(USE_MOCK ? heroCopy : emptyHero);
   const [metricCardsState, setMetricCardsState] = useState(USE_MOCK ? metricCards : emptyMetricCards);
   const [monitorNotesState, setMonitorNotesState] = useState(USE_MOCK ? monitorNotes : emptyMonitorNotes);
@@ -652,7 +656,26 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   );
 
   const handleConfigChange = useCallback((patch: Partial<ConfigSnapshot>) => {
-    setConfigForm((prev) => ({ ...prev, ...patch }));
+    setConfigForm((prev) => {
+      const next = { ...prev, ...patch };
+      if (Object.prototype.hasOwnProperty.call(patch, "uploadRetryDelays")) {
+        if (next.uploadRetryEnabled) {
+          const message = validateRetryDelays(next.uploadRetryDelays ?? "");
+          setRetryDelayError(message || null);
+        } else {
+          setRetryDelayError(null);
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "uploadRetryEnabled")) {
+        if (next.uploadRetryEnabled) {
+          const message = validateRetryDelays(next.uploadRetryDelays ?? "");
+          setRetryDelayError(message || null);
+        } else {
+          setRetryDelayError(null);
+        }
+      }
+      return next;
+    });
   }, []);
 
   const handleManualUpload = async () => {
@@ -786,6 +809,19 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     const watchDir = normalizeWatchDirInput(configForm.watchDir ?? "");
     const fileExt = configForm.fileExt?.trim() ?? "";
     const silence = configForm.silence?.trim() ?? "";
+    const uploadRetryDelays = configForm.uploadRetryDelays?.trim() ?? "";
+    const uploadRetryEnabled = configForm.uploadRetryEnabled ?? true;
+    if (uploadRetryEnabled) {
+      const retryDelayMessage = validateRetryDelays(uploadRetryDelays);
+      if (retryDelayMessage) {
+        setRetryDelayError(retryDelayMessage);
+        setSaveMessage(null);
+        return;
+      }
+      setRetryDelayError(null);
+    } else {
+      setRetryDelayError(null);
+    }
     if (!watchDir) {
       setSaveMessage("请填写监控目录");
       return;
@@ -802,6 +838,8 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
         fileExt,
         uploadWorkers: workers,
         uploadQueueSize: queue,
+        uploadRetryDelays,
+        uploadRetryEnabled,
         silence,
         systemResourceEnabled: configForm.systemResourceEnabled,
       });
@@ -812,6 +850,8 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
         fileExt: payloadConfig?.fileExt ?? fileExt,
         concurrency: payloadConfig?.concurrency ?? configForm.concurrency,
         silence: payloadConfig?.silence ?? silence ?? configForm.silence,
+        uploadRetryDelays: payloadConfig?.uploadRetryDelays ?? uploadRetryDelays ?? configForm.uploadRetryDelays,
+        uploadRetryEnabled: payloadConfig?.uploadRetryEnabled ?? uploadRetryEnabled,
         systemResourceEnabled: payloadConfig?.systemResourceEnabled ?? configForm.systemResourceEnabled,
       };
       const nextWatchDirs = splitWatchDirs(nextConfig.watchDir);
@@ -1051,6 +1091,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
                 configForm={configForm}
                 saving={saving}
                 saveMessage={saveMessage}
+                retryDelayError={retryDelayError}
                 onChange={handleConfigChange}
                 onSave={() => void handleSaveSnapshot()}
               />

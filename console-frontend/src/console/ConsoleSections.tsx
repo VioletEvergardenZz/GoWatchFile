@@ -90,42 +90,81 @@ type ConfigSectionProps = {
   saveMessage: string | null;
   onChange: (patch: Partial<ConfigSnapshot>) => void;
   onSave: () => void;
+  retryDelayError?: string | null;
 };
 
-export function ConfigSection({ configForm, saving, saveMessage, onChange, onSave }: ConfigSectionProps) {
+export function ConfigSection({ configForm, saving, saveMessage, onChange, onSave, retryDelayError }: ConfigSectionProps) {
   return (
     <section className="panel" id="config">
       <div className="section-title">
         <h2>上传与路由配置</h2>
       </div>
-      <div className="inputs">
-        <div className="input">
-          <label>监控目录</label>
-          <input
-            placeholder={'支持空格/逗号/分号分隔，包含空格的路径请加引号（如 "/data/my logs" /data/other）'}
-            value={configForm.watchDir}
-            onChange={(e) => onChange({ watchDir: e.target.value })}
-          />
+      <div className="config-grid">
+        <div className="stack-item config-card">
+          <div className="config-card-title">基础监控</div>
+          <div className="inputs config-inputs">
+            <div className="input">
+              <label>监控目录</label>
+              <input
+                placeholder={'支持空格/逗号/分号分隔，包含空格的路径请加引号（如 "/data/my logs" /data/other）'}
+                value={configForm.watchDir}
+                onChange={(e) => onChange({ watchDir: e.target.value })}
+              />
+            </div>
+            <div className="input">
+              <label>文件后缀过滤</label>
+              <input
+                placeholder="支持多个后缀（逗号分隔），不填则默认显示监控目录下的所有文件和子目录"
+                value={configForm.fileExt}
+                onChange={(e) => onChange({ fileExt: e.target.value })}
+              />
+            </div>
+            <div className="input">
+              <label>静默窗口</label>
+              <input
+                placeholder="例如 10s / 30s"
+                value={configForm.silence}
+                onChange={(e) => onChange({ silence: e.target.value })}
+              />
+            </div>
+          </div>
         </div>
-        <div className="input">
-          <label>文件后缀过滤</label>
-          <input
-            placeholder="支持多个后缀（逗号分隔），不填则默认显示监控目录下的所有文件和子目录"
-            value={configForm.fileExt}
-            onChange={(e) => onChange({ fileExt: e.target.value })}
-          />
-        </div>
-        <div className="input">
-          <label>静默窗口</label>
-          <input placeholder="例如 10s / 30s" value={configForm.silence} onChange={(e) => onChange({ silence: e.target.value })} />
-        </div>
-        <div className="input">
-          <label>并发/队列</label>
-          <input
-            placeholder="示例：workers=3 / queue=100（必填，数字）"
-            value={configForm.concurrency}
-            onChange={(e) => onChange({ concurrency: e.target.value })}
-          />
+        <div className="stack-item config-card">
+          <div className="config-card-title">上传策略</div>
+          <div className="inputs config-inputs">
+            <div className="input">
+              <label>并发/队列</label>
+              <input
+                placeholder="示例：workers=3 / queue=100（必填，数字）"
+                value={configForm.concurrency}
+                onChange={(e) => onChange({ concurrency: e.target.value })}
+              />
+            </div>
+            <div className="input">
+              <label>上传重试间隔</label>
+              <input
+                placeholder="示例：1s,2s,5s（逗号/空格分隔）"
+                value={configForm.uploadRetryDelays}
+                onChange={(e) => onChange({ uploadRetryDelays: e.target.value })}
+                disabled={!configForm.uploadRetryEnabled}
+              />
+              {retryDelayError ? <div className="input-error">{retryDelayError}</div> : null}
+            </div>
+            <div className="input config-span">
+              <label>上传重试</label>
+              <div className="config-row">
+                <span className="muted">网络波动时建议开启</span>
+                <label className="switch">
+                  <input
+                    type="checkbox"
+                    checked={configForm.uploadRetryEnabled}
+                    onChange={(e) => onChange({ uploadRetryEnabled: e.target.checked })}
+                  />
+                  <span className="slider" />
+                </label>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <div className="toolbar config-actions">

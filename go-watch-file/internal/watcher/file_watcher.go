@@ -30,6 +30,16 @@ const (
 
 var errWatchLimitReached = errors.New("watch limit reached")
 
+var tempFileSuffixes = []string{
+	".tmp",
+	".part",
+	".crdownload",
+	".download",
+	".swp",
+	".swx",
+	".swpx",
+}
+
 // FileWatcher 文件监控器
 type FileWatcher struct {
 	watcher       *fsnotify.Watcher //实际的文件监听器对象
@@ -248,6 +258,9 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 }
 
 func (fw *FileWatcher) isTargetFileEvent(event fsnotify.Event) bool {
+	if isTempFile(event.Name) {
+		return false
+	}
 	// 先按后缀过滤事件
 	if fw.matcher != nil && !fw.matcher.IsTargetFile(event.Name) {
 		return false
@@ -483,6 +496,20 @@ func (fw *FileWatcher) shouldLogFileEvent(filePath string) bool {
 	if lastTime, ok := fw.lastLogged[filePath]; !ok || time.Since(lastTime) > logThrottleDuration {
 		fw.lastLogged[filePath] = time.Now()
 		return true
+	}
+	return false
+}
+
+// 判断是否是临时文件
+func isTempFile(filePath string) bool {
+	baseName := strings.ToLower(filepath.Base(filePath))
+	if baseName == "" || baseName == "." || baseName == string(filepath.Separator) {
+		return false
+	}
+	for _, suffix := range tempFileSuffixes {
+		if strings.HasSuffix(baseName, suffix) {
+			return true
+		}
 	}
 	return false
 }

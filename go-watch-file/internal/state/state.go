@@ -602,11 +602,17 @@ func (s *RuntimeState) HeroCopy(cfg *models.Config) HeroCopy {
 
 // ConfigSnapshot 构建可编辑的配置快照
 func (s *RuntimeState) ConfigSnapshot(cfg *models.Config) ConfigSnapshot {
+	retryEnabled := true
+	if cfg.UploadRetryEnabled != nil {
+		retryEnabled = *cfg.UploadRetryEnabled
+	}
 	return ConfigSnapshot{
-		WatchDir:    cfg.WatchDir,
-		FileExt:     formatExtList(cfg.FileExt),
-		Silence:     cfg.Silence,
-		Concurrency: fmt.Sprintf("workers=%d / queue=%d", cfg.UploadWorkers, cfg.UploadQueueSize),
+		WatchDir:              cfg.WatchDir,
+		FileExt:               formatExtList(cfg.FileExt),
+		Silence:               cfg.Silence,
+		Concurrency:           fmt.Sprintf("workers=%d / queue=%d", cfg.UploadWorkers, cfg.UploadQueueSize),
+		UploadRetryDelays:     strings.TrimSpace(cfg.UploadRetryDelays),
+		UploadRetryEnabled:    retryEnabled,
 		SystemResourceEnabled: cfg.SystemResourceEnabled,
 	}
 }
@@ -635,9 +641,22 @@ func formatExtList(raw string) string {
 
 // MonitorNotes 返回配置驱动的说明信息
 func (s *RuntimeState) MonitorNotes(cfg *models.Config) []MonitorNote {
+	retryDelays := strings.TrimSpace(cfg.UploadRetryDelays)
+	if retryDelays == "" {
+		retryDelays = "1s,2s,5s"
+	}
+	retryEnabled := true
+	if cfg.UploadRetryEnabled != nil {
+		retryEnabled = *cfg.UploadRetryEnabled
+	}
+	retryStatus := "关闭"
+	if retryEnabled {
+		retryStatus = "开启"
+	}
 	return []MonitorNote{
 		{Title: "S3 连接", Detail: fmt.Sprintf("endpoint=%s · region=%s", cfg.Endpoint, cfg.Region)},
 		{Title: "上传工作池", Detail: fmt.Sprintf("workers=%d · queue=%d · 当前 backlog=%d", cfg.UploadWorkers, cfg.UploadQueueSize, s.queueLen)},
+		{Title: "上传重试", Detail: fmt.Sprintf("%s · 间隔 %s", retryStatus, retryDelays)},
 		{Title: "通知", Detail: "钉钉通知 / 邮件通知"},
 	}
 }

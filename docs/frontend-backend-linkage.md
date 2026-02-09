@@ -8,11 +8,11 @@
 
 **后端（go-watch-file）**
 - 负责监控文件、入队上传、记录状态、汇总仪表盘数据。
-- 提供 HTTP API：仪表盘、自动上传开关、手动上传、文件 Tail、运行时配置更新。
+- 提供 HTTP API：仪表盘、自动上传开关、手动上传、文件 Tail/检索、AI 日志分析、运行时配置更新。
 - 告警决策与告警配置 API：`/api/alerts`、`/api/alert-config`。
 
 **前端（console-frontend）**
-- 展示目录树 / 文件列表 / 上传记录 / 队列趋势 / Tail 日志。
+- 展示目录树 / 文件列表 / 上传记录 / 队列趋势 / Tail 日志 / AI 总结。
 - 通过 API 拉取仪表盘数据，并触发上传与配置更新操作。
 - 告警控制台展示风险概览、告警列表与告警配置。
 
@@ -104,7 +104,20 @@ sequenceDiagram
 
 补充：传入 `query` 会进入检索模式，返回 `mode: "search"`、`matched`、`truncated` 与 `lines`。
 
-### 3.5 告警控制台刷新与配置
+### 3.5 AI 日志分析
+
+```mermaid
+sequenceDiagram
+  participant UI as Console Frontend
+  participant API as API Server
+
+  UI->>API: POST /api/ai/log-summary {path, mode, query}
+  API-->>UI: { ok, analysis, meta }
+```
+
+说明：需后端开启 `ai_enabled` 并配置 `AI_*`。
+
+### 3.6 告警控制台刷新与配置
 
 ```mermaid
 sequenceDiagram
@@ -142,7 +155,7 @@ sequenceDiagram
   API-->>UI: 最新规则
 ```
 
-### 3.6 系统资源管理控制台刷新
+### 3.7 系统资源管理控制台刷新
 
 ```mermaid
 sequenceDiagram
@@ -188,6 +201,8 @@ sequenceDiagram
     "fileExt": ".log",
     "uploadWorkers": 3,
     "uploadQueueSize": 100,
+    "uploadRetryDelays": "1s,2s,5s",
+    "uploadRetryEnabled": true,
     "silence": "10s",
     "systemResourceEnabled": true
   }
@@ -198,25 +213,30 @@ sequenceDiagram
 - 请求体：`{ "path": "...", "query": "keyword", "limit": 500, "caseSensitive": false }`
 - 说明：不传 `query` 时读取文件尾部（最多 512KB / 500 行）；传入 `query` 时全文检索（默认最多 2000 行）。
 
-**6) 健康检查**
+**6) AI 日志分析**
+- `POST /api/ai/log-summary`
+- 请求体：`{ "path": "...", "mode": "tail", "query": "", "limit": 200, "caseSensitive": false }`
+- 说明：需启用 `ai_enabled` 并配置 `AI_*`。
+
+**7) 健康检查**
 - `GET /api/health`
 - 返回：`{ queue, workers }`
 
-**7) 告警面板**
+**8) 告警面板**
 - `GET /api/alerts`
 - 返回：`{ ok, enabled, data }`，`data` 为 `AlertDashboard`
 
-**8) 告警配置**
+**9) 告警配置**
 - `GET /api/alert-config`
 - `POST /api/alert-config`
 - 用途：读取与更新告警配置（如可写则持久化到 `config.runtime.yaml`）
 
-**9) 告警规则**
+**10) 告警规则**
 - `GET /api/alert-rules`
 - `POST /api/alert-rules`
 - 用途：读取与保存告警规则（持久化到 `config.runtime.yaml`）
 
-**10) 系统资源面板**
+**11) 系统资源面板**
 - `GET /api/system`
 - Query：`mode=lite` / `limit`
 - 返回：`SystemDashboard`
@@ -228,6 +248,7 @@ sequenceDiagram
 - `/api/config` 更新运行态配置，并在可写时持久化到 `config.runtime.yaml`；S3 与通知配置需改 `.env` 并重启。
 - `/api/alert-config` 更新告警相关配置，并在可写时持久化到 `config.runtime.yaml`（不写回 `config.yaml`）。
 - `/api/alert-rules` 保存规则后写入 `config.runtime.yaml`；未保存的规则刷新会被覆盖。
+- `/api/ai/log-summary` 需要开启 `ai_enabled`，并配置 `AI_*`。
 - 告警概览统计窗口为最近 24 小时。
 - 前端的 `concurrency` 字段是字符串（例如 `workers=3 / queue=100`），保存时解析成数值。
 - 如需完整字段解释与格式约定，参考 `docs/state-types-visual.md`。

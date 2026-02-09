@@ -261,6 +261,8 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		FileExt               *string `json:"fileExt"`
 		UploadWorkers         *int    `json:"uploadWorkers"`
 		UploadQueueSize       *int    `json:"uploadQueueSize"`
+		UploadRetryDelays     *string `json:"uploadRetryDelays"`
+		UploadRetryEnabled    *bool   `json:"uploadRetryEnabled"`
 		SystemResourceEnabled *bool   `json:"systemResourceEnabled"`
 		Silence               *string `json:"silence"`
 	}
@@ -296,7 +298,24 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 	if req.UploadQueueSize != nil {
 		uploadQueueSize = *req.UploadQueueSize
 	}
-	cfg, err := h.fs.UpdateConfig(watchDir, fileExt, strings.TrimSpace(silence), uploadWorkers, uploadQueueSize, req.SystemResourceEnabled)
+	uploadRetryDelays := current.UploadRetryDelays
+	if req.UploadRetryDelays != nil {
+		uploadRetryDelays = *req.UploadRetryDelays
+	}
+	uploadRetryEnabled := current.UploadRetryEnabled
+	if req.UploadRetryEnabled != nil {
+		uploadRetryEnabled = req.UploadRetryEnabled
+	}
+	cfg, err := h.fs.UpdateConfig(
+		watchDir,
+		fileExt,
+		strings.TrimSpace(silence),
+		uploadWorkers,
+		uploadQueueSize,
+		strings.TrimSpace(uploadRetryDelays),
+		uploadRetryEnabled,
+		req.SystemResourceEnabled,
+	)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return

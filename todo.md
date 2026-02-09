@@ -5,11 +5,14 @@
 ## 当前已落地（基于现有代码）
 - 递归目录监听 + 新增子目录自动发现（fsnotify）。
 - 多后缀过滤与写入完成判定（静默窗口）。
+- 临时文件后缀过滤（如 .tmp/.part/.crdownload）。
 - 内存队列 + worker pool 并发上传至 S3。
-- 控制台 API：dashboard/自动上传开关/手动上传/file-log/config/health/alerts/alert-config。
-- 前端控制台联动：目录树、上传记录、队列趋势、日志 Tail、配置更新、告警控制台。
+- 上传失败重试（可开关/可配置间隔）。
+- 控制台 API：dashboard/自动上传开关/手动上传/file-log/ai-log-summary/config/health/alerts/alert-config/alert-rules/system。
+- 前端控制台联动：目录树、上传记录、队列趋势、日志 Tail、AI 总结、配置更新、告警控制台。
 - 系统资源控制台：CPU/内存/磁盘/进程概览（可配置开启）。
 - 文件内容检索：file-log 支持关键词检索。
+- AI 日志分析：可对选中文件进行 AI 总结（需启用配置）。
 - 钉钉机器人通知（可选）。
 - 告警决策模块：日志轮询、规则匹配、抑制与异常升级。
 
@@ -22,12 +25,14 @@
 
 ## 阶段 1：Agent 采集与上传传输
 - [x] 文件匹配：多后缀。  
-- [ ] 可靠性：失败重试（上限/退避）、断点续传/etag 校验、临时文件过滤。  
+- [x] 可靠性：上传失败重试（可开关/可配置间隔）。  
+- [x] 可靠性：临时文件过滤（常见临时后缀）。  
+- [ ] 可靠性：重试策略完善（上限/退避）、断点续传/etag 校验。  
 - [x] 并发与背压：工作池 + 队列（内存）。
 - [ ] 并发与背压：队列饱和阈值/告警，限流/熔断。
-- [x] 静默时间可调（`silence`/`SILENCE_WINDOW`）。
+- [x] 静默时间可调（`silence`）。
 - [ ] 指标与日志：Prometheus（事件速率、队列长度、上传耗时、错误码），结构化日志。  
-- [x] 配置体验：启动校验与运行时更新（仅 watchDir/fileExt/silence/workers/queue）。  
+- [x] 配置体验：启动校验与运行时更新（watchDir/fileExt/silence/workers/queue/uploadRetryDelays/uploadRetryEnabled/systemResourceEnabled）。  
 - [ ] 测试：pathutil/upload/watcher/s3 mock；端到端上传 + 通知。  
 
 ## 阶段 2：控制与配置（多 Agent 管理）
@@ -72,7 +77,7 @@
 - [ ] 安全合规：渗透/安全扫描、密钥轮换流程、最小权限示例策略。  
 
 ## 数据与配置草案
-- **Agent 配置**：watch_dir、file_ext（多值）、ignore 列表、静默时间、upload_workers、upload_queue_size、S3（bucket/ak/sk/endpoint/region/force_path_style/disable_ssl）、通知（钉钉等）、日志。  
+- **Agent 配置**：watch_dir、watch_exclude、file_ext（多值）、ignore 列表、静默时间、upload_workers、upload_queue_size、upload_retry_enabled/upload_retry_delays、S3（bucket/ak/sk/endpoint/region/force_path_style/disable_ssl）、通知（钉钉等）、日志。  
 - **表设计雏形**：  
   - `file_sources`：来源目录/租户/标签。  
   - `file_events`：事件明细（路径、大小、hash、产生时间、状态）。  

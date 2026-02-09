@@ -21,13 +21,15 @@ go build -o bin/file-watch cmd/main.go
 - `watch_dir` 为空时由控制台配置；如已设置则必须存在且为目录。
 - `watch_dir` 支持多目录（逗号或分号分隔）。
 - `file_ext` 支持多后缀（逗号或空格分隔），可留空表示不过滤。
-- `silence`/`SILENCE_WINDOW` 默认 `10s`，支持 `10s` / `10秒` / `10`。
+- 临时文件后缀会被忽略（如 `.tmp/.part/.crdownload`）。
+- `silence` 默认 `10s`，支持 `10s` / `10秒` / `10`。
+- `upload_retry_enabled`/`upload_retry_delays` 可控制上传重试开关与间隔（默认 `1s,2s,5s`）。
 - `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
 - `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
 - `system_resource_enabled` 默认 `false`，需在控制台开启后才能访问 `/api/system`。
 
 ### 环境变量覆盖范围
-- 仅会覆盖 S3 与通知相关字段（`S3_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`）。
+- 仅会覆盖 S3 / 通知 / AI 相关字段（`S3_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`、`AI_*`）。
 - `watch_dir` / `file_ext` / `watch_exclude` / `log_level` / `alert_*` 不会被环境变量覆盖。
 
 ### 告警模式配置要点
@@ -71,6 +73,7 @@ docker compose down
 控制台保存配置会调用 `/api/config`，仅更新：
 - `watchDir` / `fileExt` / `silence`
 - `uploadWorkers` / `uploadQueueSize`
+- `uploadRetryEnabled` / `uploadRetryDelays`
 - `systemResourceEnabled`
 
 S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env`，变更后需重启后端。
@@ -81,6 +84,9 @@ S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env
 ## 文件内容读取与检索
 - `POST /api/file-log` 读取文件尾部（最多 512KB / 500 行）。
 - 传入 `query` 可进行全文检索（最多 2000 行），支持 `limit` 与 `caseSensitive`。
+
+## AI 日志分析
+- `POST /api/ai/log-summary` 触发 AI 总结（需启用 `ai_enabled` 并配置 `AI_*`）。
 
 ## 仪表盘轻量刷新
 - `GET /api/dashboard?mode=light` 或 `mode=lite` 返回不含目录树与文件列表的轻量数据，适合高频轮询。

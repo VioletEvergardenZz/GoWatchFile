@@ -1,18 +1,18 @@
 # File Watch Service（go-watch-file）
 
-一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到 S3 兼容存储，并支持钉钉机器人通知与邮件通知。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail/检索、系统资源面板与运行时配置。
+一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到 S3 兼容存储，支持上传失败重试、钉钉机器人通知与邮件通知，并提供 AI 日志分析（可选）。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail/检索、系统资源面板与运行时配置。
 
 ## 配置说明（控制台优先）
 
-- 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
+- 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, upload_retry_enabled, upload_retry_delays, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
 - `config.yaml` 保留静态配置（S3 连接参数/日志/API bind），也可被环境变量覆盖。
-- 环境变量主要用于密钥（S3_AK/S3_SK, DINGTALK_*, EMAIL_*），并支持可选覆盖 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL。
+- 环境变量主要用于密钥与 AI 配置（S3_AK/S3_SK, DINGTALK_*, EMAIL_*, AI_*），并支持可选覆盖 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL。
 
 ## 工作方式（按实际代码）
 1) fsnotify 递归监听 `watch_dir`（支持多目录 运行中自动发现新建子目录）
-2) 按 `file_ext` 过滤目标文件（支持多后缀；为空表示不过滤）。
+2) 按 `file_ext` 过滤目标文件（支持多后缀；为空表示不过滤），并忽略临时后缀（如 `.tmp/.part/.crdownload`）。
 3) 文件写入完成判定：在静默窗口内无新写入才入队（默认 10s）。
-4) 入队后由 WorkerPool 并发上传至 S3 兼容存储。
+4) 入队后由 WorkerPool 并发上传至 S3 兼容存储，失败按配置重试。
 5) 写入状态与上传结果写入运行态（Dashboard/时间线/上传记录）。
 6) 钉钉机器人可选通知，支持邮件通知（需配置 SMTP）。
 
@@ -23,6 +23,7 @@
    cp .env.example .env
    # 填写密钥（S3_AK/S3_SK, DINGTALK_*, EMAIL_*）
    # 如需覆盖 S3 参数，可设置 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL
+   # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
 3) 配置文件：密钥字段使用占位符，S3 连接参数默认在 `config.yaml`，也可用环境变量覆盖。
 4) 构建与运行：
@@ -33,7 +34,7 @@
 5) 停止：`Ctrl + C`，服务会优雅退出并等待队列 drain。
 
 配置优先级：config.yaml -> config.runtime.yaml -> 环境变量覆盖 -> 默认值。
-环境变量仅覆盖 S3 与通知相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
+环境变量仅覆盖 S3 / 通知 / AI 相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
 
 `.env` 读取策略：会尝试加载当前目录的 `.env`，以及配置文件同目录的 `.env`；仅在系统环境未设置时生效。
 
@@ -51,6 +52,8 @@
 - `silence`：写入完成判定窗口，默认 `10s`。
   - 支持写法：`10s` / `10秒` / `10`。
 - `upload_workers` / `upload_queue_size`：上传并发与队列容量。
+- `upload_retry_enabled`：是否启用上传失败重试（默认 true）。
+- `upload_retry_delays`：重试间隔列表（逗号/空白/分号分隔），默认 `1s,2s,5s`，非法项会忽略。
 - `system_resource_enabled`：系统资源面板开关（默认 false，开启后 `/api/system` 可用）。
 - `force_path_style` / `disable_ssl`：S3 兼容性开关。
 - `dingtalk_webhook` / `dingtalk_secret`：钉钉机器人（可选）。
@@ -65,6 +68,10 @@
 - `alert_start_from_end`：是否从文件末尾开始追踪（默认 true）。
   - `true` 仅处理新写入日志，忽略历史内容。
   - `false` 启动时从头扫描，可能产生历史告警。
+- `ai_enabled`：是否启用 AI 日志分析（true/false）。
+- `ai_base_url` / `ai_api_key` / `ai_model`：AI 请求地址、密钥与模型。
+- `ai_timeout`：AI 请求超时（支持 `20s` / `1m` 等）。
+- `ai_max_lines`：AI 分析最大行数（默认 200）。
 
 ### 配置示例（config.yaml）
 ```yaml
@@ -99,6 +106,8 @@ log_show_caller: false
 
 upload_workers: 10
 upload_queue_size: 100
+upload_retry_enabled: true
+upload_retry_delays: "1s,2s,5s"
 api_bind: ":8080"
 system_resource_enabled: false
 
@@ -108,11 +117,18 @@ alert_rules_file: ""
 alert_log_paths: ""
 alert_poll_interval: "2s"
 alert_start_from_end: true
+
+ai_enabled: true
+ai_base_url: "${AI_BASE_URL}"
+ai_api_key: "${AI_API_KEY}"
+ai_model: "${AI_MODEL}"
+ai_timeout: "90s"
+ai_max_lines: 200
 ```
 
 
 ### 环境变量模板（.env.example）
-`.env.example` 已提供模板，可按需补充 `S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL`。
+`.env.example` 已提供模板，可按需补充 `S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL` 与 AI 相关变量。
 
 ### 告警规则文件示例
 参考 `alert-rules.example.yaml`，按需调整关键词、级别与抑制窗口。
@@ -138,7 +154,12 @@ alert_start_from_end: true
 - Body：`{ "path": "/path/to/file", "query": "keyword", "limit": 500, "caseSensitive": false }`
 - 说明：不传 `query` 时读取文件尾部（仅文本文件，最多 **512KB / 500 行**）；传入 `query` 时进行全文检索并返回匹配行（默认最多 **2000 行**，超出会截断）。
 
-### 5) 运行时配置更新
+### 5) AI 日志分析
+- `POST /api/ai/log-summary`
+- Body：`{ "path": "/path/to/file", "mode": "tail", "query": "", "limit": 200, "caseSensitive": false }`
+- 说明：需 `ai_enabled=true` 且 AI_* 配置齐全；`mode=search` 必须带 `query`；`limit` 不传时使用 `ai_max_lines`。
+
+### 6) 运行时配置更新
 - `POST /api/config`
 - Body：
   ```json
@@ -148,20 +169,22 @@ alert_start_from_end: true
     "silence": "10s",
     "uploadWorkers": 3,
     "uploadQueueSize": 100,
+    "uploadRetryDelays": "1s,2s,5s",
+    "uploadRetryEnabled": true,
     "systemResourceEnabled": true
   }
   ```
-- 说明：仅更新目录/后缀/静默窗口/并发/队列/系统资源开关。S3 与通知配置需改配置文件并重启。
+- 说明：仅更新目录/后缀/静默窗口/并发/队列/重试参数/系统资源开关。S3 与通知配置需改配置文件并重启。
 
-### 6) 健康检查
+### 7) 健康检查
 - `GET /api/health` → `{ "queue": n, "workers": n }`
 
-### 7) 告警决策面板
+### 8) 告警决策面板
 - `GET /api/alerts`
 - 返回：`AlertDashboard`（告警概览、列表、统计、规则摘要、轮询摘要）
 - 说明：概览窗口为最近 24 小时，控制台“最新窗口”展示 `overview.window`
 
-### 8) 告警配置
+### 9) 告警配置
 - `GET /api/alert-config`
 - 返回：告警配置快照（enabled/suppressEnabled/rulesFile/logPaths/pollInterval/startFromEnd）
 - `POST /api/alert-config`
@@ -178,7 +201,13 @@ alert_start_from_end: true
   ```
 - 说明：仅更新内存配置，重启后以配置文件为准。
 
-### 9) 系统资源面板
+### 10) 告警规则
+- `GET /api/alert-rules`
+- `POST /api/alert-rules`
+- Body：`{ "rules": { ... } }`
+- 说明：保存后写入 `config.runtime.yaml`（可写时）。
+
+### 11) 系统资源面板
 - `GET /api/system`
 - Query：
   - `mode=lite` → 仅返回概览/指标/分区，不返回进程列表
@@ -187,7 +216,7 @@ alert_start_from_end: true
 - 说明：需开启 `systemResourceEnabled`，否则返回 403；部分字段依赖系统权限与支持程度，无法采集时会返回 `--` 或空列表。
 
 ## 运行时配置更新说明
-`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。该接口不会写回 `config.yaml`。
+`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`。
 Runtime updates are persisted to `config.runtime.yaml` (best effort).
 
 `/api/alert-config` 仅更新告警配置与轮询状态，不写回 `config.yaml`。
@@ -202,7 +231,7 @@ Alert config updates are persisted to `config.runtime.yaml` (best effort).
 ## 已知限制
 - 支持多监控目录（逗号或分号分隔）
 - 上传队列为内存队列，重启会清空。
-- 上传失败没有自动重试（需手动触发）。
+- 不支持断点续传。
 - 已实现钉钉通知与邮件通知，企业微信未接入。
 - 目录过大时可能触发系统句柄限制，可通过 `watch_exclude` 跳过大目录或提升系统 `ulimit`。
 

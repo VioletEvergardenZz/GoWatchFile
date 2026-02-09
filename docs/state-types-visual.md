@@ -194,6 +194,8 @@ class ConfigSnapshot {
   string fileExt
   string silence
   string concurrency
+  string uploadRetryDelays
+  bool uploadRetryEnabled
   bool systemResourceEnabled
 }
 ```
@@ -201,6 +203,7 @@ class ConfigSnapshot {
 说明：
 - `concurrency` 为字符串，格式类似 `workers=3 / queue=100`。
 - 前端保存时解析为数值并提交 `/api/config`。
+- `uploadRetryDelays` 为逗号分隔的间隔列表，`uploadRetryEnabled` 为重试开关。
 - `systemResourceEnabled` 控制系统资源面板开关，需开启后才能访问 `/api/system`。
 
 ---

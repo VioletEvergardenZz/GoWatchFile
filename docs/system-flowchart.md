@@ -10,10 +10,11 @@ graph TD
     C -->|是| D[静默窗口判定写入完成]
     D --> E[入队 uploadQueue]
     E --> F[WorkerPool 并发上传]
-    F --> G[S3 兼容对象存储]
-    F --> H[RuntimeState 更新状态]
+    F --> K[失败重试(可选)]
+    K --> G[S3 兼容对象存储]
+    K --> H[RuntimeState 更新状态]
     H --> I[/api/dashboard]
-    F --> J[通知: 钉钉/邮件(可选)]
+    K --> J[通知: 钉钉/邮件(可选)]
 ```
 
 ## 控制台与 API 交互
@@ -55,7 +56,8 @@ graph TD
 ## 说明
 - 自动上传开关通过 `/api/auto-upload` 修改运行态，并影响目录/文件的自动上传策略。
 - 文件 Tail/检索 通过 `/api/file-log` 按需读取文件尾部或全文检索，不走 Dashboard 数据。
-- S3 与通知配置变更需重启服务，运行时配置仅包含目录/后缀/并发/静默窗口。
+- AI 日志分析通过 `/api/ai/log-summary` 按需触发（需启用 AI 配置）。
+- S3 与通知配置变更需重启服务，运行时配置包含目录/后缀/并发/静默窗口/重试参数。
 - 告警配置通过 `/api/alert-config` 运行时更新，如可写则持久化到 `config.runtime.yaml`。
 - 告警概览统计窗口为最近 24 小时。
 - 系统资源面板需开启 `systemResourceEnabled` 才能访问 `/api/system`。

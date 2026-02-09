@@ -235,6 +235,8 @@ export const configSnapshot: ConfigSnapshot = {
   fileExt: "关闭 · 全量目录",
   silence: "4s",
   concurrency: "workers=8 / queue=200",
+  uploadRetryDelays: "1s,2s,5s",
+  uploadRetryEnabled: true,
   systemResourceEnabled: false,
 };
 

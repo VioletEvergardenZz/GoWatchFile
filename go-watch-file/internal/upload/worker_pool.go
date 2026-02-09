@@ -17,28 +17,34 @@ import (
 管理带缓冲的上传任务队列 + 固定数量 worker goroutine 并发消费队列
 */
 type WorkerPool struct {
-	uploadQueue chan string	     					    //任务队列，每个元素是待处理文件路径 
+	uploadQueue chan string //任务队列，每个元素是待处理文件路径
 	workers     int
 	inFlight    int64
 	wg          sync.WaitGroup
 	ctx         context.Context
 	cancel      context.CancelFunc
-	uploadFunc  func(context.Context, string) error		// 外部注入的实际上传逻辑，Worker 从队列取路径后调用
+	uploadFunc  func(context.Context, string) error // 外部注入的实际上传逻辑，Worker 从队列取路径后调用
 	onStats     func(models.UploadStats)
 
-	mu     sync.Mutex									//保护关闭状态，避免重复关闭或在关闭后入队
-	closed bool
+	mu            sync.Mutex //保护关闭状态，避免重复关闭或在关闭后入队
+	closed        bool
+	lastQueueWarn time.Time //上传队列告警节流时间
 }
 
 var (
 	// ErrQueueFull 表示上传队列已满
-	ErrQueueFull     = errors.New("upload queue full")
+	ErrQueueFull = errors.New("upload queue full")
 	// ErrPoolClosed 表示上传池已经关闭
-	ErrPoolClosed    = errors.New("worker pool closed")
+	ErrPoolClosed = errors.New("worker pool closed")
 	// ErrShutdownTimed 表示上传池关闭超时
 	ErrShutdownTimed = errors.New("worker pool shutdown timed out")
 	// ErrUploadFuncNil 表示上传处理函数为空
 	ErrUploadFuncNil = errors.New("upload func is nil")
+)
+
+const (
+	queueWarnRatio    = 0.8              // 队列告警阈值
+	queueWarnInterval = 10 * time.Second // 队列告警日志节流间隔
 )
 
 // NewWorkerPool 构造函数，创建并启动 worker goroutine
@@ -53,7 +59,7 @@ func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, stri
 		return nil, ErrUploadFuncNil
 	}
 	//基于一个根上下文 context.Background() 创建一个可取消的子上下文 ctx，并拿到对应的取消函数 cancel
-	ctx, cancel := context.WithCancel(context.Background()) 
+	ctx, cancel := context.WithCancel(context.Background())
 	pool := &WorkerPool{
 		uploadQueue: make(chan string, queueSize),
 		workers:     workers,
@@ -66,7 +72,7 @@ func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, stri
 	// 启动工作协程
 	for i := 0; i < workers; i++ {
 		// Add(1) 标记“我有一个新工人上班”；Done() 标记“工人下班了”；Wait() 等到所有工人下班，保证收尾完整
-		pool.wg.Add(1)		
+		pool.wg.Add(1)
 		go pool.worker(i)
 	}
 	logger.Info("上传工作池已启动，工作协程数: %d, 队列大小: %d", workers, queueSize)
@@ -115,6 +121,7 @@ func (p *WorkerPool) AddFile(filePath string) error {
 
 	select {
 	case p.uploadQueue <- filePath:
+		p.warnIfQueueNearFullLocked()
 		logger.Debug("文件已添加到上传队列: %s", filePath)
 		return nil
 	default:
@@ -146,17 +153,17 @@ func (p *WorkerPool) ShutdownGraceful(timeout time.Duration) error {
 	done := make(chan struct{})
 	go func() {
 		p.wg.Wait()
-		close(done)						//等到 done 关闭（表示所有 worker 退出）
+		close(done) //等到 done 关闭（表示所有 worker 退出）
 	}()
 
 	var timedOut bool
 	if timeout > 0 {
 		select {
-		case <-done:					//worker 全部退出
-		case <-time.After(timeout):		//超时时间先到，说明还没等到 worker 全部退出
+		case <-done: //worker 全部退出
+		case <-time.After(timeout): //超时时间先到，说明还没等到 worker 全部退出
 			timedOut = true
-			p.cancel()					//取消上下文，强制退出
-			<-done					
+			p.cancel() //取消上下文，强制退出
+			<-done
 		}
 	} else {
 		<-done
@@ -183,6 +190,26 @@ func (p *WorkerPool) ShutdownNow() {
 	p.cancel()
 	p.wg.Wait()
 	logger.Info("上传工作池已关闭（立即模式）")
+}
+
+// warnIfQueueNearFullLocked 队列接近满载时输出告警日志
+func (p *WorkerPool) warnIfQueueNearFullLocked() {
+	queueCap := cap(p.uploadQueue)
+	if queueCap <= 0 {
+		return
+	}
+	queueLen := len(p.uploadQueue)
+	ratio := float64(queueLen) / float64(queueCap)
+	if ratio < queueWarnRatio {
+		return
+	}
+	now := time.Now()
+	if !p.lastQueueWarn.IsZero() && now.Sub(p.lastQueueWarn) < queueWarnInterval {
+		return
+	}
+	p.lastQueueWarn = now
+	percent := ratio * 100
+	logger.Warn("上传队列接近满载: %d/%d (%.0f%%)", queueLen, queueCap, percent)
 }
 
 // GetStats 获取队列状态

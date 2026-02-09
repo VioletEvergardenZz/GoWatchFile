@@ -35,6 +35,8 @@ export type ConfigSnapshot = {
   fileExt: string;
   silence: string;
   concurrency: string;
+  uploadRetryDelays: string;
+  uploadRetryEnabled: boolean;
   systemResourceEnabled: boolean;
 };
 

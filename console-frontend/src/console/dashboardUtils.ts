@@ -137,8 +137,29 @@ export const normalizeConfigSnapshot = (value?: Partial<ConfigSnapshot>): Config
     fileExt: base.fileExt ?? "",
     silence: base.silence ?? "",
     concurrency: base.concurrency ?? "",
+    uploadRetryDelays: base.uploadRetryDelays ?? "",
+    uploadRetryEnabled: base.uploadRetryEnabled ?? true,
     systemResourceEnabled: base.systemResourceEnabled ?? false,
   };
+};
+
+const retryDelayTokenPattern = /^\d+(ms|s|m|h)$/i;
+
+export const validateRetryDelays = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const parts = trimmed.split(/[\s,;]+/).filter(Boolean);
+  if (parts.length === 0) {
+    return "";
+  }
+  for (const part of parts) {
+    if (!retryDelayTokenPattern.test(part)) {
+      return "格式不合法，示例：500ms,1s,2s（只支持 ms/s/m/h）";
+    }
+  }
+  return "";
 };
 
 export const findFirstFile = (nodes: FileNode[]): FileNode | undefined => {

@@ -204,6 +204,9 @@ func applyDefaults(cfg *models.Config) {
 	if cfg.UploadQueueSize <= 0 {
 		cfg.UploadQueueSize = defaultUploadQueueSize
 	}
+	if cfg.UploadRetryEnabled == nil {
+		cfg.UploadRetryEnabled = boolPtr(true)
+	}
 	if strings.TrimSpace(cfg.Silence) == "" {
 		cfg.Silence = defaultSilence
 	}

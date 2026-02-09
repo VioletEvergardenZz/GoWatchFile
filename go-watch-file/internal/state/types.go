@@ -40,10 +40,12 @@ type MonitorNote struct {
 
 // ConfigSnapshot 对应 UI 可编辑配置表单的快照
 type ConfigSnapshot struct {
-	WatchDir    string `json:"watchDir"`
-	FileExt     string `json:"fileExt"`
-	Silence     string `json:"silence"`
-	Concurrency string `json:"concurrency"`
+	WatchDir              string `json:"watchDir"`
+	FileExt               string `json:"fileExt"`
+	Silence               string `json:"silence"`
+	Concurrency           string `json:"concurrency"`
+	UploadRetryDelays     string `json:"uploadRetryDelays"`
+	UploadRetryEnabled    bool   `json:"uploadRetryEnabled"`
 	SystemResourceEnabled bool   `json:"systemResourceEnabled"`
 }
 

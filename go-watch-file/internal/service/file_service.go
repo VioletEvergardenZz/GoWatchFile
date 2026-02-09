@@ -43,6 +43,12 @@ type FileService struct {
 
 const shutdownTimeout = 30 * time.Second
 
+var defaultUploadRetryDelays = []time.Duration{
+	1 * time.Second,
+	2 * time.Second,
+	5 * time.Second,
+}
+
 // NewFileService 构造并初始化 FileService 的依赖
 func NewFileService(config *models.Config, configPath string) (*FileService, error) {
 	runtimeState := state.NewRuntimeState(config)
@@ -226,7 +232,7 @@ func (fs *FileService) persistRuntimeConfig(cfg *models.Config) {
 }
 
 // UpdateConfig updates runtime config and rebuilds watcher/upload pools.
-func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWorkers, uploadQueueSize int, systemResourceEnabled *bool) (*models.Config, error) {
+func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWorkers, uploadQueueSize int, uploadRetryDelays string, uploadRetryEnabled *bool, systemResourceEnabled *bool) (*models.Config, error) {
 	// 先加锁读取当前配置与组件引用
 	fs.mu.Lock()
 	if fs.config == nil {
@@ -273,6 +279,17 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	// 处理上传队列长度更新
 	if uploadQueueSize > 0 && uploadQueueSize != current.UploadQueueSize {
 		updated.UploadQueueSize = uploadQueueSize
+	}
+	if strings.TrimSpace(uploadRetryDelays) != "" && strings.TrimSpace(uploadRetryDelays) != current.UploadRetryDelays {
+		updated.UploadRetryDelays = strings.TrimSpace(uploadRetryDelays)
+	}
+	currentRetryEnabled := true
+	if current.UploadRetryEnabled != nil {
+		currentRetryEnabled = *current.UploadRetryEnabled
+	}
+	if uploadRetryEnabled != nil && *uploadRetryEnabled != currentRetryEnabled {
+		enabled := *uploadRetryEnabled
+		updated.UploadRetryEnabled = &enabled
 	}
 	if systemResourceEnabled != nil && *systemResourceEnabled != current.SystemResourceEnabled {
 		updated.SystemResourceEnabled = *systemResourceEnabled
@@ -479,7 +496,7 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	}
 
 	logger.Info("开始处理文件: %s", filePath)
-	downloadURL, err := fs.s3Client.UploadFile(ctx, filePath)
+	downloadURL, err := fs.uploadFileWithRetry(ctx, filePath)
 	if err != nil {
 		if fs.state != nil {
 			fs.state.MarkFailed(filePath, err)
@@ -500,6 +517,104 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 
 	logger.Info("文件处理完成: %s", filePath)
 	return nil
+}
+
+// uploadFileWithRetry 负责上传重试，避免短暂失败导致任务丢失
+func (fs *FileService) uploadFileWithRetry(ctx context.Context, filePath string) (string, error) {
+	if fs.s3Client == nil {
+		return "", fmt.Errorf("S3客户端未初始化")
+	}
+	if !isUploadRetryEnabled(fs.config) {
+		return fs.s3Client.UploadFile(ctx, filePath)
+	}
+	delays := parseUploadRetryDelays(fs.config)
+	tries := len(delays) + 1
+	var lastErr error
+	for attempt := 1; attempt <= tries; attempt++ {
+		if ctx != nil && ctx.Err() != nil {
+			return "", ctx.Err()
+		}
+		downloadURL, err := fs.s3Client.UploadFile(ctx, filePath)
+		if err == nil {
+			return downloadURL, nil
+		}
+		lastErr = err
+		if attempt == tries {
+			break
+		}
+		delay := delays[attempt-1]
+		logger.Warn("上传失败，准备重试: %s, 第 %d/%d 次, 等待 %v, 错误: %v", filePath, attempt, tries, delay, err)
+		if err := sleepWithContext(ctx, delay); err != nil {
+			return "", err
+		}
+	}
+	return "", lastErr
+}
+
+// isUploadRetryEnabled 判断是否启用上传重试
+func isUploadRetryEnabled(cfg *models.Config) bool {
+	if cfg == nil {
+		return true
+	}
+	if cfg.UploadRetryEnabled == nil {
+		return true
+	}
+	return *cfg.UploadRetryEnabled
+}
+
+// parseUploadRetryDelays 解析上传重试间隔配置
+func parseUploadRetryDelays(cfg *models.Config) []time.Duration {
+	if cfg == nil {
+		return defaultUploadRetryDelays
+	}
+	raw := strings.TrimSpace(cfg.UploadRetryDelays)
+	if raw == "" {
+		return defaultUploadRetryDelays
+	}
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		switch r {
+		case ',', ';', ' ', '\n', '\r', '\t':
+			return true
+		default:
+			return false
+		}
+	})
+	delays := make([]time.Duration, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		d, err := time.ParseDuration(trimmed)
+		if err != nil || d <= 0 {
+			logger.Warn("上传重试间隔解析失败，已忽略: %s", trimmed)
+			continue
+		}
+		delays = append(delays, d)
+	}
+	if len(delays) == 0 {
+		return defaultUploadRetryDelays
+	}
+	return delays
+}
+
+// sleepWithContext 支持在等待期间响应停止信号
+func sleepWithContext(ctx context.Context, delay time.Duration) error {
+	if delay <= 0 {
+		return nil
+	}
+	if ctx == nil {
+		time.Sleep(delay)
+		return nil
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // consumeManualOnce 消费单次手动上传标记

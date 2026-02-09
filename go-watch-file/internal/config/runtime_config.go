@@ -18,6 +18,8 @@ type runtimeConfig struct {
 	Silence               *string              `yaml:"silence"`
 	UploadWorkers         *int                 `yaml:"upload_workers"`
 	UploadQueueSize       *int                 `yaml:"upload_queue_size"`
+	UploadRetryDelays     *string              `yaml:"upload_retry_delays"`
+	UploadRetryEnabled    *bool                `yaml:"upload_retry_enabled"`
 	SystemResourceEnabled *bool                `yaml:"system_resource_enabled"`
 	AlertEnabled          *bool                `yaml:"alert_enabled"`
 	AlertSuppressEnabled  *bool                `yaml:"alert_suppress_enabled"`
@@ -77,6 +79,12 @@ func applyRuntimeConfig(cfg *models.Config, runtime *runtimeConfig) {
 	}
 	if runtime.UploadQueueSize != nil {
 		cfg.UploadQueueSize = *runtime.UploadQueueSize
+	}
+	if runtime.UploadRetryDelays != nil {
+		cfg.UploadRetryDelays = strings.TrimSpace(*runtime.UploadRetryDelays)
+	}
+	if runtime.UploadRetryEnabled != nil {
+		cfg.UploadRetryEnabled = boolPtr(*runtime.UploadRetryEnabled)
 	}
 	if runtime.SystemResourceEnabled != nil {
 		cfg.SystemResourceEnabled = *runtime.SystemResourceEnabled
@@ -139,12 +147,18 @@ func buildRuntimeConfig(cfg *models.Config) *runtimeConfig {
 	if pollInterval == "" {
 		pollInterval = defaultAlertPollInterval
 	}
+	retryEnabled := true
+	if cfg.UploadRetryEnabled != nil {
+		retryEnabled = *cfg.UploadRetryEnabled
+	}
 	return &runtimeConfig{
 		WatchDir:              stringPtr(strings.TrimSpace(cfg.WatchDir)),
 		FileExt:               stringPtr(strings.TrimSpace(cfg.FileExt)),
 		Silence:               stringPtr(strings.TrimSpace(cfg.Silence)),
 		UploadWorkers:         intPtr(cfg.UploadWorkers),
 		UploadQueueSize:       intPtr(cfg.UploadQueueSize),
+		UploadRetryDelays:     stringPtr(strings.TrimSpace(cfg.UploadRetryDelays)),
+		UploadRetryEnabled:    boolPtr(retryEnabled),
 		SystemResourceEnabled: boolPtr(cfg.SystemResourceEnabled),
 		AlertEnabled:          boolPtr(cfg.AlertEnabled),
 		AlertSuppressEnabled:  boolPtr(suppressEnabled),

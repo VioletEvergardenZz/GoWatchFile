@@ -78,6 +78,8 @@ export const postConfig = async (payload: {
   fileExt: string;
   uploadWorkers: number;
   uploadQueueSize: number;
+  uploadRetryDelays: string;
+  uploadRetryEnabled: boolean;
   silence: string;
   systemResourceEnabled: boolean;
 }): Promise<ConfigResponse> => {
