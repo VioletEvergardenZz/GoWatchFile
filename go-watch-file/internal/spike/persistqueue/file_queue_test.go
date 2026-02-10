@@ -2,7 +2,9 @@
 package persistqueue
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -137,5 +139,44 @@ func TestFileQueue_RemoveLastOne(t *testing.T) {
 	}
 	if items[0] != "a" || items[1] != "b" {
 		t.Fatalf("unexpected items after remove last: %+v", items)
+	}
+}
+
+func TestFileQueue_CorruptedStoreFallback(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "queue.json")
+	if err := os.WriteFile(storePath, []byte("{bad-json"), 0o644); err != nil {
+		t.Fatalf("write corrupted file failed: %v", err)
+	}
+
+	queue, err := NewFileQueue(storePath)
+	if err != nil {
+		t.Fatalf("new queue should fallback on corrupted store, got err: %v", err)
+	}
+	if got := len(queue.Items()); got != 0 {
+		t.Fatalf("expected empty queue after fallback, got %d", got)
+	}
+
+	backupMatches, err := filepath.Glob(storePath + ".corrupt-*.bak")
+	if err != nil {
+		t.Fatalf("glob backup files failed: %v", err)
+	}
+	if len(backupMatches) != 1 {
+		t.Fatalf("expected 1 backup file, got %d", len(backupMatches))
+	}
+
+	backupData, err := os.ReadFile(backupMatches[0])
+	if err != nil {
+		t.Fatalf("read backup file failed: %v", err)
+	}
+	if string(backupData) != "{bad-json" {
+		t.Fatalf("unexpected backup content: %s", string(backupData))
+	}
+
+	currentData, err := os.ReadFile(storePath)
+	if err != nil {
+		t.Fatalf("read current store failed: %v", err)
+	}
+	if !strings.Contains(string(currentData), `"items"`) {
+		t.Fatalf("expected rebuilt queue store json, got: %s", string(currentData))
 	}
 }

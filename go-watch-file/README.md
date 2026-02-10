@@ -58,6 +58,7 @@
   - 支持写法：`10s` / `10秒` / `10`。
 - `upload_workers` / `upload_queue_size`：上传并发与队列容量。
 - `upload_queue_persist_enabled` / `upload_queue_persist_file`：是否开启上传队列落盘与落盘文件路径（默认关闭，开启后为“至少一次”语义，需重启生效）。
+  - 当持久化文件损坏时，会自动备份为 `<原文件>.corrupt-时间戳.bak`，并降级为空队列继续启动。
 - `upload_retry_enabled`：是否启用上传失败重试（默认 true）。
 - `upload_retry_delays`：重试间隔列表（逗号/空白/分号分隔），默认 `1s,2s,5s`，非法项会忽略。
 - `system_resource_enabled`：系统资源面板开关（默认 false，开启后 `/api/system` 可用）。

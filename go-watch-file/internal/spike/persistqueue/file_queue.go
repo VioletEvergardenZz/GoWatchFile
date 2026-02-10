@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
+
+	"file-watch/internal/logger"
 )
 
 type fileQueueStore struct {
@@ -173,7 +176,7 @@ func (q *FileQueue) load() error {
 	}
 	var store fileQueueStore
 	if err := json.Unmarshal(data, &store); err != nil {
-		return fmt.Errorf("解析队列文件失败: %w", err)
+		return q.fallbackFromCorruptedStoreLocked(data, err)
 	}
 	q.items = append([]string(nil), store.Items...)
 	return nil
@@ -216,4 +219,24 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+func (q *FileQueue) fallbackFromCorruptedStoreLocked(rawData []byte, parseErr error) error {
+	backupPath := buildCorruptBackupPath(q.path)
+	if err := writeFileAtomic(backupPath, rawData, 0o644); err != nil {
+		return fmt.Errorf("解析队列文件失败且备份损坏文件失败: %w", err)
+	}
+
+	q.items = []string{}
+	if err := q.saveLocked(); err != nil {
+		return fmt.Errorf("队列文件损坏后重建空队列失败: %w", err)
+	}
+
+	logger.Error("上传持久化队列文件损坏，已降级为空队列并完成备份: 源文件=%s 备份文件=%s 错误=%v", q.path, backupPath, parseErr)
+	return nil
+}
+
+func buildCorruptBackupPath(path string) string {
+	timestamp := time.Now().UTC().Format("20060102T150405.000000000Z")
+	return fmt.Sprintf("%s.corrupt-%s.bak", path, timestamp)
 }

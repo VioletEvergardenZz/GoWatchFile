@@ -24,6 +24,7 @@ go build -o bin/file-watch cmd/main.go
 - 临时文件后缀会被忽略（如 `.tmp/.part/.crdownload`）。
 - `silence` 默认 `10s`，支持 `10s` / `10秒` / `10`。
 - `upload_queue_persist_enabled`/`upload_queue_persist_file` 控制上传队列落盘（默认关闭，静态配置，需重启生效）。
+  - 若持久化文件损坏，系统会备份损坏文件（`.corrupt-*.bak`）并降级为空队列继续运行。
 - `upload_retry_enabled`/`upload_retry_delays` 可控制上传重试开关与间隔（默认 `1s,2s,5s`）。
 - `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
 - `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。

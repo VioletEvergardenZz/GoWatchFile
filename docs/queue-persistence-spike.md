@@ -19,6 +19,7 @@
 - 默认关闭：通过 `upload_queue_persist_enabled` 或 `UPLOAD_QUEUE_PERSIST_ENABLED` 开启
 - 持久化文件：`upload_queue_persist_file` 或 `UPLOAD_QUEUE_PERSIST_FILE`，默认 `logs/upload-queue.json`
 - 语义说明：当前提供“至少一次”保障，不保证严格去重
+- 损坏降级：若持久化文件不可解析，会自动备份为 `.corrupt-*.bak` 并重建空队列，服务继续启动
 
 ## 运行方式
 在 `go-watch-file` 目录执行
@@ -44,5 +45,4 @@ go run ./cmd/queue-spike -action reset -store logs/queue-spike.json
 
 ## 后续建议
 - 将 `internal/spike/persistqueue` 迁移到正式目录（如 `internal/persistqueue`），避免“已上线能力仍在 spike 包”造成认知偏差
-- 补充队列文件损坏时的降级策略与告警
 - 评估去重策略（路径去重 / 内容指纹）以降低重复处理概率
