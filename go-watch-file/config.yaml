@@ -27,10 +27,10 @@ email_to: "${EMAIL_TO}"
 email_port: 587
 email_use_tls: true
 
-# S3 存储配置
+# OSS 存储配置
 bucket: "go-watch-file"
-ak: "${S3_AK}"
-sk: "${S3_SK}"
+ak: "${OSS_AK}"
+sk: "${OSS_SK}"
 endpoint: "oss-cn-hangzhou.aliyuncs.com"
 region: "cn-hangzhou"
 force_path_style: false

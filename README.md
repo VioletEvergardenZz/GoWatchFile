@@ -1,13 +1,13 @@
 # 通用文件监控与处理平台（Go Watch File / GWF）
 
-> 面向 SRE/运维的本地文件监控与入云平台。当前版本聚焦 Go Agent + 本地 API + 控制台；路由/编排/多 Agent 等能力在路线图中。
+> 面向 SRE/运维的文件监控与 AIOps 平台。当前版本聚焦 Go Agent + 本地 API + 控制台；AI 分析与告警能力已落地，路由/编排/多 Agent 等能力在路线图中。
 
 ## 当前能力
 - 递归监控目录，自动发现新增子目录（fsnotify）。
 - 多后缀过滤，可为空表示全量目录。
 - 临时文件后缀过滤（如 `.tmp/.part/.crdownload`）。
 - 写入完成判定（silence window，默认 10s，支持 `10s` / `10秒` / `10`）。
-- worker pool 并发上传到 S3 兼容存储（默认内存队列，可选持久化恢复）。
+- worker pool 并发上传到阿里云 OSS（默认内存队列，可选持久化恢复）。
 - 上传失败重试（可开关，可配置重试间隔）。
 - 钉钉机器人/邮件通知（可选）。
 - 告警决策：日志轮询、规则匹配、抑制/升级、告警概览与决策列表（规则由控制台维护并写入 `config.runtime.yaml`）。
@@ -16,22 +16,23 @@
 - 路径安全：相对路径校验、防止目录穿越、对象 Key 归一化。
 - 控制台前端：目录树、上传历史、队列趋势、Tail/检索、运行时配置、告警控制台、系统资源控制台。
 - AI 日志分析（可选，需配置 AI_* 并启用）。
+- AI 能力定位：作为平台主线能力持续建设，当前以“可配置开关 + 人工确认”为默认策略。
 
 ## 快速开始
 
 ### 后端（go-watch-file）
-1) 环境：Go 1.23+（`go.mod` 含 `toolchain go1.24.3`，支持自动下载）。
+1) 环境：Go 1.24+（`go.mod` 含 `toolchain go1.24.3`，支持自动下载）。
 2) 配置：
    ```bash
    cd go-watch-file
    cp .env.example .env
-   # 填写密钥相关变量（S3_AK/S3_SK、DINGTALK_*、EMAIL_*）
+   # 填写密钥相关变量（OSS_AK/OSS_SK、DINGTALK_*、EMAIL_*）
    # 填写 API 安全变量（API_AUTH_TOKEN、API_CORS_ORIGINS）
    # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
-   # 如需覆盖 S3 参数，可设置 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL
+   # 如需覆盖 OSS 参数，可设置 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
-   `config.yaml` 在密钥字段使用环境变量占位符，S3 连接参数默认在配置文件，也可用环境变量覆盖；队列持久化开关属于静态配置（需重启）；其他配置通过控制台设置并持久化到 `config.runtime.yaml`。
+   `config.yaml` 在密钥字段使用环境变量占位符，OSS 连接参数默认在配置文件，也可用环境变量覆盖；队列持久化开关属于静态配置（需重启）；其他配置通过控制台设置并持久化到 `config.runtime.yaml`。
 3) 启动：
    ```bash
    go build -o bin/file-watch cmd/main.go
@@ -75,6 +76,7 @@ docker compose down
 
 ## 文档入口
 - 平台概述：`docs/overview.md`
+- 阶段评估：`docs/tech-lead-assessment.md`
 - 开发指南：`docs/dev-guide.md`
 - 前后端联动：`docs/frontend-backend-linkage.md`
 - 队列与 worker：`docs/queue-worker-flow.md`

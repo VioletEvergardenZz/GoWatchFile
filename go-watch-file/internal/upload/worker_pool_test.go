@@ -199,5 +199,5 @@ func waitUntil(t *testing.T, timeout time.Duration, fn func() bool, message stri
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
-	t.Fatalf(message)
+	t.Fatal(message)
 }

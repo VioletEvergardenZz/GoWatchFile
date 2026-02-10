@@ -169,7 +169,7 @@ export const files: FileItem[] = [
 ];
 
 export const monitorNotes: MonitorNote[] = [
-  { title: "S3 连接", detail: "endpoint=minio.local · force_path_style=true · region=us-east-1" },
+  { title: "OSS 连接", detail: "endpoint=oss-cn-hangzhou.aliyuncs.com · region=cn-hangzhou" },
   { title: "上传工作池", detail: "workers=8 · queue=200 · 当前 backlog=32" },
   { title: "通知", detail: "钉钉机器人已配置 · 失败自动重试 3 次" },
 ];

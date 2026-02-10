@@ -36,7 +36,7 @@ func RelativePath(baseDir, fullPath string) (string, error) {
 	return toSlashPath(rel), nil
 }
 
-// BuildObjectKeyStrict 基于 watchDir 与 filePath 构造稳定的 S3 对象 key
+// BuildObjectKeyStrict 基于 watchDir 与 filePath 构造稳定的 OSS 对象 key
 func BuildObjectKeyStrict(watchDir, filePath string) (string, error) {
 	rel, err := RelativePath(watchDir, filePath)
 	if err != nil {

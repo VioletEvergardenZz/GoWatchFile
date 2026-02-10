@@ -90,16 +90,16 @@ func ValidateConfig(config *models.Config) error {
 	if err := validateFileExt(config.FileExt); err != nil {
 		return err
 	}
-	if err := requireValue(config.Bucket, "S3 Bucket"); err != nil {
+	if err := requireValue(config.Bucket, "OSS Bucket"); err != nil {
 		return err
 	}
 	if config.AK == "" || config.SK == "" {
-		return fmt.Errorf("S3认证信息不能为空")
+		return fmt.Errorf("OSS认证信息不能为空")
 	}
 	if err := validateEndpoint(config.Endpoint); err != nil {
 		return err
 	}
-	if err := requireValue(config.Region, "S3 Region"); err != nil {
+	if err := requireValue(config.Region, "OSS Region"); err != nil {
 		return err
 	}
 	if err := validateLogLevel(config.LogLevel); err != nil {
@@ -166,9 +166,9 @@ func applyEnvOverrides(cfg *models.Config) error {
 	if ok {
 		cfg.EmailUseTLS = emailUseTLS
 	}
-	cfg.Bucket = stringFromEnv("S3_BUCKET", cfg.Bucket)
-	cfg.Endpoint = stringFromEnv("S3_ENDPOINT", cfg.Endpoint)
-	cfg.Region = stringFromEnv("S3_REGION", cfg.Region)
+	cfg.Bucket = stringFromEnv("OSS_BUCKET", cfg.Bucket)
+	cfg.Endpoint = stringFromEnv("OSS_ENDPOINT", cfg.Endpoint)
+	cfg.Region = stringFromEnv("OSS_REGION", cfg.Region)
 	cfg.APIAuthToken = stringFromEnv("API_AUTH_TOKEN", cfg.APIAuthToken)
 	cfg.APICORSOrigins = stringFromEnv("API_CORS_ORIGINS", cfg.APICORSOrigins)
 	cfg.UploadQueuePersistFile = stringFromEnv("UPLOAD_QUEUE_PERSIST_FILE", cfg.UploadQueuePersistFile)
@@ -179,22 +179,22 @@ func applyEnvOverrides(cfg *models.Config) error {
 	if ok {
 		cfg.UploadQueuePersistEnabled = queuePersistEnabled
 	}
-	forcePathStyle, ok, err := boolFromEnv("S3_FORCE_PATH_STYLE")
+	forcePathStyle, ok, err := boolFromEnv("OSS_FORCE_PATH_STYLE")
 	if err != nil {
 		return err
 	}
 	if ok {
 		cfg.ForcePathStyle = forcePathStyle
 	}
-	disableSSL, ok, err := boolFromEnv("S3_DISABLE_SSL")
+	disableSSL, ok, err := boolFromEnv("OSS_DISABLE_SSL")
 	if err != nil {
 		return err
 	}
 	if ok {
 		cfg.DisableSSL = disableSSL
 	}
-	cfg.AK = stringFromEnv("S3_AK", cfg.AK)
-	cfg.SK = stringFromEnv("S3_SK", cfg.SK)
+	cfg.AK = stringFromEnv("OSS_AK", cfg.AK)
+	cfg.SK = stringFromEnv("OSS_SK", cfg.SK)
 	aiEnabled, ok, err := boolFromEnv("AI_ENABLED")
 	if err != nil {
 		return err
@@ -363,14 +363,14 @@ func validateFileExt(ext string) error {
 	return nil
 }
 
-// validateEndpoint 校验 S3 Endpoint，兼容带协议和不带协议写法
+// validateEndpoint 校验 OSS Endpoint，兼容带协议和不带协议写法
 func validateEndpoint(endpoint string) error {
-	if err := requireValue(endpoint, "S3 Endpoint"); err != nil {
+	if err := requireValue(endpoint, "OSS Endpoint"); err != nil {
 		return err
 	}
 	trimmed := strings.TrimSpace(endpoint)
 	if trimmed == "" {
-		return fmt.Errorf("S3 Endpoint不能为空")
+		return fmt.Errorf("OSS Endpoint不能为空")
 	}
 
 	parsed, err := url.Parse(trimmed)
@@ -380,7 +380,7 @@ func validateEndpoint(endpoint string) error {
 
 	parsed, err = url.Parse("//" + trimmed)
 	if err != nil || parsed.Host == "" {
-		return fmt.Errorf("无效的 S3 Endpoint: %s", endpoint)
+		return fmt.Errorf("无效的 OSS Endpoint: %s", endpoint)
 	}
 	return nil
 }

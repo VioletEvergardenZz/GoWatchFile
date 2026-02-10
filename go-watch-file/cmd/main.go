@@ -85,11 +85,11 @@ func logConfig(cfg *models.Config) {
 		logger.Info("监控排除: %s", cfg.WatchExclude)
 	}
 	logger.Info("文件后缀: %s", cfg.FileExt)
-	logger.Info("S3 Bucket: %s", cfg.Bucket)
-	logger.Info("S3 Endpoint: %s", cfg.Endpoint)
-	logger.Info("S3 Region: %s", cfg.Region)
-	logger.Info("S3 路径风格: %v", cfg.ForcePathStyle)
-	logger.Info("S3 禁用 SSL: %v", cfg.DisableSSL)
+	logger.Info("OSS Bucket: %s", cfg.Bucket)
+	logger.Info("OSS Endpoint: %s", cfg.Endpoint)
+	logger.Info("OSS Region: %s", cfg.Region)
+	logger.Info("OSS 路径风格: %v", cfg.ForcePathStyle)
+	logger.Info("OSS 禁用 SSL: %v", cfg.DisableSSL)
 	logToStd := cfg.LogToStd == nil || *cfg.LogToStd
 	logger.Info("日志级别: %s", cfg.LogLevel)
 	if cfg.LogFile != "" {

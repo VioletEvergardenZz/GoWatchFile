@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./Alert.css";
 import { alertConfigSnapshot, alertDashboard, alertRulesSnapshot } from "./mockData";
 import type {
+  AiLogSummary,
   AlertConfigResponse,
   AlertConfigSnapshot,
   AlertDashboard,
@@ -12,7 +13,7 @@ import type {
   AlertRuleset,
   AlertResponse,
 } from "./types";
-import { buildApiHeaders } from "./console/dashboardApi";
+import { buildApiHeaders, postAiLogSummary } from "./console/dashboardApi";
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
@@ -101,6 +102,20 @@ const resolveStatusTone = (status: AlertDecisionStatus) => {
 };
 
 const formatTime = (value: string) => (value && value !== "--" ? value : "--");
+
+const formatAiSummary = (analysis: AiLogSummary) => {
+  const parts: string[] = [];
+  if (analysis.summary?.trim()) {
+    parts.push(`摘要：${analysis.summary.trim()}`);
+  }
+  if (analysis.causes?.length) {
+    parts.push(`可能原因：${analysis.causes.join("；")}`);
+  }
+  if (analysis.suggestions?.length) {
+    parts.push(`建议动作：${analysis.suggestions.join("；")}`);
+  }
+  return parts.join("\n");
+};
 
 type MatchCaseMode = "inherit" | "case" | "nocase";
 type NotifyMode = "inherit" | "send" | "record";
@@ -276,6 +291,11 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
   const [configSaving, setConfigSaving] = useState(false);
   const [configMessage, setConfigMessage] = useState<string | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
+  const [aiTargetPath, setAiTargetPath] = useState("");
+  const [aiQuery, setAiQuery] = useState("error");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiSummary, setAiSummary] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [ruleset, setRuleset] = useState<RulesetDraft>(() =>
     USE_MOCK ? buildRulesetDraft(alertRulesSnapshot) : createDefaultRuleset()
   );
@@ -286,8 +306,8 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
   const [activePanel, setActivePanel] = useState<"rules" | "alerts" | "config">("rules");
   const [decisionPage, setDecisionPage] = useState(1);
   const [expandedGroups, setExpandedGroups] = useState<Record<AlertLevel, boolean>>(() => ({
-    fatal: true,
-    system: true,
+    fatal: false,
+    system: false,
     business: false,
     ignore: false,
   }));
@@ -376,6 +396,14 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     void fetchConfig();
   }, []);
 
+  useEffect(() => {
+    const candidates = splitTokens(alertConfig.logPaths);
+    setAiTargetPath((prev) => {
+      if (prev.trim()) return prev;
+      return candidates[0] ?? "";
+    });
+  }, [alertConfig.logPaths]);
+
   const fetchRules = async () => {
     if (USE_MOCK || rulesFetchingRef.current || !aliveRef.current) return;
     rulesFetchingRef.current = true;
@@ -451,6 +479,41 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
       setConfigError(msg);
     } finally {
       setConfigSaving(false);
+    }
+  };
+
+  const handleAiAnalyze = async () => {
+    setAiError(null);
+    setAiSummary(null);
+    const targetPath = aiTargetPath.trim();
+    if (!targetPath) {
+      setAiError("请先填写需要分析的后端日志路径");
+      return;
+    }
+    const query = aiQuery.trim();
+    setAiLoading(true);
+    try {
+      const payload = await postAiLogSummary({
+        path: targetPath,
+        mode: query ? "search" : "tail",
+        query: query || undefined,
+        limit: 200,
+      });
+      if (!payload.ok || !payload.analysis) {
+        setAiError(payload.error ?? "AI 分析失败");
+        return;
+      }
+      const summary = formatAiSummary(payload.analysis);
+      if (!summary) {
+        setAiError("AI 返回为空，请调整关键词或检查日志内容");
+        return;
+      }
+      setAiSummary(summary);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "AI 分析失败";
+      setAiError(msg);
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -605,6 +668,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
 
   const configStatusLabel = configLoading ? "配置加载中" : alertConfig.enabled ? "已启用" : "已停用";
   const configDisabled = configLoading || configSaving;
+  const aiAnalyzeDisabled = aiLoading || configLoading;
   const totalDecisionPages = Math.max(1, Math.ceil(decisions.length / DECISIONS_PAGE_SIZE));
   const pagedDecisions = decisions.slice(
     (decisionPage - 1) * DECISIONS_PAGE_SIZE,
@@ -890,14 +954,39 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
               />
             </div>
           </div>
+          <div className="inputs config-fields">
+            <div className="input">
+              <label>AI 分析日志路径</label>
+              <input
+                placeholder="/var/log/app/error.log"
+                value={aiTargetPath}
+                disabled={aiAnalyzeDisabled}
+                onChange={(e) => setAiTargetPath(e.target.value)}
+              />
+            </div>
+            <div className="input">
+              <label>错误关键词（可选）</label>
+              <input
+                placeholder="error / exception / panic"
+                value={aiQuery}
+                disabled={aiAnalyzeDisabled}
+                onChange={(e) => setAiQuery(e.target.value)}
+              />
+            </div>
+          </div>
         </div>
         <div className="toolbar config-actions">
           <div className="toolbar-actions">
+            <button className="btn secondary" type="button" onClick={() => void handleAiAnalyze()} disabled={aiAnalyzeDisabled}>
+              {aiLoading ? "分析中..." : "AI 快速分析"}
+            </button>
             <button className="btn" type="button" onClick={() => void handleConfigSave()} disabled={configDisabled}>
               {configSaving ? "保存中..." : "保存配置"}
             </button>
           </div>
         </div>
+        {aiSummary ? <pre className="badge" style={{ whiteSpace: "pre-wrap" }}>{aiSummary}</pre> : null}
+        {aiError ? <div className="warn-text">{aiError}</div> : null}
         {configMessage ? <div className="badge">{configMessage}</div> : null}
         {configError ? <div className="warn-text">{configError}</div> : null}
         </section>

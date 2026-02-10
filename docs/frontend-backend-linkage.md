@@ -219,6 +219,7 @@ sequenceDiagram
 - `POST /api/ai/log-summary`
 - 请求体：`{ "path": "...", "mode": "tail", "query": "", "limit": 200, "caseSensitive": false }`
 - 说明：需启用 `ai_enabled` 并配置 `AI_*`。
+- 路径范围：`path` 支持 `watch_dir` 下文件，也支持 `alert_log_paths` 中配置的日志路径（用于后端报错日志分析）。
 
 **7) 健康检查**
 - `GET /api/health`
@@ -247,7 +248,7 @@ sequenceDiagram
 ---
 
 ## 5. 注意事项
-- `/api/config` 更新运行态配置，并在可写时持久化到 `config.runtime.yaml`；S3 与通知配置需改 `.env` 并重启。
+- `/api/config` 更新运行态配置，并在可写时持久化到 `config.runtime.yaml`；OSS 与通知配置需改 `.env` 并重启。
 - `upload_queue_persist_*` 为静态配置，不支持通过 `/api/config` 在线切换，修改后需重启。
 - `/api/alert-config` 更新告警相关配置，并在可写时持久化到 `config.runtime.yaml`（不写回 `config.yaml`）。
 - `/api/alert-rules` 保存规则后写入 `config.runtime.yaml`；未保存的规则刷新会被覆盖。

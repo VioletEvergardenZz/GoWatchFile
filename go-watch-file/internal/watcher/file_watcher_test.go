@@ -1,7 +1,10 @@
 // 本文件用于文件监控相关测试
 package watcher
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestIsTempFile(t *testing.T) {
 	cases := []struct {
@@ -30,6 +33,28 @@ func TestIsTempFile(t *testing.T) {
 			got := isTempFile(tc.filePath)
 			if got != tc.want {
 				t.Fatalf("isTempFile(%q) = %v, want %v", tc.filePath, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestParseSilenceWindow(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  string
+		want time.Duration
+	}{
+		{name: "duration string", raw: "15s", want: 15 * time.Second},
+		{name: "chinese seconds", raw: "20秒", want: 20 * time.Second},
+		{name: "plain number", raw: "30", want: 30 * time.Second},
+		{name: "invalid fallback", raw: "bad", want: defaultSilenceWindow},
+		{name: "empty fallback", raw: "", want: defaultSilenceWindow},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := parseSilenceWindow(tc.raw)
+			if got != tc.want {
+				t.Fatalf("parseSilenceWindow(%q) = %v, want %v", tc.raw, got, tc.want)
 			}
 		})
 	}

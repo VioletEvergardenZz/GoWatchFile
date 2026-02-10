@@ -20,9 +20,9 @@ import (
 	"file-watch/internal/logger"
 	"file-watch/internal/match"
 	"file-watch/internal/models"
+	"file-watch/internal/oss"
 	"file-watch/internal/pathutil"
 	"file-watch/internal/persistqueue"
-	"file-watch/internal/s3"
 	"file-watch/internal/state"
 	"file-watch/internal/upload"
 	"file-watch/internal/watcher"
@@ -32,7 +32,7 @@ import (
 type FileService struct {
 	config        *models.Config
 	configPath    string
-	s3Client      *s3.Client
+	ossClient     *oss.Client
 	dingtalkRobot *dingtalk.Robot
 	emailSender   *email.Sender
 	uploadPool    *upload.WorkerPool
@@ -66,7 +66,7 @@ func NewFileService(config *models.Config, configPath string) (*FileService, err
 		logger.Warn("预加载历史文件失败: %v", err)
 	}
 
-	s3Client, err := newS3Client(config)
+	ossClient, err := newOSSClient(config)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +74,7 @@ func NewFileService(config *models.Config, configPath string) (*FileService, err
 	fileService := &FileService{
 		config:        config,
 		configPath:    strings.TrimSpace(configPath),
-		s3Client:      s3Client,
+		ossClient:     ossClient,
 		dingtalkRobot: newDingTalkRobot(config),
 		emailSender:   newEmailSender(config),
 		state:         runtimeState,
@@ -108,11 +108,11 @@ func NewFileService(config *models.Config, configPath string) (*FileService, err
 	return fileService, nil
 }
 
-// newS3Client 初始化 S3 客户端
-func newS3Client(config *models.Config) (*s3.Client, error) {
-	client, err := s3.NewClient(config)
+// newOSSClient 初始化 OSS 客户端
+func newOSSClient(config *models.Config) (*oss.Client, error) {
+	client, err := oss.NewClient(config)
 	if err != nil {
-		return nil, fmt.Errorf("初始化S3客户端失败: %w", err)
+		return nil, fmt.Errorf("初始化OSS客户端失败: %w", err)
 	}
 	return client, nil
 }
@@ -276,7 +276,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	oldState := fs.state
 	oldWatcher := fs.watcher
 	oldPool := fs.uploadPool
-	oldS3 := fs.s3Client
+	oldOSS := fs.ossClient
 	oldPersistQueue := fs.persistQueue
 	// 复制旧配置作为更新基线
 	current := *oldCfg
@@ -335,8 +335,8 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	// 迁移旧的计数与历史数据
 	newState.CarryOverFrom(oldState)
 
-	// 初始化新的 S3 客户端
-	newS3, err := newS3Client(&updated)
+	// 初始化新的 OSS 客户端
+	newOSS, err := newOSSClient(&updated)
 	if err != nil {
 		return nil, err
 	}
@@ -366,7 +366,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	fs.uploadPool = newPool
 	fs.persistQueue = newPersistQueue
 	fs.watcher = activeWatcher
-	fs.s3Client = newS3
+	fs.ossClient = newOSS
 	fs.state.SetQueueStats(fs.uploadPool.GetStats())
 	fs.mu.Unlock()
 
@@ -384,7 +384,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 			fs.uploadPool = oldPool
 			fs.persistQueue = oldPersistQueue
 			fs.watcher = oldWatcher
-			fs.s3Client = oldS3
+			fs.ossClient = oldOSS
 			if fs.state != nil && fs.uploadPool != nil {
 				fs.state.SetQueueStats(fs.uploadPool.GetStats())
 			}
@@ -403,7 +403,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 			fs.uploadPool = oldPool
 			fs.persistQueue = oldPersistQueue
 			fs.watcher = oldWatcher
-			fs.s3Client = oldS3
+			fs.ossClient = oldOSS
 			if fs.state != nil && fs.uploadPool != nil {
 				fs.state.SetQueueStats(fs.uploadPool.GetStats())
 			}
@@ -416,8 +416,8 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	if oldPool != nil {
 		_ = oldPool.ShutdownGraceful(shutdownTimeout)
 	}
-	if oldS3 != nil {
-		// aws sdk 无需显式关闭客户端，保留占位以示释放顺序
+	if oldOSS != nil {
+		// oss sdk 无需显式关闭客户端，保留占位以示释放顺序
 	}
 
 	logger.Info("运行时配置已更新: watchDir=%s, fileExt=%s, silence=%s, workers=%d, queue=%d",
@@ -542,7 +542,7 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 		if fs.state != nil {
 			fs.state.MarkFailed(filePath, err)
 		}
-		return fmt.Errorf("上传文件到S3失败: %w", err)
+		return fmt.Errorf("上传文件到OSS失败: %w", err)
 	}
 
 	fileName := filepath.Base(filePath)
@@ -562,11 +562,11 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 
 // uploadFileWithRetry 负责上传重试，避免短暂失败导致任务丢失
 func (fs *FileService) uploadFileWithRetry(ctx context.Context, filePath string) (string, error) {
-	if fs.s3Client == nil {
-		return "", fmt.Errorf("S3客户端未初始化")
+	if fs.ossClient == nil {
+		return "", fmt.Errorf("OSS客户端未初始化")
 	}
 	if !isUploadRetryEnabled(fs.config) {
-		return fs.s3Client.UploadFile(ctx, filePath)
+		return fs.ossClient.UploadFile(ctx, filePath)
 	}
 	delays := parseUploadRetryDelays(fs.config)
 	tries := len(delays) + 1
@@ -575,7 +575,7 @@ func (fs *FileService) uploadFileWithRetry(ctx context.Context, filePath string)
 		if ctx != nil && ctx.Err() != nil {
 			return "", ctx.Err()
 		}
-		downloadURL, err := fs.s3Client.UploadFile(ctx, filePath)
+		downloadURL, err := fs.ossClient.UploadFile(ctx, filePath)
 		if err == nil {
 			return downloadURL, nil
 		}

@@ -544,7 +544,7 @@ func parseSilenceWindow(raw string) time.Duration {
 		return d
 	}
 
-	numRe := regexp.MustCompile(`\\d+`)
+	numRe := regexp.MustCompile(`\d+`)
 	if m := numRe.FindString(clean); m != "" {
 		if v, err := strconv.Atoi(m); err == nil && v > 0 {
 			return time.Duration(v) * time.Second

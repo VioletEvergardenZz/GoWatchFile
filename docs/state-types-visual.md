@@ -181,7 +181,7 @@ class MonitorNote {
 }
 ```
 
-来源：`MonitorNotes(cfg)`，展示 S3 与 worker 配置摘要。
+来源：`MonitorNotes(cfg)`，展示 OSS 与 worker 配置摘要。
 
 ---
 

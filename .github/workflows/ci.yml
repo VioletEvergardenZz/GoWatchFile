@@ -31,6 +31,10 @@ jobs:
           queue_tmp="${RUNNER_TEMP}/queue-admin-ci"
           mkdir -p "$queue_tmp"
 
+          write_corrupt() {
+            printf '{bad-json' > "$queue_tmp/corrupt.json"
+          }
+
           go build -o "$queue_tmp/queue-admin" ./cmd/queue-admin
 
           "$queue_tmp/queue-admin" -action check -store "$queue_tmp/healthy.json"
@@ -38,7 +42,7 @@ jobs:
           echo "$healthy_json" | grep -q '"action":"check"'
           echo "$healthy_json" | grep -q '"status":"ok"'
 
-          printf '{bad-json' > "$queue_tmp/corrupt.json"
+          write_corrupt
           set +e
           "$queue_tmp/queue-admin" -action check -store "$queue_tmp/corrupt.json"
           code=$?
@@ -47,6 +51,8 @@ jobs:
             echo "expected degraded exit code 3, got $code"
             exit 1
           fi
+
+          write_corrupt
           set +e
           corrupt_json=$("$queue_tmp/queue-admin" -action check -format json -store "$queue_tmp/corrupt.json")
           json_code=$?
@@ -57,6 +63,7 @@ jobs:
           fi
           echo "$corrupt_json" | grep -q '"status":"degraded"'
 
+          write_corrupt
           set +e
           "$queue_tmp/queue-admin" -action check -strict -store "$queue_tmp/corrupt.json"
           strict_code=$?
@@ -65,6 +72,8 @@ jobs:
             echo "expected strict degraded exit code 2, got $strict_code"
             exit 1
           fi
+
+          write_corrupt
           set +e
           strict_json=$("$queue_tmp/queue-admin" -action check -format json -strict -store "$queue_tmp/corrupt.json")
           strict_json_code=$?

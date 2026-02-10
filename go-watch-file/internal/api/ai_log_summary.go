@@ -227,16 +227,12 @@ func validateAISettings(cfg *models.Config) error {
 
 // validateLogPath 用于校验输入合法性并提前失败
 func validateLogPath(cfg *models.Config, rawPath string) (string, error) {
+	if cfg == nil {
+		return "", fmt.Errorf("config not loaded")
+	}
 	cleanedPath := filepath.Clean(filepath.FromSlash(strings.TrimSpace(rawPath)))
-	if strings.TrimSpace(cfg.WatchDir) == "" {
-		return "", fmt.Errorf("watch dir not configured")
-	}
-	watchDirs := pathutil.SplitWatchDirs(cfg.WatchDir)
-	if len(watchDirs) == 0 {
-		return "", fmt.Errorf("watch dir not configured")
-	}
-	if _, _, err := pathutil.RelativePathAny(watchDirs, cleanedPath); err != nil {
-		return "", err
+	if strings.TrimSpace(cleanedPath) == "" || cleanedPath == "." {
+		return "", fmt.Errorf("path is required")
 	}
 	info, err := os.Stat(cleanedPath)
 	if err != nil {
@@ -245,7 +241,73 @@ func validateLogPath(cfg *models.Config, rawPath string) (string, error) {
 	if info.IsDir() {
 		return "", fmt.Errorf("path is a directory")
 	}
-	return cleanedPath, nil
+	if isPathAllowedByWatchDirs(cfg.WatchDir, cleanedPath) {
+		return cleanedPath, nil
+	}
+	if isPathAllowedByAlertLogPaths(cfg.AlertLogPaths, cleanedPath) {
+		return cleanedPath, nil
+	}
+	return "", fmt.Errorf("path is outside watch_dir and alert_log_paths")
+}
+
+// isPathAllowedByWatchDirs 用于判断文件路径是否位于监控目录下
+func isPathAllowedByWatchDirs(rawWatchDirs, targetPath string) bool {
+	watchDirs := pathutil.SplitWatchDirs(rawWatchDirs)
+	if len(watchDirs) == 0 {
+		return false
+	}
+	_, _, err := pathutil.RelativePathAny(watchDirs, targetPath)
+	return err == nil
+}
+
+// isPathAllowedByAlertLogPaths 用于判断文件路径是否命中告警日志路径白名单
+func isPathAllowedByAlertLogPaths(rawAlertLogPaths, targetPath string) bool {
+	alertPaths := splitLogPaths(rawAlertLogPaths)
+	if len(alertPaths) == 0 {
+		return false
+	}
+	for _, path := range alertPaths {
+		candidate := filepath.Clean(filepath.FromSlash(path))
+		if candidate == "" || candidate == "." {
+			continue
+		}
+		if candidate == targetPath {
+			return true
+		}
+		info, err := os.Stat(candidate)
+		if err != nil || !info.IsDir() {
+			continue
+		}
+		if _, relErr := pathutil.RelativePath(candidate, targetPath); relErr == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// splitLogPaths 用于解析日志路径列表（逗号/分号/空白/中文分隔符）
+func splitLogPaths(raw string) []string {
+	parts := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' ' || r == '，' || r == '；'
+	})
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{})
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		normalized := filepath.Clean(filepath.FromSlash(trimmed))
+		if normalized == "" || normalized == "." {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		out = append(out, normalized)
+	}
+	return out
 }
 
 // resolveLogMode 用于解析依赖并返回可用结果

@@ -1,12 +1,12 @@
 # 通用文件监控管理系统 - Roadmap / TODO（按模块蓝图对齐）
 
-> 目标：依照大纲模块，将系统演进为通用“文件监控 + 上传 + 路由/编排 + 可视化”平台。先稳固 Agent，再补齐控制面、路由编排、可视化与分析。
+> 目标：将系统演进为“文件监控 + 上传 + 告警决策 + AI 运维分析 + 路由编排”平台。先稳可靠性与观测，再补齐控制面与 AIOps 能力。
 
 ## 当前已落地（基于现有代码）
 - 递归目录监听 + 新增子目录自动发现（fsnotify）。
 - 多后缀过滤与写入完成判定（静默窗口）。
 - 临时文件后缀过滤（如 .tmp/.part/.crdownload）。
-- 内存队列 + worker pool 并发上传至 S3。
+- 内存队列 + worker pool 并发上传至 OSS。
 - 上传失败重试（可开关/可配置间隔）。
 - 控制台 API：dashboard/自动上传开关/手动上传/file-log/ai-log-summary/config/health/alerts/alert-config/alert-rules/system。
 - 前端控制台联动：目录树、上传记录、队列趋势、日志 Tail、AI 总结、配置更新、告警控制台。
@@ -16,12 +16,18 @@
 - 钉钉机器人通知（可选）。
 - 告警决策模块：日志轮询、规则匹配、抑制与异常升级。
 
+## 阶段优先级校准（当前决策）
+- **P0（当前 1~2 个迭代）**：上传可靠性、健康指标、告警与 AI 分析可用性治理。
+- **P1（随后 2~4 个迭代）**：多 Agent 控制面 MVP、事件与任务模型落地。
+- **P2（中期）**：路由编排、SLA 报表、AIOps 异常检测与根因关联。
+
 ## 阶段 0：基线整理
 - [x] 清理/迁移旧版 OOM 资料，统一命名。  
 - [x] 配置模板完善：`.env.example`、`config.yaml` 注释与示例。  
 - [x] README/开发指南/FAQ 补全。  
 - [x] 控制台 API 与前端联调基础链路。  
 - [ ] 基础验证：`go test ./...`，单机端到端上传 + 通知。  
+- [ ] AI 基线验证：固定样例日志回放，确认 AI 结果结构稳定（summary/severity/suggestions）。
 
 ## 阶段 1：Agent 采集与上传传输
 - [x] 文件匹配：多后缀。  
@@ -33,13 +39,14 @@
 - [x] 静默时间可调（`silence`）。
 - [ ] 指标与日志：Prometheus（事件速率、队列长度、上传耗时、错误码），结构化日志。  
 - [x] 配置体验：启动校验与运行时更新（watchDir/fileExt/silence/workers/queue/uploadRetryDelays/uploadRetryEnabled/systemResourceEnabled）。  
-- [ ] 测试：pathutil/upload/watcher/s3 mock；端到端上传 + 通知。  
+- [ ] 测试：pathutil/upload/watcher/oss mock；端到端上传 + 通知。  
+- [ ] AI 稳定性：AI 请求超时/降级/重试策略与错误分类指标。
 
 ## 阶段 2：控制与配置（多 Agent 管理）
 - [ ] 模型：FileSource、FileEvent、Task(Action)、Notification。  
 - [ ] Agent 管理：注册/心跳、主机组/应用分组，配置中心拉/推，版本与灰度。  
 - [ ] API：REST/gRPC（状态查询、重试/取消、手动触发、Agent 状态）。  
-- [ ] 凭证与安全：S3/通知 Secret 管理，最小权限示例。  
+- [ ] 凭证与安全：OSS/通知 Secret 管理，最小权限示例。  
 - [ ] 基础仪表 API：成功率、失败分布、滞留统计。  
 - [ ] 审计：操作日志与鉴权（Token/Bearer → 后续 RBAC）。  
 
@@ -61,12 +68,14 @@
 - [ ] 日志可视化：全文检索/关键词搜索，对接 ELK/Loki/Graylog 或内置轻量视图。  
 - [ ] 告警策略：上传失败率、处理超时、Agent 离线、SLA 未达；渠道（邮件/钉钉/Webhook），告警聚合/抑制。  
 - [ ] Agent 状态面板：心跳、版本、配置、最近错误。  
+- [ ] 告警 AI 面板：对决策记录展示 AI 摘要、原因与建议动作。
 
 ## 阶段 6：分析报表与 SLA
 - [ ] 报表：日/周上传量、大小分布、吞吐/耗时、失败率、滞留数。  
 - [ ] 趋势与容量：容量/成本预测，存储生命周期与分级策略建议。  
 - [ ] 异常检测：量级突增/失败率突升自动提醒。  
 - [ ] SLA/SLO：定义、达成率计算、违规告警。  
+- [ ] 根因关联：结合配置变更、版本变更、下游错误码做关联分析。
 
 ## 阶段 7：发布与运维
 - [ ] 交付资产：Docker/Helm/Compose 样例，挂载配置与凭证。  
@@ -77,7 +86,7 @@
 - [ ] 安全合规：渗透/安全扫描、密钥轮换流程、最小权限示例策略。  
 
 ## 数据与配置草案
-- **Agent 配置**：watch_dir、watch_exclude、file_ext（多值）、ignore 列表、静默时间、upload_workers、upload_queue_size、upload_retry_enabled/upload_retry_delays、S3（bucket/ak/sk/endpoint/region/force_path_style/disable_ssl）、通知（钉钉等）、日志。  
+- **Agent 配置**：watch_dir、watch_exclude、file_ext（多值）、ignore 列表、静默时间、upload_workers、upload_queue_size、upload_retry_enabled/upload_retry_delays、OSS（bucket/ak/sk/endpoint/region/force_path_style/disable_ssl）、通知（钉钉等）、日志。  
 - **表设计雏形**：  
   - `file_sources`：来源目录/租户/标签。  
   - `file_events`：事件明细（路径、大小、hash、产生时间、状态）。  
@@ -87,7 +96,7 @@
   - `routing_rules`：规则定义与版本。  
 
 ## 风险与注意事项
-- 存储兼容性：不同 S3 实现的 path-style/SSL/分段要求。  
+- 存储兼容性：不同 OSS 实现的 path-style/SSL/分段要求。  
 - 大文件与频繁写入：静默时间、分段/断点策略，避免半文件。  
 - 网络与认证：内网/外网访问、代理、凭证刷新与密钥管理。  
 - 安全：目录穿越防护、凭证隔离、Webhook 鉴权、最小权限访问。  

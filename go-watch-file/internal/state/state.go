@@ -654,7 +654,7 @@ func (s *RuntimeState) MonitorNotes(cfg *models.Config) []MonitorNote {
 		retryStatus = "开启"
 	}
 	return []MonitorNote{
-		{Title: "S3 连接", Detail: fmt.Sprintf("endpoint=%s · region=%s", cfg.Endpoint, cfg.Region)},
+		{Title: "OSS 连接", Detail: fmt.Sprintf("endpoint=%s · region=%s", cfg.Endpoint, cfg.Region)},
 		{Title: "上传工作池", Detail: fmt.Sprintf("workers=%d · queue=%d · 当前 backlog=%d", cfg.UploadWorkers, cfg.UploadQueueSize, s.queueLen)},
 		{Title: "上传重试", Detail: fmt.Sprintf("%s · 间隔 %s", retryStatus, retryDelays)},
 		{Title: "通知", Detail: "钉钉通知 / 邮件通知"},

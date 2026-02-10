@@ -392,19 +392,20 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     if (view === "alert") return;
     if (view === "console" && !bootstrapped) return;
     const sectionIds = view === "system" ? SYSTEM_SECTION_IDS : SECTION_IDS;
-    visibleSectionsRef.current.clear();
+    const visibleSections = visibleSectionsRef.current;
+    visibleSections.clear();
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           const id = entry.target.id;
           if (!id) return;
           if (entry.isIntersecting) {
-            visibleSectionsRef.current.set(id, entry);
+            visibleSections.set(id, entry);
           } else {
-            visibleSectionsRef.current.delete(id);
+            visibleSections.delete(id);
           }
         });
-        const visibleEntries = Array.from(visibleSectionsRef.current.values());
+        const visibleEntries = Array.from(visibleSections.values());
         if (!visibleEntries.length) return;
         const sorted = visibleEntries.sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
         const firstBelow = sorted.find((entry) => entry.boundingClientRect.top >= 0);
@@ -418,7 +419,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     targets.forEach((el) => observer.observe(el));
     return () => {
       observer.disconnect();
-      visibleSectionsRef.current.clear();
+      visibleSections.clear();
     };
   }, [bootstrapped, view]);
 

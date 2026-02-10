@@ -1,33 +1,33 @@
 # File Watch Service（go-watch-file）
 
-一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到 S3 兼容存储，支持上传失败重试、钉钉机器人通知与邮件通知，并提供 AI 日志分析（可选）。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail/检索、系统资源面板与运行时配置。
+一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到阿里云 OSS，支持上传失败重试、钉钉机器人通知与邮件通知，并提供 AI 日志分析。AI 能力是平台主线能力，运行时可按环境开关控制。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail/检索、系统资源面板与运行时配置。
 
 ## 配置说明（控制台优先）
 
 - 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, upload_retry_enabled, upload_retry_delays, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
-- `config.yaml` 保留静态配置（S3 连接参数/日志/API bind/队列持久化开关），也可被环境变量覆盖。
-- 环境变量主要用于密钥、安全与 AI 配置（S3_AK/S3_SK, DINGTALK_*, EMAIL_*, API_*, AI_*），并支持可选覆盖 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL/UPLOAD_QUEUE_PERSIST_*。
+- `config.yaml` 保留静态配置（OSS 连接参数/日志/API bind/队列持久化开关），也可被环境变量覆盖。
+- 环境变量主要用于密钥、安全与 AI 配置（OSS_AK/OSS_SK, DINGTALK_*, EMAIL_*, API_*, AI_*），并支持可选覆盖 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL/UPLOAD_QUEUE_PERSIST_*。
 
 ## 工作方式（按实际代码）
 1) fsnotify 递归监听 `watch_dir`（支持多目录 运行中自动发现新建子目录）
 2) 按 `file_ext` 过滤目标文件（支持多后缀；为空表示不过滤），并忽略临时后缀（如 `.tmp/.part/.crdownload`）。
 3) 文件写入完成判定：在静默窗口内无新写入才入队（默认 10s）。
-4) 入队后由 WorkerPool 并发上传至 S3 兼容存储，失败按配置重试。
+4) 入队后由 WorkerPool 并发上传至阿里云 OSS，失败按配置重试。
 5) 写入状态与上传结果写入运行态（Dashboard/时间线/上传记录）。
 6) 钉钉机器人可选通知，支持邮件通知（需配置 SMTP）。
 
 ## 快速上手
-1) 环境：Go 1.23+（`go.mod` 含 `toolchain go1.24.3`）。
+1) 环境：Go 1.24+（`go.mod` 含 `toolchain go1.24.3`）。
 2) 复制并填写环境变量：
    ```bash
    cp .env.example .env
-   # 填写密钥（S3_AK/S3_SK, DINGTALK_*, EMAIL_*）
+   # 填写密钥（OSS_AK/OSS_SK, DINGTALK_*, EMAIL_*）
    # 填写 API 安全（API_AUTH_TOKEN, API_CORS_ORIGINS）
    # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
-   # 如需覆盖 S3 参数，可设置 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL
+   # 如需覆盖 OSS 参数，可设置 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
-3) 配置文件：密钥字段使用占位符，S3 连接参数默认在 `config.yaml`，也可用环境变量覆盖。
+3) 配置文件：密钥字段使用占位符，OSS 连接参数默认在 `config.yaml`，也可用环境变量覆盖。
 4) 构建与运行：
    ```bash
    go build -o bin/file-watch cmd/main.go
@@ -36,7 +36,7 @@
 5) 停止：`Ctrl + C`，服务会优雅退出并等待队列 drain。
 
 配置优先级：config.yaml -> config.runtime.yaml -> 环境变量覆盖 -> 默认值。
-环境变量仅覆盖 S3 / 通知 / API 安全 / AI / 队列持久化相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
+环境变量仅覆盖 OSS / 通知 / API 安全 / AI / 队列持久化相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
 管理接口默认要求 `API_AUTH_TOKEN`，仅 `/api/health` 允许匿名访问。
 
 `.env` 读取策略：会尝试加载当前目录的 `.env`，以及配置文件同目录的 `.env`；仅在系统环境未设置时生效。
@@ -45,7 +45,7 @@
 
 ### 必填字段
 - `watch_dir`：监控目录（支持多目录 逗号或分号分隔，可为空由控制台设置）
-- `bucket` / `ak` / `sk` / `endpoint` / `region`：S3 访问配置。
+- `bucket` / `ak` / `sk` / `endpoint` / `region`：OSS 访问配置。
 - `log_level`：`debug|info|warn|error`。
 - `api_bind`：API 监听地址（默认 `:8080`）。
 - `api_auth_token`：管理接口鉴权令牌（建议从 `API_AUTH_TOKEN` 注入）。
@@ -62,7 +62,7 @@
 - `upload_retry_enabled`：是否启用上传失败重试（默认 true）。
 - `upload_retry_delays`：重试间隔列表（逗号/空白/分号分隔），默认 `1s,2s,5s`，非法项会忽略。
 - `system_resource_enabled`：系统资源面板开关（默认 false，开启后 `/api/system` 可用）。
-- `force_path_style` / `disable_ssl`：S3 兼容性开关。
+- `force_path_style` / `disable_ssl`：OSS 地址开关。
 - `dingtalk_webhook` / `dingtalk_secret`：钉钉机器人（可选）。
 - `email_host` / `email_port` / `email_user` / `email_pass` / `email_from` / `email_to` / `email_use_tls`：SMTP 邮件通知（与钉钉同内容，可选）。
 - `robot_key`：预留字段，当前代码未使用。
@@ -99,8 +99,8 @@ email_port: 587
 email_use_tls: true
 
 bucket: "go-watch-file"
-ak: "${S3_AK}"
-sk: "${S3_SK}"
+ak: "${OSS_AK}"
+sk: "${OSS_SK}"
 endpoint: "oss-cn-hangzhou.aliyuncs.com"
 region: "cn-hangzhou"
 force_path_style: false
@@ -137,7 +137,7 @@ ai_max_lines: 200
 
 
 ### 环境变量模板（.env.example）
-`.env.example` 已提供模板，可按需补充 `S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL` 与 AI 相关变量。
+`.env.example` 已提供模板，可按需补充 `OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL` 与 AI 相关变量。
 
 ### 告警规则文件示例
 参考 `alert-rules.example.yaml`，按需调整关键词、级别与抑制窗口。
@@ -169,6 +169,7 @@ ai_max_lines: 200
 - `POST /api/ai/log-summary`
 - Body：`{ "path": "/path/to/file", "mode": "tail", "query": "", "limit": 200, "caseSensitive": false }`
 - 说明：需 `ai_enabled=true` 且 AI_* 配置齐全；`mode=search` 必须带 `query`；`limit` 不传时使用 `ai_max_lines`。
+- 路径范围：`path` 支持 `watch_dir` 下的文件，也支持 `alert_log_paths` 中声明的日志路径（便于直接分析后端报错日志）。
 
 ### 6) 运行时配置更新
 - `POST /api/config`
@@ -185,7 +186,7 @@ ai_max_lines: 200
     "systemResourceEnabled": true
   }
   ```
-- 说明：仅更新目录/后缀/静默窗口/并发/队列/重试参数/系统资源开关。S3 与通知配置需改配置文件并重启。
+- 说明：仅更新目录/后缀/静默窗口/并发/队列/重试参数/系统资源开关。OSS 与通知配置需改配置文件并重启。
 
 ### 7) 健康检查
 - `GET /api/health`

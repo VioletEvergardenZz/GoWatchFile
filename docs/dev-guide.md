@@ -1,9 +1,9 @@
 # 开发指南
 
 ## 环境准备
-- Go 1.23+（`go.mod` 含 `toolchain go1.24.3`）。
+- Go 1.24+（`go.mod` 含 `toolchain go1.24.3`）。
 - Node.js 18+（前端开发）。
-- S3 兼容对象存储（本地可用 MinIO/OSS/COS）。
+- 阿里云 OSS（本地可用 MinIO/OSS/COS）。
 - 钉钉机器人/SMTP 邮件（可选）。
 
 ## 本地启动（后端）
@@ -26,15 +26,15 @@ go build -o bin/file-watch cmd/main.go
 - `upload_queue_persist_enabled`/`upload_queue_persist_file` 控制上传队列落盘（默认关闭，静态配置，需重启生效）。
   - 若持久化文件损坏，系统会备份损坏文件（`.corrupt-*.bak`）并降级为空队列继续运行。
 - `upload_retry_enabled`/`upload_retry_delays` 可控制上传重试开关与间隔（默认 `1s,2s,5s`）。
-- `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
-- `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
+- `OSS_ENDPOINT` 可带协议或不带协议（如 `https://oss-cn-hangzhou.aliyuncs.com` 或 `oss-cn-hangzhou.aliyuncs.com`）。
+- `OSS_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
 - `system_resource_enabled` 默认 `false`，需在控制台开启后才能访问 `/api/system`。
 - 管理接口要求 `API_AUTH_TOKEN`（`/api/health` 除外）。
 - `API_CORS_ORIGINS` 控制允许跨域来源，多个来源用逗号分隔。
   - 本地开发建议包含 `http://localhost:5173`（Vite）与 `http://localhost:8081`（前端容器）。
 
 ### 环境变量覆盖范围
-- 仅会覆盖 S3 / 通知 / API 安全 / AI / 队列持久化相关字段（`S3_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`、`API_*`、`AI_*`、`UPLOAD_QUEUE_PERSIST_*`）。
+- 仅会覆盖 OSS / 通知 / API 安全 / AI / 队列持久化相关字段（`OSS_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`、`API_*`、`AI_*`、`UPLOAD_QUEUE_PERSIST_*`）。
 - `watch_dir` / `file_ext` / `watch_exclude` / `log_level` / `alert_*` 不会被环境变量覆盖。
 
 ### 告警模式配置要点
@@ -44,9 +44,9 @@ go build -o bin/file-watch cmd/main.go
 - `alert_suppress_enabled=false` 可关闭抑制，所有命中都会发送通知。
 
 ### 本地 MinIO 示例（示意）
-- `S3_ENDPOINT=127.0.0.1:9000`
-- `S3_FORCE_PATH_STYLE=true`
-- `S3_DISABLE_SSL=true`
+- `OSS_ENDPOINT=127.0.0.1:9000`
+- `OSS_FORCE_PATH_STYLE=true`
+- `OSS_DISABLE_SSL=true`
 
 ## 启动前端
 ```bash
@@ -84,7 +84,7 @@ docker compose down
 - `systemResourceEnabled`
 - `upload_queue_persist_enabled` / `upload_queue_persist_file` 不在 `/api/config` 更新范围内，需改 `config.yaml` 或 `.env` 后重启。
 
-S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env`，变更后需重启后端。
+OSS 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env`，变更后需重启后端。
 
 告警配置通过 `/api/alert-config` 更新，实时生效，且在可写时持久化到 `config.runtime.yaml`。
 告警规则通过 `/api/alert-rules` 保存并写入 `config.runtime.yaml`。
@@ -95,6 +95,7 @@ S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env
 
 ## AI 日志分析
 - `POST /api/ai/log-summary` 触发 AI 总结（需启用 `ai_enabled` 并配置 `AI_*`）。
+- `path` 可来自 `watch_dir` 范围内文件，也可直接使用 `alert_log_paths` 中配置的后端日志文件。
 
 ## 仪表盘轻量刷新
 - `GET /api/dashboard?mode=light` 或 `mode=lite` 返回不含目录树与文件列表的轻量数据，适合高频轮询。

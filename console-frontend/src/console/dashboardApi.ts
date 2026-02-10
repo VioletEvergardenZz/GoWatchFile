@@ -44,7 +44,9 @@ const readErrorDetail = async (res: Response) => {
   try {
     const payload = JSON.parse(text) as { error?: string };
     if (payload?.error) return payload.error.trim();
-  } catch {}
+  } catch (error) {
+    void error;
+  }
   return text.trim();
 };
 

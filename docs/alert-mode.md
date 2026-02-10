@@ -169,7 +169,14 @@ rules:
 ### 8.2 配置 Tab
 - 告警开关 / 抑制开关 / 从末尾开始。
 - 告警日志路径、轮询间隔。
+- AI 分析日志路径、错误关键词（可选）与“AI 快速分析”按钮。
 - 保存后实时生效，并写入 `config.runtime.yaml`。
+- AI 分析结果会在配置页按钮下方直接展示。
+
+AI 快速分析使用建议：
+- `AI 分析日志路径` 优先填写后端错误日志文件（可直接用 `alert_log_paths` 中的路径）。
+- `错误关键词` 不填时按文件尾部分析（tail）；填写后按关键词检索分析（search）。
+- 若结果为空，先检查关键词是否过窄，再扩大日志范围或时间窗口重试。
 
 ### 8.3 规则 Tab
 - **按级别分组**：致命 / 系统 / 业务 / 忽略。
@@ -184,6 +191,10 @@ rules:
 - `POST /api/alert-config`：更新告警配置（持久化到 `config.runtime.yaml`）。
 - `GET /api/alert-rules`：读取规则内容。
 - `POST /api/alert-rules`：保存规则内容（持久化到 `config.runtime.yaml`）。
+- `POST /api/ai/log-summary`：触发 AI 日志分析（需开启 `ai_enabled` 且配置 `AI_*`）。
+  - `mode=tail`：分析日志尾部。
+  - `mode=search`：按 `query` 检索后分析。
+  - `path` 白名单：位于 `watch_dir` 下，或命中 `alert_log_paths` 中的路径。
 
 若告警未启用，`/api/alerts` 返回 `error: "告警未启用"`。
 

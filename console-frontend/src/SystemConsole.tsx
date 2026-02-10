@@ -50,7 +50,9 @@ const safeStringArray = (value: unknown) => {
     .filter((item) => item !== "");
 };
 
-const normalizeOverview = (raw: any): SystemOverview => ({
+type LooseRecord = Record<string, unknown>;
+
+const normalizeOverview = (raw: LooseRecord | null | undefined): SystemOverview => ({
   host: safeString(raw?.host, "--"),
   os: safeString(raw?.os, "--"),
   kernel: safeString(raw?.kernel, "--"),
@@ -65,7 +67,7 @@ const normalizeOverview = (raw: any): SystemOverview => ({
   topProcess: safeString(raw?.topProcess, "--"),
 });
 
-const normalizeGauge = (raw: any): SystemResourceGauge => {
+const normalizeGauge = (raw: LooseRecord | null | undefined): SystemResourceGauge => {
   const tone = raw?.tone;
   const normalizedTone = tone === "warn" || tone === "critical" || tone === "normal" ? tone : undefined;
   const id = raw?.id === "cpu" || raw?.id === "memory" || raw?.id === "disk" ? raw.id : "cpu";
@@ -81,14 +83,14 @@ const normalizeGauge = (raw: any): SystemResourceGauge => {
   };
 };
 
-const normalizeVolume = (raw: any): SystemVolume => ({
+const normalizeVolume = (raw: LooseRecord | null | undefined): SystemVolume => ({
   mount: safeString(raw?.mount, "--"),
   usedPct: clampPct(safeNumber(raw?.usedPct, 0)),
   used: safeString(raw?.used, "--"),
   total: safeString(raw?.total, "--"),
 });
 
-const normalizeProcess = (raw: any): SystemProcess => {
+const normalizeProcess = (raw: LooseRecord | null | undefined): SystemProcess => {
   const status = raw?.status;
   const normalizedStatus: SystemProcessStatus =
     status === "running" || status === "sleeping" || status === "stopped" || status === "zombie" ? status : "sleeping";
