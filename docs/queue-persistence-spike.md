@@ -4,8 +4,8 @@
 降低“重启后队列丢失”这一核心不确定性，先验证最小可行方案，再决定是否接入主链路
 
 ## 本次 Spike 产物
-- PoC 实现：`go-watch-file/internal/spike/persistqueue/file_queue.go`
-- PoC 测试：`go-watch-file/internal/spike/persistqueue/file_queue_test.go`
+- PoC 实现：`go-watch-file/internal/persistqueue/file_queue.go`
+- PoC 测试：`go-watch-file/internal/persistqueue/file_queue_test.go`
 - 可运行命令：`go-watch-file/cmd/queue-spike/main.go`
 
 ## 方案摘要
@@ -44,5 +44,4 @@ go run ./cmd/queue-spike -action reset -store logs/queue-spike.json
 - 异常中断后是否会产生损坏文件
 
 ## 后续建议
-- 将 `internal/spike/persistqueue` 迁移到正式目录（如 `internal/persistqueue`），避免“已上线能力仍在 spike 包”造成认知偏差
 - 评估去重策略（路径去重 / 内容指纹）以降低重复处理概率

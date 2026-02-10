@@ -7,7 +7,7 @@ import (
 	"log"
 	"strings"
 
-	"file-watch/internal/spike/persistqueue"
+	"file-watch/internal/persistqueue"
 )
 
 func main() {

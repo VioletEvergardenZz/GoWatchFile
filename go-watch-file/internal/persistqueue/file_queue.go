@@ -1,4 +1,4 @@
-// 本文件用于队列持久化 spike 的文件队列实现
+// 本文件用于上传队列持久化的文件队列实现
 package persistqueue
 
 import (
@@ -200,7 +200,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 			return err
 		}
 	}
-	tmp, err := os.CreateTemp(dir, "queue-spike-*.tmp")
+	tmp, err := os.CreateTemp(dir, "persist-queue-*.tmp")
 	if err != nil {
 		return err
 	}

@@ -1,4 +1,4 @@
-// 本文件用于文件持久化队列 spike 测试
+// 本文件用于文件持久化队列测试
 package persistqueue
 
 import (
