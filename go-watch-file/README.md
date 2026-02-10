@@ -198,7 +198,14 @@ ai_max_lines: 200
     "queueFullTotal": 0,
     "retryTotal": 0,
     "uploadFailureTotal": 0,
-    "failureReasons": []
+    "failureReasons": [],
+    "persistQueue": {
+      "enabled": false,
+      "storeFile": "",
+      "recoveredTotal": 0,
+      "corruptFallbackTotal": 0,
+      "persistWriteFailureTotal": 0
+    }
   }
   ```
 

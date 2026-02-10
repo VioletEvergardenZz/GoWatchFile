@@ -17,11 +17,22 @@ type fileQueueStore struct {
 	Items []string `json:"items"`
 }
 
-// FileQueue 表示文件持久化队列（PoC）
+// HealthStats 表示持久化队列健康指标
+type HealthStats struct {
+	StoreFile                string
+	RecoveredTotal           uint64
+	CorruptFallbackTotal     uint64
+	PersistWriteFailureTotal uint64
+}
+
+// FileQueue 表示文件持久化队列
 type FileQueue struct {
-	path  string
-	mu    sync.Mutex
-	items []string
+	path                     string
+	mu                       sync.Mutex
+	items                    []string
+	recoveredTotal           uint64
+	corruptFallbackTotal     uint64
+	persistWriteFailureTotal uint64
 }
 
 // NewFileQueue 创建并加载持久化队列
@@ -50,10 +61,16 @@ func (q *FileQueue) Enqueue(item string) error {
 		return fmt.Errorf("入队元素不能为空")
 	}
 	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	prevItems := append([]string(nil), q.items...)
 	q.items = append(q.items, trimmed)
-	err := q.saveLocked()
-	q.mu.Unlock()
-	return err
+	if err := q.saveLocked(); err != nil {
+		q.persistWriteFailureTotal++
+		q.items = prevItems
+		return err
+	}
+	return nil
 }
 
 // Dequeue 出队并持久化
@@ -66,9 +83,12 @@ func (q *FileQueue) Dequeue() (string, bool, error) {
 	if len(q.items) == 0 {
 		return "", false, nil
 	}
+	prevItems := append([]string(nil), q.items...)
 	item := q.items[0]
 	q.items = append([]string(nil), q.items[1:]...)
 	if err := q.saveLocked(); err != nil {
+		q.persistWriteFailureTotal++
+		q.items = prevItems
 		return "", false, err
 	}
 	return item, true, nil
@@ -85,6 +105,7 @@ func (q *FileQueue) RemoveOne(item string) (bool, error) {
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	prevItems := append([]string(nil), q.items...)
 	idx := -1
 	for i, val := range q.items {
 		if val == trimmed {
@@ -100,6 +121,8 @@ func (q *FileQueue) RemoveOne(item string) (bool, error) {
 	next = append(next, q.items[idx+1:]...)
 	q.items = next
 	if err := q.saveLocked(); err != nil {
+		q.persistWriteFailureTotal++
+		q.items = prevItems
 		return false, err
 	}
 	return true, nil
@@ -116,6 +139,7 @@ func (q *FileQueue) RemoveLastOne(item string) (bool, error) {
 	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	prevItems := append([]string(nil), q.items...)
 	idx := -1
 	for i := len(q.items) - 1; i >= 0; i-- {
 		if q.items[i] == trimmed {
@@ -131,6 +155,8 @@ func (q *FileQueue) RemoveLastOne(item string) (bool, error) {
 	next = append(next, q.items[idx+1:]...)
 	q.items = next
 	if err := q.saveLocked(); err != nil {
+		q.persistWriteFailureTotal++
+		q.items = prevItems
 		return false, err
 	}
 	return true, nil
@@ -153,10 +179,40 @@ func (q *FileQueue) Reset() error {
 		return fmt.Errorf("队列未初始化")
 	}
 	q.mu.Lock()
+	prevItems := append([]string(nil), q.items...)
 	q.items = []string{}
 	err := q.saveLocked()
+	if err != nil {
+		q.persistWriteFailureTotal++
+		q.items = prevItems
+	}
 	q.mu.Unlock()
 	return err
+}
+
+// RecordRecovered 记录启动恢复到内存队列的任务数
+func (q *FileQueue) RecordRecovered(count int) {
+	if q == nil || count <= 0 {
+		return
+	}
+	q.mu.Lock()
+	q.recoveredTotal += uint64(count)
+	q.mu.Unlock()
+}
+
+// HealthStats 返回持久化队列健康指标快照
+func (q *FileQueue) HealthStats() HealthStats {
+	if q == nil {
+		return HealthStats{}
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return HealthStats{
+		StoreFile:                q.path,
+		RecoveredTotal:           q.recoveredTotal,
+		CorruptFallbackTotal:     q.corruptFallbackTotal,
+		PersistWriteFailureTotal: q.persistWriteFailureTotal,
+	}
 }
 
 func (q *FileQueue) load() error {
@@ -222,6 +278,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 }
 
 func (q *FileQueue) fallbackFromCorruptedStoreLocked(rawData []byte, parseErr error) error {
+	q.corruptFallbackTotal++
 	backupPath := buildCorruptBackupPath(q.path)
 	if err := writeFileAtomic(backupPath, rawData, 0o644); err != nil {
 		return fmt.Errorf("解析队列文件失败且备份损坏文件失败: %w", err)
@@ -229,6 +286,7 @@ func (q *FileQueue) fallbackFromCorruptedStoreLocked(rawData []byte, parseErr er
 
 	q.items = []string{}
 	if err := q.saveLocked(); err != nil {
+		q.persistWriteFailureTotal++
 		return fmt.Errorf("队列文件损坏后重建空队列失败: %w", err)
 	}
 

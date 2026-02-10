@@ -179,4 +179,53 @@ func TestFileQueue_CorruptedStoreFallback(t *testing.T) {
 	if !strings.Contains(string(currentData), `"items"`) {
 		t.Fatalf("expected rebuilt queue store json, got: %s", string(currentData))
 	}
+
+	stats := queue.HealthStats()
+	if stats.CorruptFallbackTotal != 1 {
+		t.Fatalf("corrupt fallback total expected 1, got %d", stats.CorruptFallbackTotal)
+	}
+	if stats.StoreFile != storePath {
+		t.Fatalf("store file expected %s, got %s", storePath, stats.StoreFile)
+	}
+}
+
+func TestFileQueue_WriteFailureRollbackAndMetrics(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "queue.json")
+	queue, err := NewFileQueue(storePath)
+	if err != nil {
+		t.Fatalf("create queue failed: %v", err)
+	}
+	if err := queue.Enqueue("a"); err != nil {
+		t.Fatalf("enqueue a failed: %v", err)
+	}
+
+	// 将队列文件路径改成“文件路径/子路径”，触发持久化写失败
+	queue.path = filepath.Join(storePath, "child.json")
+	if err := queue.Enqueue("b"); err == nil {
+		t.Fatal("expected enqueue b failed")
+	}
+
+	items := queue.Items()
+	if len(items) != 1 || items[0] != "a" {
+		t.Fatalf("expected items rollback to [a], got %+v", items)
+	}
+	stats := queue.HealthStats()
+	if stats.PersistWriteFailureTotal == 0 {
+		t.Fatalf("persist write failure total expected >0, got %d", stats.PersistWriteFailureTotal)
+	}
+}
+
+func TestFileQueue_RecordRecovered(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "queue.json")
+	queue, err := NewFileQueue(storePath)
+	if err != nil {
+		t.Fatalf("create queue failed: %v", err)
+	}
+	queue.RecordRecovered(2)
+	queue.RecordRecovered(-1)
+	queue.RecordRecovered(0)
+	stats := queue.HealthStats()
+	if stats.RecoveredTotal != 2 {
+		t.Fatalf("recovered total expected 2, got %d", stats.RecoveredTotal)
+	}
 }

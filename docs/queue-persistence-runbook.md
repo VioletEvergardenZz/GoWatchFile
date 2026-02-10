@@ -54,6 +54,13 @@ go run ./cmd/queue-admin -action dequeue -store logs/upload-queue.json
 go run ./cmd/queue-admin -action reset -store logs/upload-queue.json
 ```
 
+### 6.1 健康观察（/api/health）
+- `persistQueue.enabled`：是否开启持久化队列
+- `persistQueue.storeFile`：当前持久化文件路径
+- `persistQueue.recoveredTotal`：累计恢复到内存队列的任务数
+- `persistQueue.corruptFallbackTotal`：累计损坏降级次数
+- `persistQueue.persistWriteFailureTotal`：累计持久化写失败次数
+
 ## 7. 现场核对清单
 - 重启前入队的任务，重启后是否可恢复
 - 连续执行 `enqueue/dequeue` 后，队列文件是否可持续解析

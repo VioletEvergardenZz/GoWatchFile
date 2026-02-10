@@ -77,6 +77,15 @@ type FailureReasonCount struct {
 	Count  uint64 `json:"count"`
 }
 
+// PersistQueueHealth 表示上传持久化队列健康指标
+type PersistQueueHealth struct {
+	Enabled                  bool   `json:"enabled"`
+	StoreFile                string `json:"storeFile"`
+	RecoveredTotal           uint64 `json:"recoveredTotal"`
+	CorruptFallbackTotal     uint64 `json:"corruptFallbackTotal"`
+	PersistWriteFailureTotal uint64 `json:"persistWriteFailureTotal"`
+}
+
 // HealthSnapshot 表示健康检查返回的运行指标
 type HealthSnapshot struct {
 	QueueLength        int                  `json:"queue"`
@@ -86,4 +95,5 @@ type HealthSnapshot struct {
 	RetryTotal         uint64               `json:"retryTotal"`
 	UploadFailureTotal uint64               `json:"uploadFailureTotal"`
 	FailureReasons     []FailureReasonCount `json:"failureReasons"`
+	PersistQueue       PersistQueueHealth   `json:"persistQueue"`
 }

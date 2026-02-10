@@ -3,7 +3,11 @@ package service
 
 import (
 	"errors"
+	"path/filepath"
 	"testing"
+
+	"file-watch/internal/models"
+	"file-watch/internal/persistqueue"
 )
 
 func TestHealthSnapshot_CountersAndReasons(t *testing.T) {
@@ -35,6 +39,44 @@ func TestHealthSnapshot_CountersAndReasons(t *testing.T) {
 	}
 	if snapshot.FailureReasons[0].Reason != "network timeout" || snapshot.FailureReasons[0].Count != 2 {
 		t.Fatalf("top reason expected network timeout x2, got %s x%d", snapshot.FailureReasons[0].Reason, snapshot.FailureReasons[0].Count)
+	}
+	if snapshot.PersistQueue.Enabled {
+		t.Fatalf("persist queue expected disabled by default")
+	}
+}
+
+func TestHealthSnapshot_PersistQueueStats(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "queue.json")
+	store, err := persistqueue.NewFileQueue(storePath)
+	if err != nil {
+		t.Fatalf("new persist queue failed: %v", err)
+	}
+	store.RecordRecovered(3)
+
+	fs := &FileService{
+		config: &models.Config{
+			UploadQueuePersistEnabled: true,
+			UploadQueuePersistFile:    storePath,
+		},
+		persistQueue: store,
+		failReasons:  make(map[string]uint64),
+	}
+
+	snapshot := fs.HealthSnapshot()
+	if !snapshot.PersistQueue.Enabled {
+		t.Fatalf("persist queue expected enabled")
+	}
+	if snapshot.PersistQueue.StoreFile != storePath {
+		t.Fatalf("persist queue store file expected %s, got %s", storePath, snapshot.PersistQueue.StoreFile)
+	}
+	if snapshot.PersistQueue.RecoveredTotal != 3 {
+		t.Fatalf("persist queue recovered total expected 3, got %d", snapshot.PersistQueue.RecoveredTotal)
+	}
+	if snapshot.PersistQueue.CorruptFallbackTotal != 0 {
+		t.Fatalf("persist queue corrupt fallback total expected 0, got %d", snapshot.PersistQueue.CorruptFallbackTotal)
+	}
+	if snapshot.PersistQueue.PersistWriteFailureTotal != 0 {
+		t.Fatalf("persist queue write failure total expected 0, got %d", snapshot.PersistQueue.PersistWriteFailureTotal)
 	}
 }
 

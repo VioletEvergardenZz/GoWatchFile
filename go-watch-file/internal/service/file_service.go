@@ -36,6 +36,7 @@ type FileService struct {
 	dingtalkRobot *dingtalk.Robot
 	emailSender   *email.Sender
 	uploadPool    *upload.WorkerPool
+	persistQueue  *persistqueue.FileQueue
 	watcher       *watcher.FileWatcher
 	alertManager  *alert.Manager
 	state         *state.RuntimeState
@@ -90,11 +91,12 @@ func NewFileService(config *models.Config, configPath string) (*FileService, err
 	}
 	fileService.alertManager = alertManager
 
-	uploadPool, err := newUploadPool(config, fileService.processFile, fileService.handlePoolStats)
+	uploadPool, persistStore, err := newUploadPool(config, fileService.processFile, fileService.handlePoolStats)
 	if err != nil {
 		return nil, err
 	}
 	fileService.uploadPool = uploadPool
+	fileService.persistQueue = persistStore
 	runtimeState.SetQueueStats(uploadPool.GetStats())
 
 	fileWatcher, err := newFileWatcher(config, fileService)
@@ -197,21 +199,27 @@ func parseEmailRecipients(raw string) []string {
 }
 
 // newUploadPool 创建上传工作池
-func newUploadPool(config *models.Config, handler func(context.Context, string) error, onStats func(models.UploadStats)) (*upload.WorkerPool, error) {
+func newUploadPool(config *models.Config, handler func(context.Context, string) error, onStats func(models.UploadStats)) (*upload.WorkerPool, *persistqueue.FileQueue, error) {
 	var queueStore upload.QueueStore
+	var persistStore *persistqueue.FileQueue
 	if config.UploadQueuePersistEnabled {
 		storePath := strings.TrimSpace(config.UploadQueuePersistFile)
 		if storePath == "" {
 			storePath = defaultUploadQueuePersistFile
 		}
-		persistStore, err := persistqueue.NewFileQueue(storePath)
+		store, err := persistqueue.NewFileQueue(storePath)
 		if err != nil {
-			return nil, fmt.Errorf("初始化上传持久化队列失败: %w", err)
+			return nil, nil, fmt.Errorf("初始化上传持久化队列失败: %w", err)
 		}
-		queueStore = persistStore
+		persistStore = store
+		queueStore = store
 		logger.Info("上传持久化队列已启用: %s", storePath)
 	}
-	return upload.NewWorkerPool(config.UploadWorkers, config.UploadQueueSize, handler, onStats, queueStore)
+	pool, err := upload.NewWorkerPool(config.UploadWorkers, config.UploadQueueSize, handler, onStats, queueStore)
+	if err != nil {
+		return nil, nil, err
+	}
+	return pool, persistStore, nil
 }
 
 // handlePoolStats 将队列统计写入运行态
@@ -269,6 +277,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	oldWatcher := fs.watcher
 	oldPool := fs.uploadPool
 	oldS3 := fs.s3Client
+	oldPersistQueue := fs.persistQueue
 	// 复制旧配置作为更新基线
 	current := *oldCfg
 	fs.mu.Unlock()
@@ -333,7 +342,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	}
 
 	// 初始化新的上传工作池
-	newPool, err := newUploadPool(&updated, fs.processFile, fs.handlePoolStats)
+	newPool, newPersistQueue, err := newUploadPool(&updated, fs.processFile, fs.handlePoolStats)
 	if err != nil {
 		return nil, err
 	}
@@ -354,6 +363,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	fs.config = &updated
 	fs.state = newState
 	fs.uploadPool = newPool
+	fs.persistQueue = newPersistQueue
 	fs.watcher = activeWatcher
 	fs.s3Client = newS3
 	fs.state.SetQueueStats(fs.uploadPool.GetStats())
@@ -370,6 +380,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 			fs.config = oldCfg
 			fs.state = oldState
 			fs.uploadPool = oldPool
+			fs.persistQueue = oldPersistQueue
 			fs.watcher = oldWatcher
 			fs.s3Client = oldS3
 			if fs.state != nil && fs.uploadPool != nil {
@@ -387,6 +398,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 			fs.config = oldCfg
 			fs.state = oldState
 			fs.uploadPool = oldPool
+			fs.persistQueue = oldPersistQueue
 			fs.watcher = oldWatcher
 			fs.s3Client = oldS3
 			if fs.state != nil && fs.uploadPool != nil {
@@ -752,6 +764,29 @@ func (fs *FileService) GetStats() models.UploadStats {
 // HealthSnapshot 返回运行健康指标
 func (fs *FileService) HealthSnapshot() models.HealthSnapshot {
 	queueStats := fs.GetStats()
+	persistHealth := models.PersistQueueHealth{}
+
+	fs.mu.Lock()
+	cfg := fs.config
+	persistStore := fs.persistQueue
+	fs.mu.Unlock()
+
+	if cfg != nil && cfg.UploadQueuePersistEnabled {
+		persistHealth.Enabled = true
+		persistHealth.StoreFile = strings.TrimSpace(cfg.UploadQueuePersistFile)
+		if persistHealth.StoreFile == "" {
+			persistHealth.StoreFile = defaultUploadQueuePersistFile
+		}
+	}
+	if persistStore != nil {
+		stats := persistStore.HealthStats()
+		if strings.TrimSpace(stats.StoreFile) != "" {
+			persistHealth.StoreFile = stats.StoreFile
+		}
+		persistHealth.RecoveredTotal = stats.RecoveredTotal
+		persistHealth.CorruptFallbackTotal = stats.CorruptFallbackTotal
+		persistHealth.PersistWriteFailureTotal = stats.PersistWriteFailureTotal
+	}
 
 	fs.metricsMu.Lock()
 	snapshot := models.HealthSnapshot{
@@ -762,6 +797,7 @@ func (fs *FileService) HealthSnapshot() models.HealthSnapshot {
 		RetryTotal:         fs.retryTotal,
 		UploadFailureTotal: fs.uploadFailure,
 		FailureReasons:     make([]models.FailureReasonCount, 0, len(fs.failReasons)),
+		PersistQueue:       persistHealth,
 	}
 	for reason, count := range fs.failReasons {
 		snapshot.FailureReasons = append(snapshot.FailureReasons, models.FailureReasonCount{

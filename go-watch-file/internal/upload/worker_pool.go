@@ -42,6 +42,11 @@ type QueueStore interface {
 	Items() []string
 }
 
+// QueueRecoverRecorder 用于记录持久化队列恢复数量
+type QueueRecoverRecorder interface {
+	RecordRecovered(count int)
+}
+
 var (
 	// ErrQueueFull 表示上传队列已满
 	ErrQueueFull = errors.New("upload queue full")
@@ -265,6 +270,7 @@ func (p *WorkerPool) recoverPersistedItems() error {
 	if len(items) == 0 {
 		return nil
 	}
+	recoveredCount := 0
 	logger.Info("上传工作池开始恢复持久化队列: %d 条", len(items))
 	for _, item := range items {
 		trimmed := strings.TrimSpace(item)
@@ -273,12 +279,26 @@ func (p *WorkerPool) recoverPersistedItems() error {
 		}
 		select {
 		case <-p.ctx.Done():
+			p.recordRecoveredCount(recoveredCount)
 			return ErrPoolClosed
 		case p.uploadQueue <- trimmed:
+			recoveredCount++
 		}
 	}
+	p.recordRecoveredCount(recoveredCount)
 	logger.Info("上传工作池恢复持久化队列完成: %d 条", len(items))
 	return nil
+}
+
+func (p *WorkerPool) recordRecoveredCount(recoveredCount int) {
+	if p == nil || p.queueStore == nil || recoveredCount <= 0 {
+		return
+	}
+	recorder, ok := p.queueStore.(QueueRecoverRecorder)
+	if !ok {
+		return
+	}
+	recorder.RecordRecovered(recoveredCount)
 }
 
 func (p *WorkerPool) ackPersistedItem(filePath string) error {

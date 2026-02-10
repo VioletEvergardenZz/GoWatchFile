@@ -13,6 +13,7 @@ type mockQueueStore struct {
 	items              []string
 	removeOneCalls     int
 	removeLastOneCalls int
+	recoveredCount     int
 }
 
 func (m *mockQueueStore) Enqueue(item string) error {
@@ -65,6 +66,18 @@ func (m *mockQueueStore) RemoveCalls() (int, int) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return m.removeOneCalls, m.removeLastOneCalls
+}
+
+func (m *mockQueueStore) RecordRecovered(count int) {
+	m.mu.Lock()
+	m.recoveredCount += count
+	m.mu.Unlock()
+}
+
+func (m *mockQueueStore) RecoveredCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.recoveredCount
 }
 
 func TestWorkerPool_PersistQueueSuccessAck(t *testing.T) {
@@ -129,6 +142,9 @@ func TestWorkerPool_RecoverPersistedItems(t *testing.T) {
 
 	if got := len(store.Items()); got != 0 {
 		t.Fatalf("expected recovered items acked, got %d", got)
+	}
+	if got := store.RecoveredCount(); got != 2 {
+		t.Fatalf("expected recovered count 2, got %d", got)
 	}
 }
 
