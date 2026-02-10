@@ -78,7 +78,7 @@ docker compose down
 - 开发指南：`docs/dev-guide.md`
 - 前后端联动：`docs/frontend-backend-linkage.md`
 - 队列与 worker：`docs/queue-worker-flow.md`
-- 队列持久化 Spike：`docs/queue-persistence-spike.md`
+- 队列持久化运行手册：`docs/queue-persistence-runbook.md`
 - DTO 结构：`docs/state-types-visual.md`
 - 告警模式：`docs/alert-mode.md`
 - 告警控制台：`docs/alert-console.md`

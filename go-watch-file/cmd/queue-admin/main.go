@@ -1,4 +1,4 @@
-// 本文件用于队列持久化 spike 命令入口
+// 本文件用于上传持久化队列管理命令入口
 package main
 
 import (
@@ -12,14 +12,14 @@ import (
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatalf("queue-spike 执行失败: %v", err)
+		log.Fatalf("queue-admin 执行失败: %v", err)
 	}
 }
 
 func run() error {
-	storePath := flag.String("store", "logs/queue-spike.json", "队列存储文件路径")
+	storePath := flag.String("store", "logs/upload-queue.json", "队列存储文件路径")
 	action := flag.String("action", "peek", "操作类型：enqueue|dequeue|peek|reset")
-	item := flag.String("item", "", "入队元素，action=enqueue 时必填")
+	item := flag.String("item", "", "队列元素，action=enqueue 时必填")
 	flag.Parse()
 
 	queue, err := persistqueue.NewFileQueue(*storePath)

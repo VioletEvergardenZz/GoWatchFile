@@ -89,6 +89,8 @@ sequenceDiagram
 ### 4.4 使用边界
 - 默认仅存在内存中，服务重启后队列清空。
 - 开启 `upload_queue_persist_enabled` 后，任务会落盘并在重启后恢复，语义为“至少一次”。
+- `upload_queue_persist_*` 为静态配置，不能通过 `/api/config` 在线切换，修改后需重启服务。
+- 持久化文件损坏时，会备份为 `.corrupt-*.bak` 并降级为空队列继续启动。
 - 当前不做去重，极端故障场景下同一路径可能被重复处理。
 
 ## 5. Worker 完成的“任务”是什么
@@ -125,14 +127,22 @@ queueLen = QueueLength + InFlight
   - `uploadQueue` 队列
   - `inFlight` 处理中计数
   - `GetStats()` 输出统计快照
+  - `recoverPersistedItems/ackPersistedItem` 负责持久化队列恢复与确认
 
 - `go-watch-file/internal/service/file_service.go`
   - `enqueueFile` 入队后更新统计
   - `handlePoolStats` 接收 worker 完成后的统计更新
+  - `newUploadPool` 负责按配置启用持久化队列
 
 - `go-watch-file/internal/state/state.go`
   - `SetQueueStats` 计算队列深度并写入状态
 
+- `go-watch-file/internal/persistqueue/file_queue.go`
+  - 文件持久化队列实现（入队、确认、恢复、损坏降级）
+
 - `console-frontend/src/App.tsx`
   - 定时拉取 `/api/dashboard`
   - 展示队列深度与图表趋势
+
+## 9. 补充文档
+- 队列持久化细节、降级策略与运维命令见 `docs/queue-persistence-runbook.md`

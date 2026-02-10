@@ -1,6 +1,6 @@
-# 系统资源管理控制台接口说明
+# 系统资源控制台接口说明
 
-本文说明资源管理控制台所依赖的后端接口、字段含义与采样策略。
+本文说明系统资源控制台依赖的后端接口、字段语义、采样策略与安全边界
 
 ---
 
@@ -8,11 +8,23 @@
 
 **GET `/api/system`**
 
-Query 参数：
-- `mode=lite`：仅返回概览/指标/分区，不包含进程列表。
-- `limit=200`：限制返回进程数量；`0` 表示不限制；不传时默认 200。
+### Query 参数
+- `mode=lite` 或 `mode=light`
+  - 仅返回概览/仪表盘/分区信息
+  - 跳过进程列表采集（`systemProcesses` 为空）
+- `limit=200`
+  - 限制返回的进程数量
+  - `0` 表示不限制
+  - 不传时使用默认值 200
+- `includeEnv=true`
+  - 返回进程环境变量
+  - 默认不返回（即使返回进程列表也会清空 `Env` 字段）
 
-返回结构：
+### 启用要求
+- 需先开启 `systemResourceEnabled`
+- 若未开启，接口返回 `403`
+
+### 返回结构
 ```json
 {
   "systemOverview": {},
@@ -22,45 +34,60 @@ Query 参数：
 }
 ```
 
-启用要求：
-- 需在控制台开启 `systemResourceEnabled`（`/api/config` 可更新），否则接口返回 403。
-
 ---
 
 ## 2. 字段说明
 
-### 2.1 systemOverview
-- `host`：主机名。
-- `os`：系统版本（平台 + 版本）。
-- `kernel`：内核版本。
-- `uptime`：运行时长（中文格式）。
-- `load`：负载均值（1/5/15 分钟）。
-- `ip`：主机 IP（取首个非环回 IPv4）。
-- `lastUpdated`：采样时间（`HH:MM:SS`）。
-- `processes`：进程总数。
-- `connections`：活动连接总数（优先排除 LISTEN）。
-- `connectionsBreakdown`：连接状态摘要。
-- `cpuTemp`：CPU 温度（无法读取时为 `--`）。
-- `topProcess`：CPU 占用最高的进程名称。
+### 2.1 `systemOverview`
+- `host`：主机名
+- `os`：系统版本（平台 + 版本）
+- `kernel`：内核版本
+- `uptime`：运行时长（中文格式）
+- `load`：负载均值（1/5/15 分钟）
+- `ip`：主机 IP（首个非回环 IPv4）
+- `lastUpdated`：采样时间（`HH:MM:SS`）
+- `processes`：进程总数
+- `connections`：活动连接总数（优先排除 `LISTEN`）
+- `connectionsBreakdown`：连接状态分布
+- `cpuTemp`：CPU 温度（不可读时为 `--`）
+- `topProcess`：CPU 占用最高的进程名
 
-### 2.2 systemGauges
-`id` 固定为 `cpu` / `memory` / `disk`，其余字段为前端展示文案：
-- `usedPct`：使用率百分比。
-- `usedLabel` / `totalLabel`：已用/总量文案。
-- `subLabel` / `trend`：辅助说明与趋势文案。
+### 2.2 `systemGauges`
+`id` 固定为 `cpu` / `memory` / `disk`，其余字段用于前端展示
+- `usedPct`：使用率百分比
+- `usedLabel` / `totalLabel`：已用与总量文本
+- `subLabel` / `trend`：辅助说明与趋势文本
 
-### 2.3 systemVolumes
-- `mount`：挂载点。
-- `usedPct`：分区使用率。
-- `used` / `total`：已用/总量。
+### 2.3 `systemVolumes`
+- `mount`：挂载点
+- `usedPct`：分区使用率
+- `used` / `total`：已用与总量
 
-### 2.4 systemProcesses
-与前端 `SystemProcess` 对齐，包含 PID、CPU/内存占比、I/O 速率、监听端口、工作目录与环境变量等。
+### 2.4 `systemProcesses`
+与前端 `SystemProcess` 对齐，包含 PID、CPU/内存占比、I/O 速率、监听端口、工作目录、可执行文件路径、环境变量等字段
 
 ---
 
-## 3. 采样策略与注意事项
-- **CPU/IO 速率**：由两次采样差值计算，首次请求可能显示 `--`。
-- **端口/环境变量**：受系统权限限制，权限不足时可能为空。
-- **NetIn/NetOut**：目前为占位值 `--`，如需精确网络速率需额外采样实现。
-- **性能控制**：建议前端使用 `mode=lite` + 轮询、按需加载进程列表。
+## 3. 采样与性能策略
+
+- **CPU/IO 速率**：由两次采样差值计算，首次请求可能显示 `--`
+- **缓存策略**：后端按查询键（是否含进程 + 进程 limit）做短缓存（默认约 1 秒）
+- **轻量轮询建议**：仪表盘常规轮询优先使用 `mode=lite` 或 `mode=light`，进程列表按需加载
+- **权限影响**：端口、工作目录、环境变量等字段受系统权限影响，权限不足时可能为空
+- **NetIn/NetOut**：当前为占位值 `--`，若需精确网络速率需额外采样实现
+
+---
+
+## 4. 安全边界
+
+- 默认隐藏进程环境变量，避免凭据泄漏
+- 只有显式传入 `includeEnv=true` 才返回环境变量
+- 建议在生产环境中仅对受控来源开放该参数能力
+
+---
+
+## 5. 与队列指标关系
+
+- `/api/system` 不返回上传队列深度
+- 队列指标（`queue` / `workers` / `inFlight`）请通过 `/api/health` 或 `/api/dashboard` 获取
+- 队列持久化行为（`upload_queue_persist_*`）见 `docs/queue-persistence-runbook.md`

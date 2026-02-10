@@ -233,7 +233,7 @@ ai_max_lines: 200
 ### 11) 系统资源面板
 - `GET /api/system`
 - Query：
-  - `mode=lite` → 仅返回概览/指标/分区，不返回进程列表
+  - `mode=lite` 或 `mode=light` → 仅返回概览/指标/分区，不返回进程列表
   - `limit=200` → 限制返回的进程数量，`0` 表示不限制
   - `includeEnv=true` → 返回进程环境变量（默认不返回）
 - 返回：`{ systemOverview, systemGauges, systemVolumes, systemProcesses }`
@@ -263,6 +263,8 @@ Alert config updates are persisted to `config.runtime.yaml` (best effort).
 - 平台概述：`../docs/overview.md`
 - 流程图：`../docs/system-flowchart.md`
 - 前后端联动：`../docs/frontend-backend-linkage.md`
+- 队列与 worker：`../docs/queue-worker-flow.md`
+- 队列持久化运行手册：`../docs/queue-persistence-runbook.md`
 - 系统资源面板：`../docs/system-resource-console.md`
 - 告警模式：`../docs/alert-mode.md`
 - 开发指南：`../docs/dev-guide.md`

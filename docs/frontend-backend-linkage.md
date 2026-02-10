@@ -171,8 +171,9 @@ sequenceDiagram
 
 补充说明：
 - 需在控制台开启 `systemResourceEnabled`，否则 `/api/system` 返回 403。
-- `mode=lite` 会跳过进程列表采集，降低采样开销。
+- `mode=lite` 或 `mode=light` 会跳过进程列表采集，降低采样开销。
 - `limit` 控制返回的进程数量；`0` 表示不限制。
+- `includeEnv=true` 才会返回进程环境变量；默认会清空 `systemProcesses[*].env`。
 - IO/CPU 速率为相邻两次采样的差值计算，首次请求可能为 `--`。
 
 ---
@@ -239,17 +240,19 @@ sequenceDiagram
 
 **11) 系统资源面板**
 - `GET /api/system`
-- Query：`mode=lite` / `limit`
+- Query：`mode=lite|mode=light` / `limit` / `includeEnv=true`
 - 返回：`SystemDashboard`
-- 说明：需开启 `systemResourceEnabled`，否则返回 403。
+- 说明：需开启 `systemResourceEnabled`，否则返回 403；默认隐藏进程环境变量。
 
 ---
 
 ## 5. 注意事项
 - `/api/config` 更新运行态配置，并在可写时持久化到 `config.runtime.yaml`；S3 与通知配置需改 `.env` 并重启。
+- `upload_queue_persist_*` 为静态配置，不支持通过 `/api/config` 在线切换，修改后需重启。
 - `/api/alert-config` 更新告警相关配置，并在可写时持久化到 `config.runtime.yaml`（不写回 `config.yaml`）。
 - `/api/alert-rules` 保存规则后写入 `config.runtime.yaml`；未保存的规则刷新会被覆盖。
 - `/api/ai/log-summary` 需要开启 `ai_enabled`，并配置 `AI_*`。
 - 告警概览统计窗口为最近 24 小时。
 - 前端的 `concurrency` 字段是字符串（例如 `workers=3 / queue=100`），保存时解析成数值。
 - 如需完整字段解释与格式约定，参考 `docs/state-types-visual.md`。
+- 队列持久化行为与运维命令参考 `docs/queue-persistence-runbook.md`。

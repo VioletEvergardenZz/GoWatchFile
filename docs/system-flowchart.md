@@ -4,14 +4,19 @@
 
 ```mermaid
 graph TD
+    S[服务启动] --> R[恢复持久化队列(可选)]
+    R --> E
     A[业务系统写入文件] --> B[FileWatcher 递归监听]
     B --> C{后缀匹配?}
     C -->|否| B
     C -->|是| D[静默窗口判定写入完成]
-    D --> E[入队 uploadQueue]
+    D --> P[写入持久化队列(可选)]
+    P --> E[入队 uploadQueue]
     E --> F[WorkerPool 并发上传]
-    F --> K[失败重试(可选)]
-    K --> G[S3 兼容对象存储]
+    F --> K[processFile(上传 + 重试)]
+    K --> G[S3 兼容对象存储(成功)]
+    G --> Q[确认删除持久化队列项(可选)]
+    Q --> H[RuntimeState 更新状态]
     K --> H[RuntimeState 更新状态]
     H --> I[/api/dashboard]
     K --> J[通知: 钉钉/邮件(可选)]
@@ -58,6 +63,10 @@ graph TD
 - 文件 Tail/检索 通过 `/api/file-log` 按需读取文件尾部或全文检索，不走 Dashboard 数据。
 - AI 日志分析通过 `/api/ai/log-summary` 按需触发（需启用 AI 配置）。
 - S3 与通知配置变更需重启服务，运行时配置包含目录/后缀/并发/静默窗口/重试参数。
+- 开启 `upload_queue_persist_enabled` 后，队列执行“入队落盘、启动恢复、成功确认删除”，语义为“至少一次”。
+- `upload_queue_persist_*` 属于静态配置，不能通过 `/api/config` 在线切换，修改后需重启。
+- 持久化文件损坏时会备份为 `.corrupt-*.bak` 并降级为空队列继续启动。
 - 告警配置通过 `/api/alert-config` 运行时更新，如可写则持久化到 `config.runtime.yaml`。
 - 告警概览统计窗口为最近 24 小时。
 - 系统资源面板需开启 `systemResourceEnabled` 才能访问 `/api/system`。
+- 队列持久化细节与运维命令见 `docs/queue-persistence-runbook.md`。

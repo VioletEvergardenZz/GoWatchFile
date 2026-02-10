@@ -243,6 +243,7 @@ class ChartPoint {
 说明：
 - `uploads/failures` 为累计值（非区间值）。
 - `queue` 为当前队列深度（QueueLength + InFlight）。
+- 队列是否开启持久化不会改变该统计口径。
 
 ---
 
