@@ -44,6 +44,7 @@ var allowedLogLevels = map[string]struct{}{
 
 // LoadConfig 加载配置文件并应用默认值
 func LoadConfig(configFile string) (*models.Config, error) {
+	// 优先加载 .env，让后续 YAML 中的 ${KEY} 可以被解析
 	envCandidates := []string{".env"}
 	if dir := filepath.Dir(configFile); dir != "" && dir != "." {
 		envCandidates = append(envCandidates, filepath.Join(dir, ".env"))
@@ -67,11 +68,13 @@ func LoadConfig(configFile string) (*models.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	// 运行时配置用于承接控制台改动，优先级高于基础 YAML
 	applyRuntimeConfig(&cfg, runtimeCfg)
 
 	if err := applyEnvOverrides(&cfg); err != nil {
 		return nil, err
 	}
+	// 最后补默认值并做完整校验，保证启动时配置可执行
 	applyDefaults(&cfg)
 	if err := ValidateConfig(&cfg); err != nil {
 		return nil, fmt.Errorf("配置验证失败: %w", err)
@@ -115,7 +118,9 @@ func ValidateConfig(config *models.Config) error {
 	return nil
 }
 
+// applyEnvOverrides 按环境变量覆盖配置并解析类型字段
 func applyEnvOverrides(cfg *models.Config) error {
+	// 先统一清理空白和未展开占位符，避免后续误判为有效值
 	cfg.WatchDir = sanitizeConfigString(cfg.WatchDir)
 	cfg.WatchExclude = sanitizeConfigString(cfg.WatchExclude)
 	cfg.FileExt = sanitizeConfigString(cfg.FileExt)
@@ -211,6 +216,7 @@ func applyEnvOverrides(cfg *models.Config) error {
 	return nil
 }
 
+// applyDefaults 填充运行所需默认值，避免空配置导致启动失败
 func applyDefaults(cfg *models.Config) {
 	if cfg.UploadWorkers <= 0 {
 		cfg.UploadWorkers = defaultUploadWorkers
@@ -253,10 +259,12 @@ func applyDefaults(cfg *models.Config) {
 	}
 }
 
+// boolPtr 返回布尔指针，用于表达可选布尔配置
 func boolPtr(v bool) *bool {
 	return &v
 }
 
+// stringFromEnv 优先读取环境变量，支持 ${KEY} 占位符
 func stringFromEnv(envKey, current string) string {
 	if val, ok := os.LookupEnv(envKey); ok {
 		trimmed := strings.TrimSpace(val)
@@ -267,6 +275,7 @@ func stringFromEnv(envKey, current string) string {
 	return strings.TrimSpace(resolveEnvPlaceholder(current))
 }
 
+// boolFromEnv 读取并解析布尔环境变量
 func boolFromEnv(envKey string) (bool, bool, error) {
 	val, ok := os.LookupEnv(envKey)
 	// 环境变量不存在
@@ -284,6 +293,7 @@ func boolFromEnv(envKey string) (bool, bool, error) {
 	return parsed, true, nil
 }
 
+// intFromEnv 读取并解析整型环境变量
 func intFromEnv(envKey string) (int, bool, error) {
 	val, ok := os.LookupEnv(envKey)
 	if !ok {
@@ -307,6 +317,7 @@ func requireValue(value, name string) error {
 	return nil
 }
 
+// validateWatchDir 校验单个监控目录是否存在且可访问
 func validateWatchDir(path string) error {
 	if err := requireValue(path, "监控目录"); err != nil {
 		return err
@@ -321,6 +332,7 @@ func validateWatchDir(path string) error {
 	return nil
 }
 
+// validateWatchDirs 解析并逐个校验监控目录列表
 func validateWatchDirs(raw string) error {
 	if strings.TrimSpace(raw) == "" {
 		return nil
@@ -337,6 +349,7 @@ func validateWatchDirs(raw string) error {
 	return nil
 }
 
+// validateFileExt 校验文件后缀配置格式
 func validateFileExt(ext string) error {
 	trimmed := strings.TrimSpace(ext)
 	if trimmed == "" {
@@ -350,6 +363,7 @@ func validateFileExt(ext string) error {
 	return nil
 }
 
+// validateEndpoint 校验 S3 Endpoint，兼容带协议和不带协议写法
 func validateEndpoint(endpoint string) error {
 	if err := requireValue(endpoint, "S3 Endpoint"); err != nil {
 		return err
@@ -371,6 +385,7 @@ func validateEndpoint(endpoint string) error {
 	return nil
 }
 
+// validateLogLevel 校验日志级别是否在允许范围
 func validateLogLevel(level string) error {
 	if err := requireValue(level, "日志级别"); err != nil {
 		return err
@@ -382,6 +397,7 @@ func validateLogLevel(level string) error {
 	return nil
 }
 
+// validateAlertConfig 校验告警开关开启后的最小必填集合
 func validateAlertConfig(config *models.Config) error {
 	if config == nil {
 		return nil
@@ -407,6 +423,7 @@ func validateAlertConfig(config *models.Config) error {
 	return nil
 }
 
+// validateAIConfig 校验 AI 分析开启后的必要配置
 func validateAIConfig(config *models.Config) error {
 	if config == nil {
 		return nil
@@ -437,6 +454,7 @@ func validateAIConfig(config *models.Config) error {
 	return nil
 }
 
+// parseAlertInterval 解析告警轮询间隔并兼容中文时间单位
 func parseAlertInterval(raw string) (time.Duration, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -461,6 +479,7 @@ func parseAlertInterval(raw string) (time.Duration, error) {
 	return 0, fmt.Errorf("时间间隔必须大于零")
 }
 
+// sanitizeConfigString 清理配置字符串并过滤占位符残留
 func sanitizeConfigString(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if isEnvPlaceholder(trimmed) {
@@ -469,10 +488,12 @@ func sanitizeConfigString(value string) string {
 	return trimmed
 }
 
+// isEnvPlaceholder 判断值是否为 ${KEY} 形式
 func isEnvPlaceholder(value string) bool {
 	return strings.HasPrefix(value, "${") && strings.HasSuffix(value, "}")
 }
 
+// resolveEnvPlaceholder 解析 ${KEY} 占位符并回填环境变量值
 func resolveEnvPlaceholder(value string) string {
 	trimmed := strings.TrimSpace(value)
 	if isEnvPlaceholder(trimmed) {
@@ -485,6 +506,7 @@ func resolveEnvPlaceholder(value string) string {
 	return value
 }
 
+// loadEnvFiles 按候选路径加载 .env 文件并跳过重复项
 func loadEnvFiles(paths ...string) error {
 	seen := make(map[string]struct{})
 	for _, p := range paths {
@@ -507,6 +529,7 @@ func loadEnvFiles(paths ...string) error {
 	return nil
 }
 
+// loadEnvFile 逐行解析 .env 并写入进程环境变量
 func loadEnvFile(path string) error {
 	f, err := os.Open(path)
 	if err != nil {
@@ -549,6 +572,7 @@ func loadEnvFile(path string) error {
 	return nil
 }
 
+// trimQuotes 去掉值两端成对的单引号或双引号
 func trimQuotes(val string) (string, bool) {
 	//长度不足 2 时不可能同时有首尾引号
 	if len(val) >= 2 {

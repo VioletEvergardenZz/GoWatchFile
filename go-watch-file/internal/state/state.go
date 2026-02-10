@@ -867,6 +867,7 @@ type fileInfo struct {
 	size int64
 }
 
+// statFile 用于读取文件状态支撑变更判断
 func (s *RuntimeState) statFile(path string) fileInfo {
 	info := fileInfo{}
 	// 读取文件大小用于展示与统计
@@ -876,6 +877,7 @@ func (s *RuntimeState) statFile(path string) fileInfo {
 	return info
 }
 
+// normalizePath 用于统一数据格式便于比较与存储
 func normalizePath(path string) string {
 	// 统一路径格式便于比较
 	if path == "" {
@@ -884,6 +886,7 @@ func normalizePath(path string) string {
 	return filepath.ToSlash(filepath.Clean(path))
 }
 
+// normalizeKeyPath 用于统一数据格式便于比较与存储
 func normalizeKeyPath(path string) string {
 	// 保持路径大小写不做系统适配
 	norm := normalizePath(path)
@@ -893,6 +896,7 @@ func normalizeKeyPath(path string) string {
 	return norm
 }
 
+// isDirPath 用于判断条件是否成立
 func isDirPath(path string) bool {
 	// 判断路径是否为目录
 	if path == "" {
@@ -905,6 +909,7 @@ func isDirPath(path string) bool {
 	return info.IsDir()
 }
 
+// isSameOrChildPath 用于判断条件是否成立
 func isSameOrChildPath(path, root string) bool {
 	// 判断路径是否为根路径或子路径
 	path = normalizeKeyPath(path)

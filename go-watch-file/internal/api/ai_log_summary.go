@@ -114,6 +114,7 @@ type openAIChatResponse struct {
 	} `json:"error,omitempty"`
 }
 
+// aiLogSummary 用于处理 AI 日志总结请求并返回结构化结果
 func (h *handler) aiLogSummary(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -210,6 +211,7 @@ func (h *handler) aiLogSummary(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// validateAISettings 用于校验输入合法性并提前失败
 func validateAISettings(cfg *models.Config) error {
 	if strings.TrimSpace(cfg.AIBaseURL) == "" {
 		return fmt.Errorf("AI_BASE_URL不能为空")
@@ -223,6 +225,7 @@ func validateAISettings(cfg *models.Config) error {
 	return nil
 }
 
+// validateLogPath 用于校验输入合法性并提前失败
 func validateLogPath(cfg *models.Config, rawPath string) (string, error) {
 	cleanedPath := filepath.Clean(filepath.FromSlash(strings.TrimSpace(rawPath)))
 	if strings.TrimSpace(cfg.WatchDir) == "" {
@@ -245,6 +248,7 @@ func validateLogPath(cfg *models.Config, rawPath string) (string, error) {
 	return cleanedPath, nil
 }
 
+// resolveLogMode 用于解析依赖并返回可用结果
 func resolveLogMode(mode, query string) (string, string, error) {
 	cleanMode := strings.ToLower(strings.TrimSpace(mode))
 	cleanQuery := strings.TrimSpace(query)
@@ -263,6 +267,7 @@ func resolveLogMode(mode, query string) (string, string, error) {
 	return cleanMode, cleanQuery, nil
 }
 
+// resolveLineLimit 用于解析依赖并返回可用结果
 func resolveLineLimit(requested, max int) int {
 	if max <= 0 {
 		max = 200
@@ -276,6 +281,7 @@ func resolveLineLimit(requested, max int) int {
 	return requested
 }
 
+// loadLogLines 用于加载运行数据
 func loadLogLines(path, mode, query string, limit int, caseSensitive bool) ([]string, bool, error) {
 	if mode == "search" {
 		lines, truncated, err := searchFileLogLines(path, query, limit, caseSensitive)
@@ -291,6 +297,7 @@ func loadLogLines(path, mode, query string, limit int, caseSensitive bool) ([]st
 	return lines, truncated, nil
 }
 
+// trimLines 用于移除或清理数据
 func trimLines(lines []string, limit int) ([]string, bool) {
 	if limit <= 0 || len(lines) <= limit {
 		return lines, false
@@ -339,6 +346,7 @@ func compressLogLines(lines []string, limit int) ([]string, bool) {
 	return selected, true
 }
 
+// resolveTailCount 用于解析依赖并返回可用结果
 func resolveTailCount(limit int) int {
 	if limit <= 0 {
 		return 0
@@ -353,6 +361,7 @@ func resolveTailCount(limit int) int {
 	return tail
 }
 
+// containsKeyword 用于判断集合中是否包含目标项
 func containsKeyword(line string) bool {
 	lower := strings.ToLower(line)
 	for _, keyword := range aiLogKeywords {
@@ -363,6 +372,7 @@ func containsKeyword(line string) bool {
 	return false
 }
 
+// readTailLinesForAI 用于读取数据
 func readTailLinesForAI(path string, maxBytes int64) ([]string, bool, error) {
 	file, err := os.Open(path)
 	if err != nil {
@@ -417,6 +427,7 @@ func readTailLinesForAI(path string, maxBytes int64) ([]string, bool, error) {
 	return lines, truncated, nil
 }
 
+// buildRetryLines 用于构建后续流程所需的数据
 func buildRetryLines(original, current []string) ([]string, bool) {
 	if len(current) <= aiRetryMinLines {
 		return current, false
@@ -435,6 +446,7 @@ func buildRetryLines(original, current []string) ([]string, bool) {
 	return retryLines, true
 }
 
+// isTimeoutError 用于判断条件是否成立
 func isTimeoutError(err error) bool {
 	if err == nil {
 		return false
@@ -450,6 +462,7 @@ func isTimeoutError(err error) bool {
 	return strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "timeout")
 }
 
+// parseAITimeout 用于解析输入参数或配置
 func parseAITimeout(raw string) time.Duration {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -464,6 +477,7 @@ func parseAITimeout(raw string) time.Duration {
 	return aiDefaultTimeout
 }
 
+// callAIForLogSummary 用于调用 AI 服务生成日志总结
 func callAIForLogSummary(ctx context.Context, cfg *models.Config, logText, logPath string, truncated bool) (string, error) {
 	endpoint, err := buildChatCompletionURL(cfg.AIBaseURL)
 	if err != nil {
@@ -517,6 +531,7 @@ func callAIForLogSummary(ctx context.Context, cfg *models.Config, logText, logPa
 	return content, nil
 }
 
+// buildChatCompletionURL 用于构建后续流程所需的数据
 func buildChatCompletionURL(base string) (string, error) {
 	trimmed := strings.TrimSpace(base)
 	if trimmed == "" {
@@ -543,6 +558,7 @@ func buildChatCompletionURL(base string) (string, error) {
 	return parsed.String(), nil
 }
 
+// buildLogSummaryUserContent 用于构建后续流程所需的数据
 func buildLogSummaryUserContent(logText, logPath string, truncated bool) string {
 	truncatedNote := "否"
 	if truncated {
@@ -551,6 +567,7 @@ func buildLogSummaryUserContent(logText, logPath string, truncated bool) string 
 	return fmt.Sprintf("日志路径: %s\n是否截断: %s\n日志内容:\n%s", logPath, truncatedNote, logText)
 }
 
+// parseAIResult 用于解析输入参数或配置
 func parseAIResult(raw string) (aiLogSummaryResult, error) {
 	clean := strings.TrimSpace(raw)
 	if clean == "" {
@@ -570,6 +587,7 @@ func parseAIResult(raw string) (aiLogSummaryResult, error) {
 	return result, nil
 }
 
+// extractJSONObject 用于提取有效片段供后续处理
 func extractJSONObject(raw string) string {
 	start := strings.Index(raw, "{")
 	end := strings.LastIndex(raw, "}")
@@ -579,6 +597,7 @@ func extractJSONObject(raw string) string {
 	return raw[start : end+1]
 }
 
+// normalizeAIResult 用于统一数据格式便于比较与存储
 func normalizeAIResult(result *aiLogSummaryResult) {
 	if result == nil {
 		return
@@ -598,6 +617,7 @@ func normalizeAIResult(result *aiLogSummaryResult) {
 	}
 }
 
+// normalizeSeverity 用于统一数据格式便于比较与存储
 func normalizeSeverity(raw string) string {
 	clean := strings.ToLower(strings.TrimSpace(raw))
 	switch clean {
@@ -614,6 +634,7 @@ func normalizeSeverity(raw string) string {
 	}
 }
 
+// trimItems 用于移除或清理数据
 func trimItems(items []string, limit int) []string {
 	if len(items) == 0 {
 		return nil

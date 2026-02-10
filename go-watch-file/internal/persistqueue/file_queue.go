@@ -215,6 +215,7 @@ func (q *FileQueue) HealthStats() HealthStats {
 	}
 }
 
+// load 用于加载运行数据
 func (q *FileQueue) load() error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -238,6 +239,7 @@ func (q *FileQueue) load() error {
 	return nil
 }
 
+// saveLocked 用于保存运行数据
 func (q *FileQueue) saveLocked() error {
 	store := fileQueueStore{
 		Items: append([]string(nil), q.items...),
@@ -249,6 +251,7 @@ func (q *FileQueue) saveLocked() error {
 	return writeFileAtomic(q.path, data, 0o644)
 }
 
+// writeFileAtomic 用于写入数据
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
@@ -277,6 +280,7 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmp.Name(), path)
 }
 
+// fallbackFromCorruptedStoreLocked 用于异常场景下执行降级回退
 func (q *FileQueue) fallbackFromCorruptedStoreLocked(rawData []byte, parseErr error) error {
 	q.corruptFallbackTotal++
 	backupPath := buildCorruptBackupPath(q.path)
@@ -294,6 +298,7 @@ func (q *FileQueue) fallbackFromCorruptedStoreLocked(rawData []byte, parseErr er
 	return nil
 }
 
+// buildCorruptBackupPath 用于构建后续流程所需的数据
 func buildCorruptBackupPath(path string) string {
 	timestamp := time.Now().UTC().Format("20060102T150405.000000000Z")
 	return fmt.Sprintf("%s.corrupt-%s.bak", path, timestamp)

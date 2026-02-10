@@ -1,3 +1,4 @@
+// 本文件用于文件与路径相关的通用工具函数
 package utils
 
 import (

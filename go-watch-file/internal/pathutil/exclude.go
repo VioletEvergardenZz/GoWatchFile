@@ -100,6 +100,7 @@ func (m *ExcludeMatcher) IsExcluded(path string) bool {
 	return false
 }
 
+// splitExcludeList 用于拆分配置字符串并清理空项
 func splitExcludeList(raw string) []string {
 	return strings.FieldsFunc(raw, func(r rune) bool {
 		switch r {
@@ -132,6 +133,7 @@ func matchSegmentPattern(path, pattern string) bool {
 	return false
 }
 
+// setToSlice 用于将集合转换为稳定切片输出
 func setToSlice(input map[string]struct{}) []string {
 	out := make([]string, 0, len(input))
 	for key := range input {

@@ -58,6 +58,7 @@ func (t *Tailer) Run(ctx context.Context) {
 	}
 }
 
+// pollOnce 用于执行单次轮询并推进状态
 func (t *Tailer) pollOnce() {
 	now := time.Now()
 	var pollErr error
@@ -71,6 +72,7 @@ func (t *Tailer) pollOnce() {
 	}
 }
 
+// readFile 用于读取数据
 func (t *Tailer) readFile(path string) error {
 	if strings.TrimSpace(path) == "" {
 		return nil
@@ -139,6 +141,7 @@ func (t *Tailer) readFile(path string) error {
 	return nil
 }
 
+// cursorFor 用于生成轮询游标保持增量读取
 func (t *Tailer) cursorFor(path string) *fileCursor {
 	if cursor, ok := t.cursors[path]; ok {
 		return cursor

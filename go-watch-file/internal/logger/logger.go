@@ -31,6 +31,7 @@ var (
 	logLevel     atomic.Int32                  //原子整数，表示当前日志级别
 )
 
+// init 用于初始化模块级默认配置
 func init() {
 	logLevel.Store(levelInfo)
 }
@@ -63,6 +64,7 @@ func InitLogger(config *models.Config) error {
 	return nil
 }
 
+// buildLogWriter 用于构建后续流程所需的数据
 func buildLogWriter(logFile string, logToStd bool) (io.Writer, *os.File, error) {
 	// 如果同时禁用了文件和 stdout
 	if logFile == "" && !logToStd {
@@ -126,6 +128,7 @@ func Close() error {
 	return logger.file.Close()
 }
 
+// logWithLevel 用于按级别统一输出日志
 func logWithLevel(level int32, levelLabel, format string, v ...interface{}) {
 	// 通过阈值过滤低级别日志
 	if level < logLevel.Load() {
@@ -142,6 +145,7 @@ func logWithLevel(level int32, levelLabel, format string, v ...interface{}) {
 	log.Print(entry)
 }
 
+// parseLogLevel 用于解析输入参数或配置
 func parseLogLevel(level string) int32 {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug":

@@ -58,6 +58,7 @@ func (r *Robot) SendMessage(ctx context.Context, downloadURL, fileName string) e
 	return r.SendMarkdown(ctx, msg.Markdown.Title, msg.Markdown.Text)
 }
 
+// buildMarkdownMessage 用于构建后续流程所需的数据
 func buildMarkdownMessage(downloadURL, fileName string) message {
 	nowTime := time.Now().Format("2006-01-02 15:04:05")
 	text := fmt.Sprintf(
@@ -102,6 +103,7 @@ func (r *Robot) SendMarkdown(ctx context.Context, title, text string) error {
 	return nil
 }
 
+// postMessage 用于发送钉钉消息并处理响应异常
 func (r *Robot) postMessage(ctx context.Context, webhookURL string, payload []byte) error {
 	req, err := http.NewRequest(http.MethodPost, webhookURL, bytes.NewBuffer(payload))
 	if err != nil {
@@ -160,6 +162,7 @@ func (r *Robot) buildWebhookURL() (string, error) {
 	return parsedURL.String(), nil
 }
 
+// defaultValue 用于提供默认值保证行为稳定
 func defaultValue(value, fallback string) string {
 	if value == "" {
 		return fallback

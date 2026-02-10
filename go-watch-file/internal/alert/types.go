@@ -27,6 +27,7 @@ const (
 	StatusRecorded DecisionStatus = "recorded"
 )
 
+// parseLevel 用于解析输入参数或配置
 func parseLevel(raw string) (Level, bool) {
 	switch Level(raw) {
 	case LevelIgnore, LevelBusiness, LevelSystem, LevelFatal:

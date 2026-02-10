@@ -299,6 +299,7 @@ func (m *Manager) UpdateRules(ruleset *Ruleset) error {
 	return nil
 }
 
+// startLocked 用于启动流程或服务
 func (m *Manager) startLocked() {
 	if m.tailer == nil || m.running || !m.enabled {
 		return
@@ -311,6 +312,7 @@ func (m *Manager) startLocked() {
 	logger.Info("告警轮询已启动: logs=%d interval=%s", len(m.logPaths), formatDuration(m.pollInterval))
 }
 
+// stopLocked 用于停止流程并释放资源
 func (m *Manager) stopLocked() {
 	if !m.running {
 		return
@@ -321,6 +323,7 @@ func (m *Manager) stopLocked() {
 	m.running = false
 }
 
+// handleLine 用于处理核心流程
 func (m *Manager) handleLine(path, line string) {
 	if m == nil || m.engine == nil || m.state == nil {
 		return
@@ -349,6 +352,7 @@ func (m *Manager) handleLine(path, line string) {
 	}
 }
 
+// sendNotification 用于发送通知并处理异常回退
 func (m *Manager) sendNotification(result decisionResult) {
 	if m.notifier == nil {
 		return
@@ -365,6 +369,7 @@ func (m *Manager) sendNotification(result decisionResult) {
 	}
 }
 
+// handlePoll 用于处理核心流程
 func (m *Manager) handlePoll(at time.Time, pollErr error) {
 	if m == nil || m.state == nil {
 		return
@@ -372,6 +377,7 @@ func (m *Manager) handlePoll(at time.Time, pollErr error) {
 	m.updatePollSummary(at, pollErr)
 }
 
+// updatePollSummary 用于更新运行状态或配置
 func (m *Manager) updatePollSummary(at time.Time, pollErr error) {
 	summary := PollSummary{
 		Interval: formatDuration(m.pollInterval),
@@ -389,6 +395,7 @@ func (m *Manager) updatePollSummary(at time.Time, pollErr error) {
 	m.state.UpdatePollSummary(summary)
 }
 
+// updateRulesSummary 用于更新运行状态或配置
 func (m *Manager) updateRulesSummary(ruleset *Ruleset, errMsg string) {
 	summary := RulesSummary{
 		Source:     "控制台",
@@ -422,6 +429,7 @@ func (m *Manager) updateRulesSummary(ruleset *Ruleset, errMsg string) {
 	m.state.UpdateRulesSummary(summary)
 }
 
+// buildEscalationSummary 用于构建后续流程所需的数据
 func buildEscalationSummary(raw EscalationRule) string {
 	enabled := false
 	if raw.Enabled != nil {
@@ -443,6 +451,7 @@ func buildEscalationSummary(raw EscalationRule) string {
 	return fmt.Sprintf("阈值%d次 / %s -> %s", raw.Threshold, window, strings.ToLower(level))
 }
 
+// parseLogPaths 用于解析输入参数或配置
 func parseLogPaths(raw string) []string {
 	parts := strings.FieldsFunc(raw, func(r rune) bool {
 		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' ' || r == '，' || r == '；'
@@ -464,6 +473,7 @@ func parseLogPaths(raw string) []string {
 	return out
 }
 
+// sameStringSlice 用于判断两个集合是否等价
 func sameStringSlice(a, b []string) bool {
 	if len(a) != len(b) {
 		return false
@@ -476,14 +486,17 @@ func sameStringSlice(a, b []string) bool {
 	return true
 }
 
+// buildTitle 用于构建后续流程所需的数据
 func buildTitle(payload NotifyPayload) string {
 	return fmt.Sprintf("告警 %s", strings.ToUpper(string(payload.Level)))
 }
 
+// buildSubject 用于构建后续流程所需的数据
 func buildSubject(payload NotifyPayload) string {
 	return fmt.Sprintf("告警通知 [%s]", strings.ToUpper(string(payload.Level)))
 }
 
+// buildMarkdown 用于构建后续流程所需的数据
 func buildMarkdown(payload NotifyPayload) string {
 	file := payload.File
 	if strings.TrimSpace(file) == "" {
@@ -498,6 +511,7 @@ func buildMarkdown(payload NotifyPayload) string {
 	)
 }
 
+// buildEmailBody 用于构建后续流程所需的数据
 func buildEmailBody(payload NotifyPayload) string {
 	file := payload.File
 	if strings.TrimSpace(file) == "" {

@@ -47,6 +47,7 @@ func NormalizeRuleset(ruleset *Ruleset) error {
 	return normalizeRuleset(ruleset)
 }
 
+// normalizeRuleset 用于统一数据格式便于比较与存储
 func normalizeRuleset(ruleset *Ruleset) error {
 	if ruleset == nil {
 		return fmt.Errorf("告警规则为空")
@@ -95,6 +96,7 @@ func DefaultRuleset() *Ruleset {
 	}
 }
 
+// cleanKeywords 用于清理输入并移除无效内容
 func cleanKeywords(values []string) []string {
 	out := make([]string, 0, len(values))
 	for _, val := range values {

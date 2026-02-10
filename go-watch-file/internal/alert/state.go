@@ -207,6 +207,7 @@ func (s *State) Dashboard() Dashboard {
 	}
 }
 
+// buildOverview 用于构建后续流程所需的数据
 func buildOverview(records []alertRecord) Overview {
 	now := time.Now()
 	// 仅统计窗口内的记录用于概览
@@ -265,6 +266,7 @@ func formatWindow(window time.Duration) string {
 	return fmt.Sprintf("最近%d分钟", int(window.Minutes()))
 }
 
+// formatTime 用于格式化输出内容
 func formatTime(ts time.Time) string {
 	if ts.IsZero() {
 		return ""
@@ -272,6 +274,7 @@ func formatTime(ts time.Time) string {
 	return ts.Format("2006-01-02 15:04:05")
 }
 
+// defaultTime 用于提供默认值保证行为稳定
 func defaultTime(raw string) string {
 	if raw == "" {
 		return "--"

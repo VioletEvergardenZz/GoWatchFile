@@ -56,17 +56,52 @@ go run ./cmd/queue-admin -action reset -store logs/upload-queue.json
 # 健康检查（轻量）
 go run ./cmd/queue-admin -action check -store logs/upload-queue.json
 
+# 健康检查（JSON，便于脚本解析）
+go run ./cmd/queue-admin -action check -format json -store logs/upload-queue.json
+
+# 健康检查（严格模式，降级按失败处理）
+go run ./cmd/queue-admin -action check -strict -store logs/upload-queue.json
+
+# 健康检查（JSON 严格模式，降级按失败处理）
+go run ./cmd/queue-admin -action check -format json -strict -store logs/upload-queue.json
+
 # 诊断详情（包含文件状态与指标）
 go run ./cmd/queue-admin -action doctor -store logs/upload-queue.json
+
+# 诊断详情（JSON，便于脚本解析）
+go run ./cmd/queue-admin -action doctor -format json -store logs/upload-queue.json
+
+# 诊断详情（JSON 严格模式，降级按失败处理）
+go run ./cmd/queue-admin -action doctor -format json -strict -store logs/upload-queue.json
 ```
 
 ### 6.1 `check` 与 `doctor` 退出码
 - `0`：检查通过，状态正常
 - `1`：参数错误或不支持的 `action`
-- `2`：队列文件不可读或初始化失败
+- `2`：队列文件不可读或初始化失败；或在 `-strict` 下检测到降级
 - `3`：检查通过但处于降级状态（例如检测到损坏降级或持久化写失败）
 
-### 6.2 健康观测（`/api/health`）
+### 6.2 `check` 的 JSON 输出字段
+- `action`：固定为 `check`
+- `status`：`ok` 或 `degraded`
+- `reason`：降级原因（仅 `degraded` 时存在）
+- `store`：队列持久化文件路径
+- `queueSize`：当前队列任务数
+
+### 6.3 `doctor` 的 JSON 输出字段
+- `action`：固定为 `doctor`
+- `status`：`ok` 或 `degraded`
+- `reason`：降级原因（仅 `degraded` 时存在）
+- `store`：队列持久化文件路径
+- `storeExists`：队列文件是否存在
+- `storeSizeBytes`：队列文件字节大小
+- `storeModTime`：队列文件最近修改时间（UTC RFC3339）
+- `queueSize`：当前队列任务数
+- `recoveredTotal`：累计恢复任务数
+- `corruptFallbackTotal`：累计损坏降级次数
+- `persistWriteFailureTotal`：累计持久化写失败次数
+
+### 6.4 健康观测（`/api/health`）
 - `persistQueue.enabled`：是否开启持久化队列
 - `persistQueue.storeFile`：当前持久化文件路径
 - `persistQueue.recoveredTotal`：累计恢复到内存队列的任务数

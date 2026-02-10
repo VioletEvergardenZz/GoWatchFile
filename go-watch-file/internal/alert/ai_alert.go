@@ -45,6 +45,7 @@ type lineBuffer struct {
 	lines []string
 }
 
+// newLineBuffer 用于创建并初始化组件
 func newLineBuffer(max int) *lineBuffer {
 	if max <= 0 {
 		max = alertAIBufferSize
@@ -52,6 +53,7 @@ func newLineBuffer(max int) *lineBuffer {
 	return &lineBuffer{max: max, lines: make([]string, 0, max)}
 }
 
+// append 用于添加数据到目标集合
 func (b *lineBuffer) append(line string) {
 	if b == nil {
 		return
@@ -62,6 +64,7 @@ func (b *lineBuffer) append(line string) {
 	}
 }
 
+// snapshot 用于返回缓冲区快照避免外部修改内部数据
 func (b *lineBuffer) snapshot() []string {
 	if b == nil {
 		return nil
@@ -102,6 +105,7 @@ type aiAlertResult struct {
 	Confidence  *float64 `json:"confidence,omitempty"`
 }
 
+// shouldRunAlertAI 用于判断条件是否成立
 func (m *Manager) shouldRunAlertAI(result decisionResult, line string) bool {
 	if m == nil || !m.aiEnabled {
 		return false
@@ -118,12 +122,14 @@ func (m *Manager) shouldRunAlertAI(result decisionResult, line string) bool {
 	return true
 }
 
+// buildAlertAISignature 用于构建后续流程所需的数据
 func buildAlertAISignature(result decisionResult, line string) string {
 	lineKey := strings.ToLower(strings.TrimSpace(line))
 	lineKey = truncateText(lineKey, 200)
 	return strings.Join([]string{result.ruleID, result.file, lineKey}, "|")
 }
 
+// captureLineContext 用于采集命中行上下文供 AI 分析
 func (m *Manager) captureLineContext(path, line string) (before []string, after []string) {
 	if m == nil {
 		return nil, nil
@@ -144,6 +150,7 @@ func (m *Manager) captureLineContext(path, line string) (before []string, after 
 	return before, after
 }
 
+// allowAlertAI 用于判断条件是否成立
 func (m *Manager) allowAlertAI(signature string, now time.Time) bool {
 	if m == nil {
 		return false
@@ -170,6 +177,7 @@ func (m *Manager) allowAlertAI(signature string, now time.Time) bool {
 	return true
 }
 
+// enqueueAlertAI 用于添加数据到目标集合
 func (m *Manager) enqueueAlertAI(result decisionResult, line string, contextLines []string) {
 	if m == nil || m.aiLimiter == nil {
 		return
@@ -186,6 +194,7 @@ func (m *Manager) enqueueAlertAI(result decisionResult, line string, contextLine
 	}()
 }
 
+// runAlertAI 用于执行主流程
 func (m *Manager) runAlertAI(result decisionResult, line string, contextLines []string) {
 	if m == nil || m.cfg == nil || !m.aiEnabled {
 		return
@@ -206,6 +215,7 @@ func (m *Manager) runAlertAI(result decisionResult, line string, contextLines []
 	m.state.AttachAnalysis(result.id, summary)
 }
 
+// analyzeAlertWithAI 用于调用 AI 分析告警上下文
 func analyzeAlertWithAI(ctx context.Context, cfg *models.Config, result decisionResult, line string, contextLines []string) (aiAlertResult, error) {
 	if cfg == nil {
 		return aiAlertResult{}, fmt.Errorf("AI配置为空")
@@ -268,6 +278,7 @@ func analyzeAlertWithAI(ctx context.Context, cfg *models.Config, result decision
 	return resultParsed, nil
 }
 
+// buildAlertUserContent 用于构建后续流程所需的数据
 func buildAlertUserContent(result decisionResult, line string, contextLines []string) string {
 	builder := strings.Builder{}
 	builder.WriteString("告警规则: ")
@@ -283,6 +294,7 @@ func buildAlertUserContent(result decisionResult, line string, contextLines []st
 	return builder.String()
 }
 
+// buildAlertContextLines 用于构建后续流程所需的数据
 func buildAlertContextLines(before []string, line string, after []string) []string {
 	context := lastLines(before, alertAIContextLines-1)
 	context = append(context, line)
@@ -291,6 +303,7 @@ func buildAlertContextLines(before []string, line string, after []string) []stri
 	return merged
 }
 
+// lastLines 用于获取文本末尾若干行
 func lastLines(lines []string, limit int) []string {
 	if limit <= 0 || len(lines) <= limit {
 		return append([]string(nil), lines...)
@@ -298,6 +311,7 @@ func lastLines(lines []string, limit int) []string {
 	return append([]string(nil), lines[len(lines)-limit:]...)
 }
 
+// mergeUnique 用于合并并去重多来源数据
 func mergeUnique(parts ...[]string) []string {
 	seen := make(map[string]struct{})
 	out := make([]string, 0, 32)
@@ -317,6 +331,7 @@ func mergeUnique(parts ...[]string) []string {
 	return out
 }
 
+// parseAIAlertResult 用于解析输入参数或配置
 func parseAIAlertResult(raw string) (aiAlertResult, error) {
 	clean := strings.TrimSpace(raw)
 	if clean == "" {
@@ -336,6 +351,7 @@ func parseAIAlertResult(raw string) (aiAlertResult, error) {
 	return result, nil
 }
 
+// normalizeAIAlertResult 用于统一数据格式便于比较与存储
 func normalizeAIAlertResult(result *aiAlertResult) {
 	if result == nil {
 		return
@@ -355,6 +371,7 @@ func normalizeAIAlertResult(result *aiAlertResult) {
 	}
 }
 
+// formatAIAlertSummary 用于格式化输出内容
 func formatAIAlertSummary(result aiAlertResult) string {
 	parts := make([]string, 0, 3)
 	if strings.TrimSpace(result.Summary) != "" {
@@ -369,6 +386,7 @@ func formatAIAlertSummary(result aiAlertResult) string {
 	return strings.Join(parts, "\n")
 }
 
+// truncateText 用于截断内容以控制大小
 func truncateText(raw string, limit int) string {
 	if limit <= 0 {
 		return raw
@@ -386,6 +404,7 @@ func truncateText(raw string, limit int) string {
 	return string(runes[:limit-3]) + "..."
 }
 
+// parseAITimeout 用于解析输入参数或配置
 func parseAITimeout(raw string) time.Duration {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -400,6 +419,7 @@ func parseAITimeout(raw string) time.Duration {
 	return 20 * time.Second
 }
 
+// buildChatCompletionURL 用于构建后续流程所需的数据
 func buildChatCompletionURL(base string) (string, error) {
 	trimmed := strings.TrimSpace(base)
 	if trimmed == "" {
@@ -426,6 +446,7 @@ func buildChatCompletionURL(base string) (string, error) {
 	return parsed.String(), nil
 }
 
+// extractJSONObject 用于提取有效片段供后续处理
 func extractJSONObject(raw string) string {
 	start := strings.Index(raw, "{")
 	end := strings.LastIndex(raw, "}")
@@ -435,6 +456,7 @@ func extractJSONObject(raw string) string {
 	return raw[start : end+1]
 }
 
+// trimItems 用于移除或清理数据
 func trimItems(items []string, limit int) []string {
 	if len(items) == 0 {
 		return nil
@@ -453,6 +475,7 @@ func trimItems(items []string, limit int) []string {
 	return trimmed
 }
 
+// normalizeSeverity 用于统一数据格式便于比较与存储
 func normalizeSeverity(raw string) string {
 	clean := strings.ToLower(strings.TrimSpace(raw))
 	switch clean {

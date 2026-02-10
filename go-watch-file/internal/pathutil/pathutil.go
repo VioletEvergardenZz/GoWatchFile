@@ -86,8 +86,8 @@ func BuildDownloadURL(endpoint, bucket, objectKey string, forcePathStyle, disabl
 	rawParts := []string{basePath}
 	escapedParts := []string{basePath}
 
-	//forcePathStyle=true → https://host/basePath/bucket/objectKey
-	//forcePathStyle=false → https://bucket.host/basePath/objectKey
+	// 强制路径风格时使用 host/basePath/bucket/objectKey 形式
+	// 非强制路径风格时使用 bucket.host/basePath/objectKey 形式
 	if forcePathStyle {
 		rawParts = append(rawParts, bucket, rawKey)
 		escapedParts = append(escapedParts, bucket, escapedKey)
@@ -110,16 +110,19 @@ func BuildDownloadURL(endpoint, bucket, objectKey string, forcePathStyle, disabl
 	return u.String()
 }
 
+// toSlashPath 用于将路径统一为斜杠格式
 func toSlashPath(input string) string {
 	cleaned := filepath.Clean(input)
 	cleaned = filepath.ToSlash(cleaned)
 	return strings.TrimPrefix(cleaned, "./")
 }
 
+// trimLeadingSlash 用于移除或清理数据
 func trimLeadingSlash(input string) string {
 	return strings.TrimPrefix(input, "/")
 }
 
+// joinURLPath 用于拼接 URL 路径并避免重复分隔符
 func joinURLPath(parts ...string) string {
 	//字符串切片
 	cleaned := make([]string, 0, len(parts))
@@ -157,6 +160,7 @@ func resolvePath(path string) (string, error) {
 	return resolved, nil
 }
 
+// escapeObjectKey 用于转义对象 key 保障 URL 安全
 func escapeObjectKey(objectKey string) string {
 	key := cleanObjectKey(objectKey)
 	parts := strings.Split(key, "/")
@@ -166,10 +170,12 @@ func escapeObjectKey(objectKey string) string {
 	return strings.Join(parts, "/")
 }
 
+// cleanObjectKey 用于清理对象 key 避免异常路径
 func cleanObjectKey(objectKey string) string {
 	return trimLeadingSlash(toSlashPath(objectKey))
 }
 
+// normalizeEndpoint 用于统一数据格式便于比较与存储
 func normalizeEndpoint(endpoint string) (scheme, host, basePath string) {
 	cleaned := strings.TrimSpace(endpoint)
 	parsed, err := url.Parse(cleaned)

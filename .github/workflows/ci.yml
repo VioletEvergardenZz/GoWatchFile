@@ -34,6 +34,9 @@ jobs:
           go build -o "$queue_tmp/queue-admin" ./cmd/queue-admin
 
           "$queue_tmp/queue-admin" -action check -store "$queue_tmp/healthy.json"
+          healthy_json=$("$queue_tmp/queue-admin" -action check -format json -store "$queue_tmp/healthy.json")
+          echo "$healthy_json" | grep -q '"action":"check"'
+          echo "$healthy_json" | grep -q '"status":"ok"'
 
           printf '{bad-json' > "$queue_tmp/corrupt.json"
           set +e
@@ -44,6 +47,33 @@ jobs:
             echo "expected degraded exit code 3, got $code"
             exit 1
           fi
+          set +e
+          corrupt_json=$("$queue_tmp/queue-admin" -action check -format json -store "$queue_tmp/corrupt.json")
+          json_code=$?
+          set -e
+          if [ "$json_code" -ne 3 ]; then
+            echo "expected json degraded exit code 3, got $json_code"
+            exit 1
+          fi
+          echo "$corrupt_json" | grep -q '"status":"degraded"'
+
+          set +e
+          "$queue_tmp/queue-admin" -action check -strict -store "$queue_tmp/corrupt.json"
+          strict_code=$?
+          set -e
+          if [ "$strict_code" -ne 2 ]; then
+            echo "expected strict degraded exit code 2, got $strict_code"
+            exit 1
+          fi
+          set +e
+          strict_json=$("$queue_tmp/queue-admin" -action check -format json -strict -store "$queue_tmp/corrupt.json")
+          strict_json_code=$?
+          set -e
+          if [ "$strict_json_code" -ne 2 ]; then
+            echo "expected strict json degraded exit code 2, got $strict_json_code"
+            exit 1
+          fi
+          echo "$strict_json" | grep -q '"status":"degraded"'
 
   frontend-build:
     name: frontend build

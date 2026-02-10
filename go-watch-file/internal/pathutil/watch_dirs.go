@@ -89,6 +89,7 @@ func BuildObjectKeyStrictForDirs(watchDirs []string, filePath string) (string, e
 	return trimLeadingSlash(rel), nil
 }
 
+// normalizeWatchDirKey 用于生成目录去重键避免重复监听
 func normalizeWatchDirKey(path string) string {
 	key := filepath.ToSlash(path)
 	if runtime.GOOS == "windows" {

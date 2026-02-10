@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// firstIPv4 用于优先提取 IPv4 地址用于展示
 func firstIPv4() string {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -42,6 +43,7 @@ func firstIPv4() string {
 	return "--"
 }
 
+// formatBytes 用于格式化输出内容
 func formatBytes(value float64) string {
 	const (
 		kb = 1024
@@ -65,6 +67,7 @@ func formatBytes(value float64) string {
 	}
 }
 
+// formatRate 用于格式化输出内容
 func formatRate(delta uint64, interval time.Duration) string {
 	if interval <= 0 {
 		return "--"
@@ -73,6 +76,7 @@ func formatRate(delta uint64, interval time.Duration) string {
 	return fmt.Sprintf("%s/s", formatBytes(perSec))
 }
 
+// formatDurationCN 用于格式化输出内容
 func formatDurationCN(d time.Duration) string {
 	if d <= 0 {
 		return "--"
@@ -93,6 +97,7 @@ func formatDurationCN(d time.Duration) string {
 	return fmt.Sprintf("%d分", mins)
 }
 
+// clampPct 用于限制百分比范围防止异常值扩散
 func clampPct(value float64) float64 {
 	if value < 0 {
 		return 0
@@ -103,6 +108,7 @@ func clampPct(value float64) float64 {
 	return value
 }
 
+// usageTone 用于根据使用率生成状态文案
 func usageTone(pct float64) string {
 	switch {
 	case pct >= 85:
@@ -114,6 +120,7 @@ func usageTone(pct float64) string {
 	}
 }
 
+// normalizeStatus 用于统一数据格式便于比较与存储
 func normalizeStatus(raw string) string {
 	if raw == "" {
 		return "sleeping"
@@ -136,6 +143,7 @@ func normalizeStatus(raw string) string {
 	}
 }
 
+// countNonListen 用于统计非监听连接数量
 func countNonListen(counts map[string]int) int {
 	total := 0
 	for status, count := range counts {
@@ -147,6 +155,7 @@ func countNonListen(counts map[string]int) int {
 	return total
 }
 
+// formatConnectionBreakdown 用于格式化输出内容
 func formatConnectionBreakdown(counts map[string]int) string {
 	if len(counts) == 0 {
 		return "--"
@@ -192,6 +201,7 @@ func formatConnectionBreakdown(counts map[string]int) string {
 	return strings.Join(parts, " · ")
 }
 
+// formatAddr 用于格式化输出内容
 func formatAddr(ip string, port uint32) string {
 	if port == 0 {
 		return ""
@@ -206,6 +216,7 @@ func formatAddr(ip string, port uint32) string {
 	return fmt.Sprintf("%s:%d", addr, port)
 }
 
+// uniqueSorted 用于去重并排序字符串列表
 func uniqueSorted(values []string) []string {
 	if len(values) == 0 {
 		return values

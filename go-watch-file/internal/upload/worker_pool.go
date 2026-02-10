@@ -262,6 +262,7 @@ func (p *WorkerPool) GetStats() models.UploadStats {
 	}
 }
 
+// recoverPersistedItems 用于恢复历史状态
 func (p *WorkerPool) recoverPersistedItems() error {
 	if p == nil || p.queueStore == nil {
 		return nil
@@ -290,6 +291,7 @@ func (p *WorkerPool) recoverPersistedItems() error {
 	return nil
 }
 
+// recordRecoveredCount 用于记录指标便于排障与观测
 func (p *WorkerPool) recordRecoveredCount(recoveredCount int) {
 	if p == nil || p.queueStore == nil || recoveredCount <= 0 {
 		return
@@ -301,6 +303,7 @@ func (p *WorkerPool) recordRecoveredCount(recoveredCount int) {
 	recorder.RecordRecovered(recoveredCount)
 }
 
+// ackPersistedItem 用于确认处理结果
 func (p *WorkerPool) ackPersistedItem(filePath string) error {
 	if p == nil || p.queueStore == nil {
 		return nil

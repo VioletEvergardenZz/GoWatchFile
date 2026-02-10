@@ -148,6 +148,7 @@ func (e *Engine) Evaluate(line, filePath string, now time.Time) []decisionResult
 	return results
 }
 
+// matchRuleLocked 用于在持锁状态下匹配告警规则
 func (e *Engine) matchRuleLocked(line string) *compiledRule {
 	for i := range e.rules {
 		rule := &e.rules[i]
@@ -166,6 +167,7 @@ func (e *Engine) matchRuleLocked(line string) *compiledRule {
 	return nil
 }
 
+// applySuppressionLocked 用于应用配置并保持运行态一致
 func (e *Engine) applySuppressionLocked(rule *compiledRule, now time.Time) (DecisionStatus, string) {
 	if !rule.notify {
 		return StatusRecorded, ""
@@ -185,6 +187,7 @@ func (e *Engine) applySuppressionLocked(rule *compiledRule, now time.Time) (Deci
 	return StatusSent, ""
 }
 
+// appendSystemEventLocked 用于添加数据到目标集合
 func (e *Engine) appendSystemEventLocked(now time.Time) {
 	if e.escalation.window <= 0 {
 		return
@@ -193,6 +196,7 @@ func (e *Engine) appendSystemEventLocked(now time.Time) {
 	e.pruneSystemEventsLocked(now)
 }
 
+// pruneSystemEventsLocked 用于在持锁状态下清理过期系统事件
 func (e *Engine) pruneSystemEventsLocked(now time.Time) {
 	if e.escalation.window <= 0 || len(e.systemEvents) == 0 {
 		return
@@ -209,6 +213,7 @@ func (e *Engine) pruneSystemEventsLocked(now time.Time) {
 	}
 }
 
+// maybeEscalateLocked 用于按条件决定是否触发附加流程
 func (e *Engine) maybeEscalateLocked(now time.Time) *decisionResult {
 	if !e.escalation.enabled || e.escalation.threshold <= 0 {
 		return nil
@@ -249,10 +254,12 @@ func (e *Engine) maybeEscalateLocked(now time.Time) *decisionResult {
 	}
 }
 
+// nextID 用于生成递增标识保证事件可追踪
 func (e *Engine) nextID() string {
 	return fmt.Sprintf("%d", e.seq.Add(1))
 }
 
+// compileRules 用于编译规则为高效匹配结构
 func compileRules(ruleset *Ruleset) ([]compiledRule, compiledEscalation, error) {
 	if ruleset == nil {
 		return nil, compiledEscalation{}, fmt.Errorf("告警规则为空")
@@ -318,6 +325,7 @@ func compileRules(ruleset *Ruleset) ([]compiledRule, compiledEscalation, error) 
 	return compiled, escalation, nil
 }
 
+// compileEscalation 用于编译升级策略并校验阈值配置
 func compileEscalation(raw EscalationRule) (compiledEscalation, error) {
 	level := LevelFatal
 	if strings.TrimSpace(raw.Level) != "" {
@@ -372,6 +380,7 @@ func compileEscalation(raw EscalationRule) (compiledEscalation, error) {
 	}, nil
 }
 
+// containsAny 用于判断集合中是否包含目标项
 func containsAny(haystack string, keywords []string) bool {
 	for _, keyword := range keywords {
 		if keyword == "" {
@@ -384,6 +393,7 @@ func containsAny(haystack string, keywords []string) bool {
 	return false
 }
 
+// lowerSlice 用于统一大小写便于比较
 func lowerSlice(values []string) []string {
 	if len(values) == 0 {
 		return values
@@ -395,6 +405,7 @@ func lowerSlice(values []string) []string {
 	return out
 }
 
+// truncateMessage 用于截断内容以控制大小
 func truncateMessage(message string, limit int) string {
 	if limit <= 0 || len(message) <= limit {
 		return message
@@ -405,6 +416,7 @@ func truncateMessage(message string, limit int) string {
 	return message[:limit-3] + "..."
 }
 
+// formatDuration 用于格式化输出内容
 func formatDuration(d time.Duration) string {
 	if d <= 0 {
 		return "0秒"
@@ -430,6 +442,7 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%d秒", seconds)
 }
 
+// parseDuration 用于解析输入参数或配置
 func parseDuration(raw string, fallback time.Duration) (time.Duration, error) {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {

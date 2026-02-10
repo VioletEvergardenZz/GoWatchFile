@@ -214,6 +214,7 @@ func (c *Collector) Snapshot(opts SnapshotOptions) (SystemDashboard, error) {
 	return dashboard, nil
 }
 
+// collectHostInfo 用于采集并汇总数据
 func collectHostInfo() (string, string, string, string) {
 	info, err := host.Info()
 	if err != nil {
@@ -233,6 +234,7 @@ func collectHostInfo() (string, string, string, string) {
 	return hostName, osName, kernel, uptime
 }
 
+// collectLoadLabel 用于采集并汇总数据
 func collectLoadLabel() string {
 	avg, err := load.Avg()
 	if err != nil {
@@ -241,6 +243,7 @@ func collectLoadLabel() string {
 	return fmt.Sprintf("%.2f / %.2f / %.2f", avg.Load1, avg.Load5, avg.Load15)
 }
 
+// buildCPUInfoLabel 用于构建后续流程所需的数据
 func buildCPUInfoLabel() string {
 	cores := runtime.NumCPU()
 	mhz := detectCPUMHz()
@@ -261,6 +264,7 @@ func buildCPUInfoLabel() string {
 	return fmt.Sprintf("%d 核 · %.1f GHz", cores, mhz/1000)
 }
 
+// sanitizeMHz 用于清理输入并过滤无效内容
 func sanitizeMHz(mhz float64) float64 {
 	// 部分平台会返回极小值（如 24 MHz），直接视为未知
 	if mhz < 100 {
@@ -269,6 +273,7 @@ func sanitizeMHz(mhz float64) float64 {
 	return mhz
 }
 
+// parseBrandMHz 用于解析输入参数或配置
 func parseBrandMHz(brand string) float64 {
 	if strings.TrimSpace(brand) == "" {
 		return 0
@@ -312,6 +317,7 @@ func collectCPUUsage(prev cpuSample) (float64, cpuSample) {
 	return 0, curr
 }
 
+// collectCPUTemp 用于采集并汇总数据
 func collectCPUTemp() string {
 	temps, err := host.SensorsTemperatures()
 	if err != nil || len(temps) == 0 {
@@ -329,6 +335,7 @@ func collectCPUTemp() string {
 	return fmt.Sprintf("%.0fC", maxTemp)
 }
 
+// formatCPUGaugeTrend 用于格式化输出内容
 func formatCPUGaugeTrend(cpuUsage float64, cpuTemp string) string {
 	idle := 100 - cpuUsage
 	if cpuTemp == "--" {
@@ -337,6 +344,7 @@ func formatCPUGaugeTrend(cpuUsage float64, cpuTemp string) string {
 	return fmt.Sprintf("空闲 %.1f%% · 温度 %s", idle, cpuTemp)
 }
 
+// collectMemoryGauge 用于采集并汇总数据
 func collectMemoryGauge() (ResourceGauge, string, string) {
 	vm, err := mem.VirtualMemory()
 	if err != nil {
@@ -371,6 +379,7 @@ type diskTotals struct {
 	totalLabel string
 }
 
+// collectVolumes 用于采集并汇总数据
 func collectVolumes() ([]Volume, diskTotals) {
 	partitions, err := disk.Partitions(false)
 	if err != nil {
@@ -420,6 +429,7 @@ func collectVolumes() ([]Volume, diskTotals) {
 	}
 }
 
+// shouldSkipVolume 用于判断条件是否成立
 func shouldSkipVolume(part disk.PartitionStat) bool {
 	mount := strings.TrimSpace(part.Mountpoint)
 	if mount == "" {
@@ -442,6 +452,7 @@ func shouldSkipVolume(part disk.PartitionStat) bool {
 	return false
 }
 
+// isPseudoFSType 用于判断条件是否成立
 func isPseudoFSType(fstype string) bool {
 	switch fstype {
 	case "proc", "sysfs", "devtmpfs", "devpts", "tmpfs", "cgroup", "cgroup2", "mqueue",
@@ -453,6 +464,7 @@ func isPseudoFSType(fstype string) bool {
 	}
 }
 
+// shouldSkipDiskCounter 用于判断条件是否成立
 func shouldSkipDiskCounter(name string) bool {
 	if name == "" {
 		return true
@@ -472,6 +484,7 @@ func shouldSkipDiskCounter(name string) bool {
 	}
 }
 
+// baseDiskDevice 用于提取磁盘基础设备名便于聚合统计
 func baseDiskDevice(name string) string {
 	if strings.HasPrefix(name, "nvme") || strings.HasPrefix(name, "mmcblk") {
 		if idx := strings.LastIndex(name, "p"); idx > 0 && idx < len(name)-1 && isDigits(name[idx+1:]) {
@@ -488,6 +501,7 @@ func baseDiskDevice(name string) string {
 	return base
 }
 
+// isDigits 用于判断条件是否成立
 func isDigits(value string) bool {
 	if value == "" {
 		return false
@@ -548,6 +562,7 @@ type connectionStats struct {
 	total int
 }
 
+// collectConnections 用于采集并汇总数据
 func collectConnections(includePorts bool) (connectionStats, string, map[int32][]string) {
 	stats := connectionStats{}
 	connBreakdown := "--"
@@ -582,6 +597,7 @@ func collectConnections(includePorts bool) (connectionStats, string, map[int32][
 	return stats, connBreakdown, portMap
 }
 
+// isPortBinding 用于判断条件是否成立
 func isPortBinding(status string, sockType uint32) bool {
 	if status == "LISTEN" || status == "LISTENING" {
 		return true
@@ -619,6 +635,7 @@ type procCandidate struct {
 	exe       string
 }
 
+// collectProcesses 用于采集并汇总数据
 func collectProcesses(opts collectProcessOptions) (int, []Process, map[int32]procSample, string) {
 	procs, err := process.Processes()
 	if err != nil {
@@ -785,6 +802,7 @@ func collectProcesses(opts collectProcessOptions) (int, []Process, map[int32]pro
 	return procCount, processes, nextSamples, topProcess
 }
 
+// collectProcessIO 用于采集并汇总数据
 func collectProcessIO(proc *process.Process, prev procSample, interval time.Duration) (string, string, procSample) {
 	ioCounters, err := proc.IOCounters()
 	if err != nil || ioCounters == nil {
@@ -809,6 +827,7 @@ func collectProcessIO(proc *process.Process, prev procSample, interval time.Dura
 	return formatRate(readDelta, interval), formatRate(writeDelta, interval), sample
 }
 
+// collectProcessEnv 用于采集并汇总数据
 func collectProcessEnv(proc *process.Process, limit int) []string {
 	if limit <= 0 {
 		return []string{}
@@ -823,6 +842,7 @@ func collectProcessEnv(proc *process.Process, limit int) []string {
 	return env
 }
 
+// buildProcessNote 用于构建后续流程所需的数据
 func buildProcessNote(cpuPct, memPct float64) string {
 	switch {
 	case cpuPct >= 60 && memPct >= 20:
@@ -836,6 +856,7 @@ func buildProcessNote(cpuPct, memPct float64) string {
 	}
 }
 
+// copyDiskSamples 用于复制快照避免并发读写冲突
 func copyDiskSamples(src map[string]diskSample) map[string]diskSample {
 	if len(src) == 0 {
 		return map[string]diskSample{}
@@ -847,6 +868,7 @@ func copyDiskSamples(src map[string]diskSample) map[string]diskSample {
 	return dst
 }
 
+// copyProcSamples 用于复制快照避免并发读写冲突
 func copyProcSamples(src map[int32]procSample) map[int32]procSample {
 	if len(src) == 0 {
 		return map[int32]procSample{}
@@ -858,6 +880,7 @@ func copyProcSamples(src map[int32]procSample) map[int32]procSample {
 	return dst
 }
 
+// sumCPUTimes 用于汇总 CPU 时间片以计算使用率
 func sumCPUTimes(t cpu.TimesStat) float64 {
 	total := t.User + t.System + t.Idle + t.Nice + t.Iowait + t.Irq + t.Softirq + t.Steal + t.Guest + t.GuestNice
 	if runtime.GOOS == "linux" {
@@ -866,6 +889,7 @@ func sumCPUTimes(t cpu.TimesStat) float64 {
 	return total
 }
 
+// fallbackString 用于异常场景下执行降级回退
 func fallbackString(value, fallback string) string {
 	if strings.TrimSpace(value) == "" {
 		return fallback

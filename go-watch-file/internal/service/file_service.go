@@ -249,7 +249,7 @@ func (fs *FileService) Config() *models.Config {
 	return &cfgCopy
 }
 
-// persistRuntimeConfig writes console-managed config to the runtime config file.
+// persistRuntimeConfig 将控制台更新的配置写入运行时配置文件
 func (fs *FileService) persistRuntimeConfig(cfg *models.Config) {
 	if cfg == nil {
 		return
@@ -262,7 +262,7 @@ func (fs *FileService) persistRuntimeConfig(cfg *models.Config) {
 	}
 }
 
-// UpdateConfig updates runtime config and rebuilds watcher/upload pools.
+// UpdateConfig 更新运行时配置并重建监听器与上传池
 func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWorkers, uploadQueueSize int, uploadRetryDelays string, uploadRetryEnabled *bool, systemResourceEnabled *bool) (*models.Config, error) {
 	// 先加锁读取当前配置与组件引用
 	fs.mu.Lock()
@@ -359,6 +359,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 	}
 
 	// 切换到新配置与新组件
+	// 先原子替换再启动或重置 watcher，避免运行中读到半更新状态
 	fs.mu.Lock()
 	fs.config = &updated
 	fs.state = newState
@@ -373,6 +374,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 		// 使用新配置启动 watcher
 		if err := activeWatcher.Start(); err != nil {
 			// watcher 启动失败则回滚
+			// 回滚顺序保持和替换顺序相反，确保资源引用一致
 			_ = newPool.ShutdownGraceful(shutdownTimeout)
 			_ = activeWatcher.Close()
 			// 回滚到旧配置，避免留下已关闭的工作池
@@ -393,6 +395,7 @@ func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWor
 		// 已存在 watcher 则按新配置重置
 		if err := activeWatcher.Reset(&updated); err != nil {
 			// reset 失败则回滚
+			// 旧 watcher 仍可继续工作，因此只需丢弃新建组件
 			_ = newPool.ShutdownGraceful(shutdownTimeout)
 			fs.mu.Lock()
 			fs.config = oldCfg
@@ -459,6 +462,8 @@ func normalizeWatchDirs(raw string) (string, error) {
 	return strings.Join(normalized, ","), nil
 }
 
+// normalizeWatchDirKey 生成目录去重键
+// Windows 下统一转小写，避免盘符大小写导致重复监听
 func normalizeWatchDirKey(path string) string {
 	key := filepath.ToSlash(path)
 	if runtime.GOOS == "windows" {
@@ -578,6 +583,7 @@ func (fs *FileService) uploadFileWithRetry(ctx context.Context, filePath string)
 		if attempt == tries {
 			break
 		}
+		// 失败后按配置间隔退避，降低瞬时抖动导致的连续失败
 		delay := delays[attempt-1]
 		fs.recordRetryAttempt()
 		logger.Warn("上传失败，准备重试: %s, 第 %d/%d 次, 等待 %v, 错误: %v", filePath, attempt, tries, delay, err)
@@ -681,6 +687,7 @@ func normalizeManualPath(path string) string {
 	return filepath.Clean(abs)
 }
 
+// formatHostPath 用于格式化输出内容
 func formatHostPath(filePath string) string {
 	host, err := os.Hostname()
 	if err != nil {
@@ -992,6 +999,7 @@ func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 	}
 	if err := fs.uploadPool.AddFile(filePath); err != nil {
 		if errors.Is(err, upload.ErrQueueFull) {
+			// 队列满单独记指标，便于区分是容量问题还是上传失败
 			fs.recordQueueFull()
 		}
 		if fs.state != nil {
@@ -1006,18 +1014,21 @@ func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 	return nil
 }
 
+// recordQueueFull 记录上传队列满次数
 func (fs *FileService) recordQueueFull() {
 	fs.metricsMu.Lock()
 	fs.queueFull++
 	fs.metricsMu.Unlock()
 }
 
+// recordRetryAttempt 记录上传重试次数
 func (fs *FileService) recordRetryAttempt() {
 	fs.metricsMu.Lock()
 	fs.retryTotal++
 	fs.metricsMu.Unlock()
 }
 
+// recordUploadFailure 记录上传失败次数与失败原因分布
 func (fs *FileService) recordUploadFailure(err error) {
 	fs.metricsMu.Lock()
 	fs.uploadFailure++
@@ -1029,6 +1040,7 @@ func (fs *FileService) recordUploadFailure(err error) {
 	fs.metricsMu.Unlock()
 }
 
+// normalizeFailureReason 将错误信息规整为可聚合的统计键
 func normalizeFailureReason(err error) string {
 	if err == nil {
 		return "unknown"

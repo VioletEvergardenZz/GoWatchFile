@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// throttleDuration     = 120 * time.Second
+	// throttleDuration 是历史节流值，保留注释用于后续参数调整对照
 	logThrottleDuration  = 5 * time.Second  // 日志节流时间间隔（控制台或者程序日志文件输出频率）
 	defaultSilenceWindow = 10 * time.Second // 文件写入完成检测超时时间（默认）
 )
@@ -175,6 +175,7 @@ func (fw *FileWatcher) Close() error {
 	return fw.watcher.Close()
 }
 
+// startEventLoop 用于启动流程或服务
 func (fw *FileWatcher) startEventLoop() {
 	ctx, cancel := context.WithCancel(context.Background())
 	fw.ctx = ctx
@@ -184,6 +185,7 @@ func (fw *FileWatcher) startEventLoop() {
 	go fw.handleEvents(ctx, done)
 }
 
+// stopEventLoop 用于停止流程并释放资源
 func (fw *FileWatcher) stopEventLoop() {
 	if fw.cancel != nil {
 		fw.cancel()
@@ -198,6 +200,7 @@ func (fw *FileWatcher) stopEventLoop() {
 	}
 }
 
+// resetFileState 用于重置内部状态避免脏数据残留
 func (fw *FileWatcher) resetFileState() {
 	fw.stateMutex.Lock()
 	for _, t := range fw.writeTimers {
@@ -211,6 +214,7 @@ func (fw *FileWatcher) resetFileState() {
 	fw.stateMutex.Unlock()
 }
 
+// resetWatchState 用于重置内部状态避免脏数据残留
 func (fw *FileWatcher) resetWatchState() {
 	fw.watchMutex.Lock()
 	fw.watchedDirs = make(map[string]struct{})
@@ -238,6 +242,7 @@ func (fw *FileWatcher) handleEvents(ctx context.Context, done chan struct{}) {
 	}
 }
 
+// handleEvent 用于处理核心流程
 func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 	logger.Debug("收到文件事件: %s, 操作: %s", event.Name, event.Op.String())
 
@@ -257,6 +262,7 @@ func (fw *FileWatcher) handleEvent(event fsnotify.Event) {
 	}
 }
 
+// isTargetFileEvent 用于判断条件是否成立
 func (fw *FileWatcher) isTargetFileEvent(event fsnotify.Event) bool {
 	if isTempFile(event.Name) {
 		return false
@@ -269,6 +275,7 @@ func (fw *FileWatcher) isTargetFileEvent(event fsnotify.Event) bool {
 	return event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create
 }
 
+// handleTargetFileEvent 用于处理核心流程
 func (fw *FileWatcher) handleTargetFileEvent(event fsnotify.Event) {
 	if fw.shouldLogFileEvent(event.Name) {
 		logger.Info("检测到目标文件变化: %s, 操作: %s", event.Name, event.Op.String())
@@ -276,6 +283,7 @@ func (fw *FileWatcher) handleTargetFileEvent(event fsnotify.Event) {
 	fw.handleFileEvent(event.Name, event.Op)
 }
 
+// handleCreatedPath 用于处理核心流程
 func (fw *FileWatcher) handleCreatedPath(path string) {
 	fi, err := os.Stat(path)
 	if err != nil || !fi.IsDir() {
@@ -291,6 +299,7 @@ func (fw *FileWatcher) handleCreatedPath(path string) {
 	logger.Info("添加目录监控: %s", path)
 }
 
+// addWatch 用于添加数据到目标集合
 func (fw *FileWatcher) addWatch(path string) (bool, error) {
 	fw.watchMutex.Lock()
 	defer fw.watchMutex.Unlock()
@@ -304,6 +313,7 @@ func (fw *FileWatcher) addWatch(path string) (bool, error) {
 	return true, nil
 }
 
+// removeAllWatches 用于移除或清理数据
 func (fw *FileWatcher) removeAllWatches() {
 	fw.watchMutex.Lock()
 	for path := range fw.watchedDirs {
@@ -313,6 +323,7 @@ func (fw *FileWatcher) removeAllWatches() {
 	fw.watchMutex.Unlock()
 }
 
+// removeWatchTree 用于移除或清理数据
 func (fw *FileWatcher) removeWatchTree(root string) {
 	root = filepath.Clean(root)
 	sep := string(filepath.Separator)
@@ -336,6 +347,7 @@ func (fw *FileWatcher) removeWatchTree(root string) {
 	fw.watchMutex.Unlock()
 }
 
+// isWatchedDir 用于判断条件是否成立
 func (fw *FileWatcher) isWatchedDir(path string) bool {
 	fw.watchMutex.Lock()
 	_, exists := fw.watchedDirs[path]
@@ -403,6 +415,7 @@ func (fw *FileWatcher) isExcludedPath(path string) bool {
 	return fw.exclude.IsExcluded(path)
 }
 
+// addWatchRecursivelyForDirs 用于添加数据到目标集合
 func (fw *FileWatcher) addWatchRecursivelyForDirs(dirs []string) error {
 	if len(dirs) == 0 {
 		return nil
@@ -452,6 +465,7 @@ func (fw *FileWatcher) updateFileWriteTime(filePath string) {
 	})
 }
 
+// handleWriteComplete 用于处理核心流程
 func (fw *FileWatcher) handleWriteComplete(filePath string) {
 	fw.stateMutex.Lock()
 	lastWrite, ok := fw.lastWriteTime[filePath]
@@ -514,6 +528,7 @@ func isTempFile(filePath string) bool {
 	return false
 }
 
+// parseSilenceWindow 用于解析输入参数或配置
 func parseSilenceWindow(raw string) time.Duration {
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
@@ -540,6 +555,7 @@ func parseSilenceWindow(raw string) time.Duration {
 	return defaultSilenceWindow
 }
 
+// isTooManyOpenFiles 用于判断条件是否成立
 func isTooManyOpenFiles(err error) bool {
 	if err == nil {
 		return false

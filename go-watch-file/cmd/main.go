@@ -18,12 +18,14 @@ import (
 	"file-watch/internal/service"
 )
 
+// main 作为入口函数并串联核心启动流程
 func main() {
 	if err := run(); err != nil {
 		log.Fatalf("程序退出: %v", err)
 	}
 }
 
+// run 用于执行主流程
 func run() error {
 	configPath := parseFlags()
 	log.Printf("程序启动，配置文件: %s", configPath)
@@ -58,6 +60,7 @@ func run() error {
 	return nil
 }
 
+// parseFlags 用于解析输入参数或配置
 func parseFlags() string {
 	var configPath string
 	flag.StringVar(&configPath, "config", "config.yaml", "配置文件路径")
@@ -65,10 +68,12 @@ func parseFlags() string {
 	return configPath
 }
 
+// loadAndValidateConfig 用于加载运行数据
 func loadAndValidateConfig(configPath string) (*models.Config, error) {
 	return config.LoadConfig(configPath)
 }
 
+// logConfig 用于输出关键配置帮助排查启动问题
 func logConfig(cfg *models.Config) {
 	logger.Info("配置加载成功")
 	if strings.TrimSpace(cfg.WatchDir) == "" {
@@ -96,6 +101,7 @@ func logConfig(cfg *models.Config) {
 	logger.Info("上传队列大小: %d", cfg.UploadQueueSize)
 }
 
+// waitForShutdown 用于等待协程或事件完成
 func waitForShutdown(fileService *service.FileService, apiServer *api.Server) {
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)

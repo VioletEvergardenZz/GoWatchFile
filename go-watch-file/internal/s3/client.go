@@ -99,6 +99,7 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 	return downloadURL, nil
 }
 
+// buildObjectKey 用于构建后续流程所需的数据
 func (c *Client) buildObjectKey(filePath string) (string, error) {
 	watchDirs := pathutil.SplitWatchDirs(c.config.WatchDir)
 	objectKey, err := pathutil.BuildObjectKeyStrictForDirs(watchDirs, filePath)
@@ -119,6 +120,7 @@ func (c *Client) buildObjectKey(filePath string) (string, error) {
 	return hostName + "/" + objectKey, nil
 }
 
+// buildDownloadURL 用于构建后续流程所需的数据
 func (c *Client) buildDownloadURL(objectKey string) string {
 	return pathutil.BuildDownloadURL(
 		c.config.Endpoint,
@@ -129,6 +131,7 @@ func (c *Client) buildDownloadURL(objectKey string) string {
 	)
 }
 
+// normalizeHostName 用于统一数据格式便于比较与存储
 func normalizeHostName() string {
 	host, err := os.Hostname()
 	if err != nil {

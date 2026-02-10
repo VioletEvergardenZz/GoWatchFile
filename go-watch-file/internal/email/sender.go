@@ -28,13 +28,13 @@ type Sender struct {
 // NewSender 创建邮件发送器
 func NewSender(host string, port int, user, password, from string, to []string, useTLS bool) *Sender {
 	return &Sender{
-		host: strings.TrimSpace(host),
-		port: port,
-		user: strings.TrimSpace(user),
+		host:     strings.TrimSpace(host),
+		port:     port,
+		user:     strings.TrimSpace(user),
 		password: password,
-		from: strings.TrimSpace(from),
-		to: cleanRecipients(to),		//to 先清理空元素和多余空格
-		useTLS: useTLS,					//useTLS 控制 TLS 与 STARTTLS 行为
+		from:     strings.TrimSpace(from),
+		to:       cleanRecipients(to), //to 先清理空元素和多余空格
+		useTLS:   useTLS,              //useTLS 控制 TLS 与 STARTTLS 行为
 	}
 }
 
@@ -181,6 +181,7 @@ type QuitError struct {
 	Err error
 }
 
+// Error 返回可读的 QUIT 失败描述
 func (e *QuitError) Error() string {
 	// 保持对外统一的错误文本格式
 	if e == nil || e.Err == nil {
@@ -189,6 +190,7 @@ func (e *QuitError) Error() string {
 	return fmt.Sprintf("smtp quit failed: %v", e.Err)
 }
 
+// Unwrap 暴露底层错误，方便调用方用 errors.As 判断
 func (e *QuitError) Unwrap() error {
 	// 支持 errors.As 解包
 	if e == nil {
@@ -204,6 +206,8 @@ func IsQuitError(err error) bool {
 	return errors.As(err, &quitErr)
 }
 
+// buildMessage 组装标准 SMTP 文本邮件内容
+// 这里不引入复杂 MIME，保证告警通知稳定可用
 func buildMessage(from string, to []string, subject, body string) string {
 	// 这里使用简单文本邮件头，避免 MIME 复杂性
 	// Subject 去除换行避免头注入
@@ -223,6 +227,7 @@ func buildMessage(from string, to []string, subject, body string) string {
 	return strings.Join(headers, "\r\n") + "\r\n\r\n" + normalizedBody + "\r\n"
 }
 
+// normalizeLineEndings 统一换行符为 CRLF，满足 SMTP 协议要求
 func normalizeLineEndings(body string) string {
 	// SMTP 要求 CRLF，统一转换换行符格式
 	// 先收敛为 LF 再转为 CRLF
@@ -231,6 +236,7 @@ func normalizeLineEndings(body string) string {
 	return strings.ReplaceAll(body, "\n", "\r\n")
 }
 
+// cleanRecipients 清理收件人列表中的空项与多余空格
 func cleanRecipients(list []string) []string {
 	// 清理收件人列表中的空值与多余空格
 	// 保持收件人顺序以便对照发送结果

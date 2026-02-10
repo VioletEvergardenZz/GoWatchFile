@@ -30,6 +30,7 @@ type runtimeConfig struct {
 	AlertStartFromEnd     *bool                `yaml:"alert_start_from_end"`
 }
 
+// runtimeConfigPath 用于执行主流程
 func runtimeConfigPath(configPath string) string {
 	cleaned := strings.TrimSpace(configPath)
 	if cleaned == "" {
@@ -42,6 +43,7 @@ func runtimeConfigPath(configPath string) string {
 	return strings.TrimSuffix(cleaned, ext) + ".runtime" + ext
 }
 
+// loadRuntimeConfig 用于加载运行数据
 func loadRuntimeConfig(configPath string) (*runtimeConfig, error) {
 	path := runtimeConfigPath(configPath)
 	if path == "" {
@@ -61,6 +63,7 @@ func loadRuntimeConfig(configPath string) (*runtimeConfig, error) {
 	return &cfg, nil
 }
 
+// applyRuntimeConfig 用于应用配置并保持运行态一致
 func applyRuntimeConfig(cfg *models.Config, runtime *runtimeConfig) {
 	if cfg == nil || runtime == nil {
 		return
@@ -112,6 +115,7 @@ func applyRuntimeConfig(cfg *models.Config, runtime *runtimeConfig) {
 	}
 }
 
+// SaveRuntimeConfig 用于保存运行数据
 func SaveRuntimeConfig(configPath string, cfg *models.Config) error {
 	if cfg == nil {
 		return nil
@@ -131,6 +135,7 @@ func SaveRuntimeConfig(configPath string, cfg *models.Config) error {
 	return nil
 }
 
+// buildRuntimeConfig 用于构建后续流程所需的数据
 func buildRuntimeConfig(cfg *models.Config) *runtimeConfig {
 	if cfg == nil {
 		return nil
@@ -170,6 +175,7 @@ func buildRuntimeConfig(cfg *models.Config) *runtimeConfig {
 	}
 }
 
+// writeFileAtomic 用于写入数据
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if dir != "" && dir != "." {
@@ -198,10 +204,12 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmp.Name(), path)
 }
 
+// stringPtr 用于生成字符串指针表达可选字段
 func stringPtr(value string) *string {
 	return &value
 }
 
+// intPtr 用于生成整型指针表达可选字段
 func intPtr(value int) *int {
 	return &value
 }

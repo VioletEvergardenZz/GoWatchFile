@@ -100,6 +100,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
+// dashboard 用于返回系统总览数据供控制台展示
 func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -134,6 +135,7 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, payload)
 }
 
+// toggleAutoUpload 用于切换自动上传开关并返回最新状态
 func (h *handler) toggleAutoUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -165,6 +167,7 @@ func (h *handler) toggleAutoUpload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// manualUpload 用于校验并触发手动上传请求
 func (h *handler) manualUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -219,6 +222,7 @@ func (h *handler) manualUpload(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// fileLog 用于读取或检索文件日志内容
 func (h *handler) fileLog(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -295,6 +299,7 @@ func (h *handler) fileLog(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// updateConfig 用于更新运行状态或配置
 func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -381,6 +386,7 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// health 用于返回服务健康与队列指标
 func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -389,6 +395,7 @@ func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.fs.HealthSnapshot())
 }
 
+// alertDashboard 用于返回告警模块运行态信息
 func (h *handler) alertDashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -410,6 +417,7 @@ func (h *handler) alertDashboard(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// alertConfig 用于读取或更新告警配置
 func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -470,6 +478,7 @@ func (h *handler) alertConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// alertRules 用于读取或更新告警规则
 func (h *handler) alertRules(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -532,6 +541,7 @@ func (h *handler) alertRules(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// systemDashboard 用于返回系统资源监控数据
 func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -577,6 +587,7 @@ func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, snapshot)
 }
 
+// buildAlertConfigSnapshot 用于构建后续流程所需的数据
 func buildAlertConfigSnapshot(cfg *models.Config, enabled bool) map[string]any {
 	if cfg == nil {
 		return map[string]any{
@@ -617,6 +628,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload) //编码成 JSON，直接写进响应体里（这里不处理错误）
 }
 
+// withCORS 用于补充跨域响应头并处理预检请求
 func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 	allowAll := false
 	allowedOrigins := make(map[string]struct{})
@@ -670,6 +682,7 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 	})
 }
 
+// withAPIAuth 用于统一校验接口访问令牌
 func withAPIAuth(cfg *models.Config, next http.Handler) http.Handler {
 	token := ""
 	if cfg != nil {
@@ -698,6 +711,7 @@ func withAPIAuth(cfg *models.Config, next http.Handler) http.Handler {
 	})
 }
 
+// extractAuthToken 用于提取有效片段供后续处理
 func extractAuthToken(r *http.Request) string {
 	if r == nil {
 		return ""
@@ -710,6 +724,7 @@ func extractAuthToken(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get("X-API-Token"))
 }
 
+// withRecovery 用于兜底捕获 panic 防止服务崩溃
 func withRecovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {
@@ -722,6 +737,7 @@ func withRecovery(next http.Handler) http.Handler {
 	})
 }
 
+// resolveWriteTimeout 用于解析依赖并返回可用结果
 func resolveWriteTimeout(cfg *models.Config) time.Duration {
 	base := 90 * time.Second
 	if cfg == nil {
@@ -737,6 +753,7 @@ func resolveWriteTimeout(cfg *models.Config) time.Duration {
 	return base
 }
 
+// parseBoolQuery 用于解析输入参数或配置
 func parseBoolQuery(r *http.Request, key string) bool {
 	if r == nil {
 		return false
@@ -745,6 +762,7 @@ func parseBoolQuery(r *http.Request, key string) bool {
 	return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
 }
 
+// loadDashboardCache 用于加载运行数据
 func (h *handler) loadDashboardCache() (any, bool) {
 	if h == nil {
 		return nil, false
@@ -762,6 +780,7 @@ func (h *handler) loadDashboardCache() (any, bool) {
 	return h.dashboardCacheData, true
 }
 
+// storeDashboardCache 用于写入仪表盘缓存减少重复采集开销
 func (h *handler) storeDashboardCache(payload any) {
 	if h == nil {
 		return
@@ -776,6 +795,7 @@ func (h *handler) storeDashboardCache(payload any) {
 	h.dashboardCacheMu.Unlock()
 }
 
+// invalidateDashboardCache 用于在配置变更后失效仪表盘缓存
 func (h *handler) invalidateDashboardCache() {
 	if h == nil {
 		return
