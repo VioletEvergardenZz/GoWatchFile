@@ -1,9 +1,9 @@
 # 上传队列持久化运行手册
 
 ## 1. 目标
-- 避免服务重启导致上传队列任务全部丢失
-- 在不引入外部中间件的前提下，提供最小可用的“至少一次”保障
-- 出现持久化文件损坏时，服务仍可继续启动并恢复可用
+- 避免服务重启导致上传队列任务丢失
+- 在不引入外部中间件的前提下提供最小可用的落盘能力
+- 持久化文件损坏时自动降级并保持服务可启动
 
 ## 2. 当前实现
 - 持久化实现：`go-watch-file/internal/persistqueue/file_queue.go`
@@ -26,16 +26,16 @@
 
 ## 4. 运行语义
 - 入队前先落盘：任务先写入持久化文件，再写入内存队列
-- 成功后确认：上传成功后从持久化队列删除对应任务
-- 启动时恢复：服务启动时会把持久化文件中的任务恢复到内存队列
+- 上传成功后确认：成功后从持久化队列删除对应任务
+- 启动时恢复：服务启动时读取持久化文件恢复未完成任务
 - 语义级别：至少一次（At-Least-Once），不保证严格去重
 
 ## 5. 损坏降级策略
-- 如果持久化文件不可解析：
-  - 自动备份损坏文件为：`<原文件>.corrupt-时间戳.bak`
+- 持久化文件不可解析时：
+  - 自动备份损坏文件：`<原文件>.corrupt-<timestamp>.bak`
   - 自动重建空队列文件
-  - 服务继续启动，避免因为坏文件导致不可用
-- 同时记录错误日志，便于排查根因
+  - 服务继续启动，避免因坏文件导致整体不可用
+- 同时记录错误日志，便于排障
 
 ## 6. 运维命令（queue-admin）
 在 `go-watch-file` 目录执行：
@@ -44,7 +44,7 @@
 # 入队
 go run ./cmd/queue-admin -action enqueue -item /tmp/a.log -store logs/upload-queue.json
 
-# 查看
+# 查看队列
 go run ./cmd/queue-admin -action peek -store logs/upload-queue.json
 
 # 出队
@@ -52,9 +52,21 @@ go run ./cmd/queue-admin -action dequeue -store logs/upload-queue.json
 
 # 清空
 go run ./cmd/queue-admin -action reset -store logs/upload-queue.json
+
+# 健康检查（轻量）
+go run ./cmd/queue-admin -action check -store logs/upload-queue.json
+
+# 诊断详情（包含文件状态与指标）
+go run ./cmd/queue-admin -action doctor -store logs/upload-queue.json
 ```
 
-### 6.1 健康观察（/api/health）
+### 6.1 `check` 与 `doctor` 退出码
+- `0`：检查通过，状态正常
+- `1`：参数错误或不支持的 `action`
+- `2`：队列文件不可读或初始化失败
+- `3`：检查通过但处于降级状态（例如检测到损坏降级或持久化写失败）
+
+### 6.2 健康观测（`/api/health`）
 - `persistQueue.enabled`：是否开启持久化队列
 - `persistQueue.storeFile`：当前持久化文件路径
 - `persistQueue.recoveredTotal`：累计恢复到内存队列的任务数
@@ -62,12 +74,13 @@ go run ./cmd/queue-admin -action reset -store logs/upload-queue.json
 - `persistQueue.persistWriteFailureTotal`：累计持久化写失败次数
 
 ## 7. 现场核对清单
-- 重启前入队的任务，重启后是否可恢复
+- 重启前入队任务，重启后是否可恢复
 - 连续执行 `enqueue/dequeue` 后，队列文件是否可持续解析
-- 人工写入损坏 JSON 后，是否生成 `.corrupt-*.bak` 备份且服务仍可启动
-- 日志中是否包含损坏降级记录
+- 人工写入损坏 JSON 后，是否生成 `.corrupt-*.bak` 且服务仍可启动
+- `queue-admin -action check` 是否可用于脚本化巡检
+- `queue-admin -action doctor` 是否输出完整诊断信息
 
 ## 8. 当前边界
 - 不做严格去重，极端故障场景可能重复处理同一路径
 - 不支持断点续传
-- 不支持跨实例共享同一持久化文件（单实例假设）
+- 不支持跨实例共享同一持久化文件（默认单实例）

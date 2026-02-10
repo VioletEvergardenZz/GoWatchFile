@@ -26,6 +26,25 @@ jobs:
       - name: go test
         run: go test ./...
 
+      - name: queue-admin check smoke
+        run: |
+          queue_tmp="${RUNNER_TEMP}/queue-admin-ci"
+          mkdir -p "$queue_tmp"
+
+          go build -o "$queue_tmp/queue-admin" ./cmd/queue-admin
+
+          "$queue_tmp/queue-admin" -action check -store "$queue_tmp/healthy.json"
+
+          printf '{bad-json' > "$queue_tmp/corrupt.json"
+          set +e
+          "$queue_tmp/queue-admin" -action check -store "$queue_tmp/corrupt.json"
+          code=$?
+          set -e
+          if [ "$code" -ne 3 ]; then
+            echo "expected degraded exit code 3, got $code"
+            exit 1
+          fi
+
   frontend-build:
     name: frontend build
     runs-on: ubuntu-latest
