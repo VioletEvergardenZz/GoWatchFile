@@ -7,7 +7,7 @@
 - 多后缀过滤，可为空表示全量目录。
 - 临时文件后缀过滤（如 `.tmp/.part/.crdownload`）。
 - 写入完成判定（silence window，默认 10s，支持 `10s` / `10秒` / `10`）。
-- 内存队列 + worker pool 并发上传到 S3 兼容存储。
+- worker pool 并发上传到 S3 兼容存储（默认内存队列，可选持久化恢复）。
 - 上传失败重试（可开关，可配置重试间隔）。
 - 钉钉机器人/邮件通知（可选）。
 - 告警决策：日志轮询、规则匹配、抑制/升级、告警概览与决策列表（规则由控制台维护并写入 `config.runtime.yaml`）。
@@ -27,10 +27,11 @@
    cp .env.example .env
    # 填写密钥相关变量（S3_AK/S3_SK、DINGTALK_*、EMAIL_*）
    # 填写 API 安全变量（API_AUTH_TOKEN、API_CORS_ORIGINS）
+   # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
    # 如需覆盖 S3 参数，可设置 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
-   `config.yaml` 在密钥字段使用环境变量占位符，S3 连接参数默认在配置文件，也可用环境变量覆盖；其他配置通过控制台设置并持久化到 `config.runtime.yaml`。
+   `config.yaml` 在密钥字段使用环境变量占位符，S3 连接参数默认在配置文件，也可用环境变量覆盖；队列持久化开关属于静态配置（需重启）；其他配置通过控制台设置并持久化到 `config.runtime.yaml`。
 3) 启动：
    ```bash
    go build -o bin/file-watch cmd/main.go
@@ -85,7 +86,7 @@ docker compose down
 
 ## 现阶段限制（与代码一致）
 - 支持多监控目录（`watch_dir` 可用逗号或分号分隔），多后缀已支持。
-- 上传队列在内存中，重启会清空；不支持断点续传。
+- 默认上传队列在内存中，重启会清空；开启 `upload_queue_persist_enabled` 后可恢复未完成任务；不支持断点续传。
 - 通知渠道有限：钉钉/邮件，企业微信等仅保留配置字段。
 - 控制面为本地 API + 前端，不包含多 Agent 管理与编排。
 - 系统资源面板默认关闭，需要在控制台开启后才能访问 `/api/system`。

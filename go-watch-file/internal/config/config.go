@@ -21,17 +21,18 @@ import (
 )
 
 const (
-	defaultUploadWorkers        = 3
-	defaultUploadQueueSize      = 100
-	defaultLogLevel             = "info"
-	defaultLogToStd             = true
-	defaultAPIBind              = ":8080"
-	defaultSilence              = "10s"
-	defaultAlertPollInterval    = "2s"
-	defaultAlertStartFromEnd    = true
-	defaultAlertSuppressEnabled = true
-	defaultAIMaxLines           = 200
-	defaultAITimeout            = "20s"
+	defaultUploadWorkers          = 3
+	defaultUploadQueueSize        = 100
+	defaultUploadQueuePersistFile = "logs/upload-queue.json"
+	defaultLogLevel               = "info"
+	defaultLogToStd               = true
+	defaultAPIBind                = ":8080"
+	defaultSilence                = "10s"
+	defaultAlertPollInterval      = "2s"
+	defaultAlertStartFromEnd      = true
+	defaultAlertSuppressEnabled   = true
+	defaultAIMaxLines             = 200
+	defaultAITimeout              = "20s"
 )
 
 var allowedLogLevels = map[string]struct{}{
@@ -130,6 +131,7 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.APIBind = sanitizeConfigString(cfg.APIBind)
 	cfg.APIAuthToken = sanitizeConfigString(cfg.APIAuthToken)
 	cfg.APICORSOrigins = sanitizeConfigString(cfg.APICORSOrigins)
+	cfg.UploadQueuePersistFile = sanitizeConfigString(cfg.UploadQueuePersistFile)
 	cfg.AlertRulesFile = sanitizeConfigString(cfg.AlertRulesFile)
 	cfg.AlertLogPaths = sanitizeConfigString(cfg.AlertLogPaths)
 	cfg.AlertPollInterval = sanitizeConfigString(cfg.AlertPollInterval)
@@ -164,6 +166,14 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.Region = stringFromEnv("S3_REGION", cfg.Region)
 	cfg.APIAuthToken = stringFromEnv("API_AUTH_TOKEN", cfg.APIAuthToken)
 	cfg.APICORSOrigins = stringFromEnv("API_CORS_ORIGINS", cfg.APICORSOrigins)
+	cfg.UploadQueuePersistFile = stringFromEnv("UPLOAD_QUEUE_PERSIST_FILE", cfg.UploadQueuePersistFile)
+	queuePersistEnabled, ok, err := boolFromEnv("UPLOAD_QUEUE_PERSIST_ENABLED")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadQueuePersistEnabled = queuePersistEnabled
+	}
 	forcePathStyle, ok, err := boolFromEnv("S3_FORCE_PATH_STYLE")
 	if err != nil {
 		return err
@@ -210,6 +220,9 @@ func applyDefaults(cfg *models.Config) {
 	}
 	if cfg.UploadRetryEnabled == nil {
 		cfg.UploadRetryEnabled = boolPtr(true)
+	}
+	if cfg.UploadQueuePersistEnabled && strings.TrimSpace(cfg.UploadQueuePersistFile) == "" {
+		cfg.UploadQueuePersistFile = defaultUploadQueuePersistFile
 	}
 	if strings.TrimSpace(cfg.Silence) == "" {
 		cfg.Silence = defaultSilence

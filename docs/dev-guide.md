@@ -23,6 +23,7 @@ go build -o bin/file-watch cmd/main.go
 - `file_ext` 支持多后缀（逗号或空格分隔），可留空表示不过滤。
 - 临时文件后缀会被忽略（如 `.tmp/.part/.crdownload`）。
 - `silence` 默认 `10s`，支持 `10s` / `10秒` / `10`。
+- `upload_queue_persist_enabled`/`upload_queue_persist_file` 控制上传队列落盘（默认关闭，静态配置，需重启生效）。
 - `upload_retry_enabled`/`upload_retry_delays` 可控制上传重试开关与间隔（默认 `1s,2s,5s`）。
 - `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
 - `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
@@ -32,7 +33,7 @@ go build -o bin/file-watch cmd/main.go
   - 本地开发建议包含 `http://localhost:5173`（Vite）与 `http://localhost:8081`（前端容器）。
 
 ### 环境变量覆盖范围
-- 仅会覆盖 S3 / 通知 / API 安全 / AI 相关字段（`S3_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`、`API_*`、`AI_*`）。
+- 仅会覆盖 S3 / 通知 / API 安全 / AI / 队列持久化相关字段（`S3_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`、`API_*`、`AI_*`、`UPLOAD_QUEUE_PERSIST_*`）。
 - `watch_dir` / `file_ext` / `watch_exclude` / `log_level` / `alert_*` 不会被环境变量覆盖。
 
 ### 告警模式配置要点
@@ -80,6 +81,7 @@ docker compose down
 - `uploadWorkers` / `uploadQueueSize`
 - `uploadRetryEnabled` / `uploadRetryDelays`
 - `systemResourceEnabled`
+- `upload_queue_persist_enabled` / `upload_queue_persist_file` 不在 `/api/config` 更新范围内，需改 `config.yaml` 或 `.env` 后重启。
 
 S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env`，变更后需重启后端。
 

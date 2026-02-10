@@ -71,6 +71,68 @@ func (q *FileQueue) Dequeue() (string, bool, error) {
 	return item, true, nil
 }
 
+// RemoveOne 删除一条匹配元素并持久化
+func (q *FileQueue) RemoveOne(item string) (bool, error) {
+	if q == nil {
+		return false, fmt.Errorf("队列未初始化")
+	}
+	trimmed := strings.TrimSpace(item)
+	if trimmed == "" {
+		return false, fmt.Errorf("删除元素不能为空")
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	idx := -1
+	for i, val := range q.items {
+		if val == trimmed {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return false, nil
+	}
+	next := make([]string, 0, len(q.items)-1)
+	next = append(next, q.items[:idx]...)
+	next = append(next, q.items[idx+1:]...)
+	q.items = next
+	if err := q.saveLocked(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// RemoveLastOne 删除一条最后匹配元素并持久化
+func (q *FileQueue) RemoveLastOne(item string) (bool, error) {
+	if q == nil {
+		return false, fmt.Errorf("队列未初始化")
+	}
+	trimmed := strings.TrimSpace(item)
+	if trimmed == "" {
+		return false, fmt.Errorf("删除元素不能为空")
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	idx := -1
+	for i := len(q.items) - 1; i >= 0; i-- {
+		if q.items[i] == trimmed {
+			idx = i
+			break
+		}
+	}
+	if idx < 0 {
+		return false, nil
+	}
+	next := make([]string, 0, len(q.items)-1)
+	next = append(next, q.items[:idx]...)
+	next = append(next, q.items[idx+1:]...)
+	q.items = next
+	if err := q.saveLocked(); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Items 返回当前队列快照
 func (q *FileQueue) Items() []string {
 	if q == nil {

@@ -22,6 +22,7 @@ import (
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
 	"file-watch/internal/s3"
+	"file-watch/internal/spike/persistqueue"
 	"file-watch/internal/state"
 	"file-watch/internal/upload"
 	"file-watch/internal/watcher"
@@ -49,6 +50,7 @@ type FileService struct {
 }
 
 const shutdownTimeout = 30 * time.Second
+const defaultUploadQueuePersistFile = "logs/upload-queue.json"
 
 var defaultUploadRetryDelays = []time.Duration{
 	1 * time.Second,
@@ -196,7 +198,20 @@ func parseEmailRecipients(raw string) []string {
 
 // newUploadPool 创建上传工作池
 func newUploadPool(config *models.Config, handler func(context.Context, string) error, onStats func(models.UploadStats)) (*upload.WorkerPool, error) {
-	return upload.NewWorkerPool(config.UploadWorkers, config.UploadQueueSize, handler, onStats)
+	var queueStore upload.QueueStore
+	if config.UploadQueuePersistEnabled {
+		storePath := strings.TrimSpace(config.UploadQueuePersistFile)
+		if storePath == "" {
+			storePath = defaultUploadQueuePersistFile
+		}
+		persistStore, err := persistqueue.NewFileQueue(storePath)
+		if err != nil {
+			return nil, fmt.Errorf("初始化上传持久化队列失败: %w", err)
+		}
+		queueStore = persistStore
+		logger.Info("上传持久化队列已启用: %s", storePath)
+	}
+	return upload.NewWorkerPool(config.UploadWorkers, config.UploadQueueSize, handler, onStats, queueStore)
 }
 
 // handlePoolStats 将队列统计写入运行态

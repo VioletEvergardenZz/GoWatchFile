@@ -11,8 +11,14 @@
 ## 方案摘要
 - 存储模型：本地 JSON 文件，按数组记录待处理路径
 - 写入策略：原子写（临时文件 + rename），避免写半文件
-- 操作能力：`enqueue`、`dequeue`、`peek`、`reset`
-- 目标定位：仅用于验证可靠性行为，不直接替换当前生产队列
+- 操作能力：`enqueue`、`dequeue`、`peek`、`reset`、`removeOne`
+- 目标定位：先以 Spike 验证可靠性，再以可开关方式接入主链路
+
+## 当前集成状态
+- 已接入上传主链路：入队前落盘、上传成功后确认删除、服务启动时自动恢复
+- 默认关闭：通过 `upload_queue_persist_enabled` 或 `UPLOAD_QUEUE_PERSIST_ENABLED` 开启
+- 持久化文件：`upload_queue_persist_file` 或 `UPLOAD_QUEUE_PERSIST_FILE`，默认 `logs/upload-queue.json`
+- 语义说明：当前提供“至少一次”保障，不保证严格去重
 
 ## 运行方式
 在 `go-watch-file` 目录执行
@@ -36,9 +42,7 @@ go run ./cmd/queue-spike -action reset -store logs/queue-spike.json
 - 反复 `enqueue/dequeue` 后文件是否保持可解析
 - 异常中断后是否会产生损坏文件
 
-## 下一步决策建议
-- 若 PoC 行为稳定，下一步评估接入上传主链路的改造点：
-  - 入队时落盘
-  - 上传成功后出队
-  - 启动时恢复队列
-  - 队列文件损坏时的降级与告警
+## 后续建议
+- 将 `internal/spike/persistqueue` 迁移到正式目录（如 `internal/persistqueue`），避免“已上线能力仍在 spike 包”造成认知偏差
+- 补充队列文件损坏时的降级策略与告警
+- 评估去重策略（路径去重 / 内容指纹）以降低重复处理概率

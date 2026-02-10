@@ -5,8 +5,8 @@
 ## 配置说明（控制台优先）
 
 - 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, upload_retry_enabled, upload_retry_delays, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
-- `config.yaml` 保留静态配置（S3 连接参数/日志/API bind），也可被环境变量覆盖。
-- 环境变量主要用于密钥、安全与 AI 配置（S3_AK/S3_SK, DINGTALK_*, EMAIL_*, API_*, AI_*），并支持可选覆盖 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL。
+- `config.yaml` 保留静态配置（S3 连接参数/日志/API bind/队列持久化开关），也可被环境变量覆盖。
+- 环境变量主要用于密钥、安全与 AI 配置（S3_AK/S3_SK, DINGTALK_*, EMAIL_*, API_*, AI_*），并支持可选覆盖 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL/UPLOAD_QUEUE_PERSIST_*。
 
 ## 工作方式（按实际代码）
 1) fsnotify 递归监听 `watch_dir`（支持多目录 运行中自动发现新建子目录）
@@ -23,6 +23,7 @@
    cp .env.example .env
    # 填写密钥（S3_AK/S3_SK, DINGTALK_*, EMAIL_*）
    # 填写 API 安全（API_AUTH_TOKEN, API_CORS_ORIGINS）
+   # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
    # 如需覆盖 S3 参数，可设置 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
@@ -35,7 +36,7 @@
 5) 停止：`Ctrl + C`，服务会优雅退出并等待队列 drain。
 
 配置优先级：config.yaml -> config.runtime.yaml -> 环境变量覆盖 -> 默认值。
-环境变量仅覆盖 S3 / 通知 / API 安全 / AI 相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
+环境变量仅覆盖 S3 / 通知 / API 安全 / AI / 队列持久化相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
 管理接口默认要求 `API_AUTH_TOKEN`，仅 `/api/health` 允许匿名访问。
 
 `.env` 读取策略：会尝试加载当前目录的 `.env`，以及配置文件同目录的 `.env`；仅在系统环境未设置时生效。
@@ -56,6 +57,7 @@
 - `silence`：写入完成判定窗口，默认 `10s`。
   - 支持写法：`10s` / `10秒` / `10`。
 - `upload_workers` / `upload_queue_size`：上传并发与队列容量。
+- `upload_queue_persist_enabled` / `upload_queue_persist_file`：是否开启上传队列落盘与落盘文件路径（默认关闭，开启后为“至少一次”语义，需重启生效）。
 - `upload_retry_enabled`：是否启用上传失败重试（默认 true）。
 - `upload_retry_delays`：重试间隔列表（逗号/空白/分号分隔），默认 `1s,2s,5s`，非法项会忽略。
 - `system_resource_enabled`：系统资源面板开关（默认 false，开启后 `/api/system` 可用）。
@@ -110,6 +112,8 @@ log_show_caller: false
 
 upload_workers: 10
 upload_queue_size: 100
+upload_queue_persist_enabled: false
+upload_queue_persist_file: "logs/upload-queue.json"
 upload_retry_enabled: true
 upload_retry_delays: "1s,2s,5s"
 api_bind: ":8080"
@@ -235,7 +239,7 @@ ai_max_lines: 200
 - 说明：需开启 `systemResourceEnabled`，否则返回 403；默认不返回进程环境变量，避免敏感信息暴露。
 
 ## 运行时配置更新说明
-`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`。
+`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*`（静态项需重启）。
 Runtime updates are persisted to `config.runtime.yaml` (best effort).
 
 `/api/alert-config` 仅更新告警配置与轮询状态，不写回 `config.yaml`。
@@ -249,7 +253,7 @@ Alert config updates are persisted to `config.runtime.yaml` (best effort).
 
 ## 已知限制
 - 支持多监控目录（逗号或分号分隔）
-- 上传队列为内存队列，重启会清空。
+- 默认上传队列为内存队列，重启会清空；开启 `upload_queue_persist_enabled` 后会从持久化文件恢复未完成任务。
 - 不支持断点续传。
 - 已实现钉钉通知与邮件通知，企业微信未接入。
 - 目录过大时可能触发系统句柄限制，可通过 `watch_exclude` 跳过大目录或提升系统 `ulimit`。

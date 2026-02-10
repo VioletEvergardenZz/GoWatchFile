@@ -45,6 +45,9 @@ log_show_caller: false
 # 上传并发配置
 upload_workers: 10
 upload_queue_size: 100
+# 上传队列持久化（静态配置，需重启生效）
+upload_queue_persist_enabled: false
+upload_queue_persist_file: "logs/upload-queue.json"
 
 # API 服务配置
 # API 监听地址 控制台通过此地址访问接口

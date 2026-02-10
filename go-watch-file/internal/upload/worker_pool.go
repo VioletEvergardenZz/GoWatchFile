@@ -4,6 +4,8 @@ package upload
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -25,10 +27,19 @@ type WorkerPool struct {
 	cancel      context.CancelFunc
 	uploadFunc  func(context.Context, string) error // 外部注入的实际上传逻辑，Worker 从队列取路径后调用
 	onStats     func(models.UploadStats)
+	queueStore  QueueStore
 
 	mu            sync.Mutex //保护关闭状态，避免重复关闭或在关闭后入队
 	closed        bool
 	lastQueueWarn time.Time //上传队列告警节流时间
+}
+
+// QueueStore 持久化队列存储接口
+type QueueStore interface {
+	Enqueue(item string) error
+	RemoveOne(item string) (bool, error)
+	RemoveLastOne(item string) (bool, error)
+	Items() []string
 }
 
 var (
@@ -48,7 +59,7 @@ const (
 )
 
 // NewWorkerPool 构造函数，创建并启动 worker goroutine
-func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, string) error, onStats func(models.UploadStats)) (*WorkerPool, error) {
+func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, string) error, onStats func(models.UploadStats), queueStore QueueStore) (*WorkerPool, error) {
 	if workers <= 0 {
 		workers = 3
 	}
@@ -67,6 +78,7 @@ func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, stri
 		cancel:      cancel,
 		uploadFunc:  uploadFunc,
 		onStats:     onStats,
+		queueStore:  queueStore,
 	}
 
 	// 启动工作协程
@@ -74,6 +86,13 @@ func NewWorkerPool(workers, queueSize int, uploadFunc func(context.Context, stri
 		// Add(1) 标记“我有一个新工人上班”；Done() 标记“工人下班了”；Wait() 等到所有工人下班，保证收尾完整
 		pool.wg.Add(1)
 		go pool.worker(i)
+	}
+	if err := pool.recoverPersistedItems(); err != nil {
+		pool.ShutdownNow()
+		return nil, err
+	}
+	if pool.onStats != nil {
+		pool.onStats(pool.GetStats())
 	}
 	logger.Info("上传工作池已启动，工作协程数: %d, 队列大小: %d", workers, queueSize)
 	return pool, nil
@@ -97,6 +116,9 @@ func (p *WorkerPool) worker(id int) {
 			if err := p.uploadFunc(p.ctx, filePath); err != nil {
 				logger.Error("工作协程 %d 处理文件失败: %s, 错误: %v", id, filePath, err)
 			} else {
+				if err := p.ackPersistedItem(filePath); err != nil {
+					logger.Error("工作协程 %d 持久化队列确认失败: %s, 错误: %v", id, filePath, err)
+				}
 				elapsed := time.Since(startTime)
 				logger.Info("工作协程 %d 处理文件完成: %s, 耗时: %v", id, filePath, elapsed)
 			}
@@ -118,14 +140,28 @@ func (p *WorkerPool) AddFile(filePath string) error {
 	if p.closed {
 		return ErrPoolClosed
 	}
+	trimmedPath := strings.TrimSpace(filePath)
+	if trimmedPath == "" {
+		return fmt.Errorf("file path is empty")
+	}
+	if p.queueStore != nil {
+		if err := p.queueStore.Enqueue(trimmedPath); err != nil {
+			return fmt.Errorf("persist queue enqueue failed: %w", err)
+		}
+	}
 
 	select {
-	case p.uploadQueue <- filePath:
+	case p.uploadQueue <- trimmedPath:
 		p.warnIfQueueNearFullLocked()
-		logger.Debug("文件已添加到上传队列: %s", filePath)
+		logger.Debug("文件已添加到上传队列: %s", trimmedPath)
 		return nil
 	default:
-		logger.Warn("上传队列已满，无法添加文件: %s", filePath)
+		if p.queueStore != nil {
+			if _, err := p.queueStore.RemoveLastOne(trimmedPath); err != nil {
+				logger.Error("上传队列回滚持久化失败: %s, 错误: %v", trimmedPath, err)
+			}
+		}
+		logger.Warn("上传队列已满，无法添加文件: %s", trimmedPath)
 		return ErrQueueFull
 	}
 }
@@ -219,4 +255,42 @@ func (p *WorkerPool) GetStats() models.UploadStats {
 		Workers:     p.workers,
 		InFlight:    int(atomic.LoadInt64(&p.inFlight)),
 	}
+}
+
+func (p *WorkerPool) recoverPersistedItems() error {
+	if p == nil || p.queueStore == nil {
+		return nil
+	}
+	items := p.queueStore.Items()
+	if len(items) == 0 {
+		return nil
+	}
+	logger.Info("上传工作池开始恢复持久化队列: %d 条", len(items))
+	for _, item := range items {
+		trimmed := strings.TrimSpace(item)
+		if trimmed == "" {
+			continue
+		}
+		select {
+		case <-p.ctx.Done():
+			return ErrPoolClosed
+		case p.uploadQueue <- trimmed:
+		}
+	}
+	logger.Info("上传工作池恢复持久化队列完成: %d 条", len(items))
+	return nil
+}
+
+func (p *WorkerPool) ackPersistedItem(filePath string) error {
+	if p == nil || p.queueStore == nil {
+		return nil
+	}
+	removed, err := p.queueStore.RemoveOne(filePath)
+	if err != nil {
+		return err
+	}
+	if !removed {
+		logger.Warn("持久化队列确认时未找到元素: %s", filePath)
+	}
+	return nil
 }

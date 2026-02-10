@@ -79,3 +79,63 @@ func TestFileQueue_Reset(t *testing.T) {
 		t.Fatalf("items expected 0 after reset, got %d", got)
 	}
 }
+
+func TestFileQueue_RemoveOne(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "queue.json")
+	queue, err := NewFileQueue(storePath)
+	if err != nil {
+		t.Fatalf("create queue failed: %v", err)
+	}
+	_ = queue.Enqueue("a")
+	_ = queue.Enqueue("b")
+	_ = queue.Enqueue("a")
+
+	removed, err := queue.RemoveOne("a")
+	if err != nil {
+		t.Fatalf("remove one failed: %v", err)
+	}
+	if !removed {
+		t.Fatal("expected removed=true")
+	}
+	items := queue.Items()
+	if len(items) != 2 {
+		t.Fatalf("expected len 2, got %d", len(items))
+	}
+	if items[0] != "b" || items[1] != "a" {
+		t.Fatalf("unexpected items after remove: %+v", items)
+	}
+
+	removed, err = queue.RemoveOne("not-exist")
+	if err != nil {
+		t.Fatalf("remove missing failed: %v", err)
+	}
+	if removed {
+		t.Fatal("expected removed=false for missing item")
+	}
+}
+
+func TestFileQueue_RemoveLastOne(t *testing.T) {
+	storePath := filepath.Join(t.TempDir(), "queue.json")
+	queue, err := NewFileQueue(storePath)
+	if err != nil {
+		t.Fatalf("create queue failed: %v", err)
+	}
+	_ = queue.Enqueue("a")
+	_ = queue.Enqueue("b")
+	_ = queue.Enqueue("a")
+
+	removed, err := queue.RemoveLastOne("a")
+	if err != nil {
+		t.Fatalf("remove last one failed: %v", err)
+	}
+	if !removed {
+		t.Fatal("expected removed=true")
+	}
+	items := queue.Items()
+	if len(items) != 2 {
+		t.Fatalf("expected len 2, got %d", len(items))
+	}
+	if items[0] != "a" || items[1] != "b" {
+		t.Fatalf("unexpected items after remove last: %+v", items)
+	}
+}

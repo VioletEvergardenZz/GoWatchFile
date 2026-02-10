@@ -387,6 +387,40 @@ region: "test-region"
 	if config.AlertStartFromEnd == nil || *config.AlertStartFromEnd != true {
 		t.Errorf("AlertStartFromEnd 默认值期望 true, 实际 %v", config.AlertStartFromEnd)
 	}
+	if config.UploadQueuePersistEnabled {
+		t.Errorf("UploadQueuePersistEnabled 默认值期望 false, 实际 %v", config.UploadQueuePersistEnabled)
+	}
+	if config.UploadQueuePersistFile != "" {
+		t.Errorf("UploadQueuePersistFile 默认值应为空, 实际 %s", config.UploadQueuePersistFile)
+	}
+}
+
+func TestLoadConfigWithPersistQueueDefaultFile(t *testing.T) {
+	watchDir := filepath.ToSlash(t.TempDir())
+	cfgContent := fmt.Sprintf(`
+watch_dir: "%s"
+file_ext: ".hprof"
+bucket: "test-bucket"
+ak: "test-ak"
+sk: "test-sk"
+endpoint: "https://test-endpoint.com"
+region: "test-region"
+upload_queue_persist_enabled: true
+upload_queue_persist_file: ""
+`, watchDir)
+
+	configPath := writeTempConfig(t, cfgContent)
+
+	config, err := LoadConfig(configPath)
+	if err != nil {
+		t.Fatalf("加载配置失败: %v", err)
+	}
+	if !config.UploadQueuePersistEnabled {
+		t.Fatalf("UploadQueuePersistEnabled 应该为 true")
+	}
+	if config.UploadQueuePersistFile != "logs/upload-queue.json" {
+		t.Fatalf("UploadQueuePersistFile 默认值期望 logs/upload-queue.json, 实际 %s", config.UploadQueuePersistFile)
+	}
 }
 
 func TestLoadConfigEnvOverrides(t *testing.T) {
@@ -575,15 +609,19 @@ func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
 	t.Setenv("S3_AK", "env-ak")
 	t.Setenv("S3_SK", "env-sk")
 	t.Setenv("EMAIL_PASS", "env-pass")
+	t.Setenv("UPLOAD_QUEUE_PERSIST_ENABLED", "true")
+	t.Setenv("UPLOAD_QUEUE_PERSIST_FILE", "logs/persist-queue.json")
 	cfg := &models.Config{
-		Bucket:         "file-bucket",
-		Endpoint:       "https://file-endpoint.com",
-		Region:         "file-region",
-		ForcePathStyle: false,
-		DisableSSL:     false,
-		AK:             "file-ak",
-		SK:             "file-sk",
-		EmailPass:      "file-pass",
+		Bucket:                    "file-bucket",
+		Endpoint:                  "https://file-endpoint.com",
+		Region:                    "file-region",
+		ForcePathStyle:            false,
+		DisableSSL:                false,
+		AK:                        "file-ak",
+		SK:                        "file-sk",
+		EmailPass:                 "file-pass",
+		UploadQueuePersistEnabled: false,
+		UploadQueuePersistFile:    "",
 	}
 	if err := applyEnvOverrides(cfg); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -608,6 +646,12 @@ func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
 	}
 	if cfg.EmailPass != "env-pass" {
 		t.Fatalf("EmailPass should be overridden by env, got %s", cfg.EmailPass)
+	}
+	if !cfg.UploadQueuePersistEnabled {
+		t.Fatalf("UploadQueuePersistEnabled should be overridden by env, got %v", cfg.UploadQueuePersistEnabled)
+	}
+	if cfg.UploadQueuePersistFile != "logs/persist-queue.json" {
+		t.Fatalf("UploadQueuePersistFile should be overridden by env, got %s", cfg.UploadQueuePersistFile)
 	}
 }
 
