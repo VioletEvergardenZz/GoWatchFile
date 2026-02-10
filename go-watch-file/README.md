@@ -6,7 +6,7 @@
 
 - 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, upload_retry_enabled, upload_retry_delays, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
 - `config.yaml` 保留静态配置（S3 连接参数/日志/API bind），也可被环境变量覆盖。
-- 环境变量主要用于密钥与 AI 配置（S3_AK/S3_SK, DINGTALK_*, EMAIL_*, AI_*），并支持可选覆盖 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL。
+- 环境变量主要用于密钥、安全与 AI 配置（S3_AK/S3_SK, DINGTALK_*, EMAIL_*, API_*, AI_*），并支持可选覆盖 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL。
 
 ## 工作方式（按实际代码）
 1) fsnotify 递归监听 `watch_dir`（支持多目录 运行中自动发现新建子目录）
@@ -22,6 +22,7 @@
    ```bash
    cp .env.example .env
    # 填写密钥（S3_AK/S3_SK, DINGTALK_*, EMAIL_*）
+   # 填写 API 安全（API_AUTH_TOKEN, API_CORS_ORIGINS）
    # 如需覆盖 S3 参数，可设置 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
@@ -34,7 +35,8 @@
 5) 停止：`Ctrl + C`，服务会优雅退出并等待队列 drain。
 
 配置优先级：config.yaml -> config.runtime.yaml -> 环境变量覆盖 -> 默认值。
-环境变量仅覆盖 S3 / 通知 / AI 相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
+环境变量仅覆盖 S3 / 通知 / API 安全 / AI 相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
+管理接口默认要求 `API_AUTH_TOKEN`，仅 `/api/health` 允许匿名访问。
 
 `.env` 读取策略：会尝试加载当前目录的 `.env`，以及配置文件同目录的 `.env`；仅在系统环境未设置时生效。
 
@@ -45,6 +47,8 @@
 - `bucket` / `ak` / `sk` / `endpoint` / `region`：S3 访问配置。
 - `log_level`：`debug|info|warn|error`。
 - `api_bind`：API 监听地址（默认 `:8080`）。
+- `api_auth_token`：管理接口鉴权令牌（建议从 `API_AUTH_TOKEN` 注入）。
+- `api_cors_origins`：允许跨域来源列表（逗号分隔，可填 `*`）。
 
 ### 可选字段
 - `watch_exclude`：排除目录（逗号/分号分隔），支持目录名或绝对路径，如 `.git,node_modules,/opt/homebrew`。
@@ -177,7 +181,19 @@ ai_max_lines: 200
 - 说明：仅更新目录/后缀/静默窗口/并发/队列/重试参数/系统资源开关。S3 与通知配置需改配置文件并重启。
 
 ### 7) 健康检查
-- `GET /api/health` → `{ "queue": n, "workers": n }`
+- `GET /api/health`
+- 返回示例：
+  ```json
+  {
+    "queue": 0,
+    "workers": 3,
+    "inFlight": 0,
+    "queueFullTotal": 0,
+    "retryTotal": 0,
+    "uploadFailureTotal": 0,
+    "failureReasons": []
+  }
+  ```
 
 ### 8) 告警决策面板
 - `GET /api/alerts`
@@ -212,8 +228,9 @@ ai_max_lines: 200
 - Query：
   - `mode=lite` → 仅返回概览/指标/分区，不返回进程列表
   - `limit=200` → 限制返回的进程数量，`0` 表示不限制
+  - `includeEnv=true` → 返回进程环境变量（默认不返回）
 - 返回：`{ systemOverview, systemGauges, systemVolumes, systemProcesses }`
-- 说明：需开启 `systemResourceEnabled`，否则返回 403；部分字段依赖系统权限与支持程度，无法采集时会返回 `--` 或空列表。
+- 说明：需开启 `systemResourceEnabled`，否则返回 403；默认不返回进程环境变量，避免敏感信息暴露。
 
 ## 运行时配置更新说明
 `/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`。

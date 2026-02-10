@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./SystemConsole.css";
 import { systemGauges as mockSystemGauges, systemOverview as mockSystemOverview, systemProcesses as mockSystemProcesses, systemVolumes as mockSystemVolumes } from "./mockData";
 import type { SystemDashboard, SystemOverview, SystemProcess, SystemProcessStatus, SystemResourceGauge, SystemVolume } from "./types";
+import { buildApiHeaders } from "./console/dashboardApi";
 
 type SortKey = "cpu" | "mem" | "pid" | "name";
 
@@ -192,7 +193,7 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
       fetchingRef.current = true;
       // Only poll when enabled to avoid extra load.
       try {
-        const resp = await fetch(`${API_BASE}/api/system?limit=0`, { cache: "no-store" });
+        const resp = await fetch(`${API_BASE}/api/system?limit=0`, { cache: "no-store", headers: buildApiHeaders() });
         if (!resp.ok) {
           throw new Error(`HTTP ${resp.status}`);
         }

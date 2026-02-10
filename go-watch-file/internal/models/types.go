@@ -32,6 +32,8 @@ type Config struct {
 	LogFile               string        `yaml:"log_file"`
 	LogToStd              *bool         `yaml:"log_to_std"`
 	LogShowCaller         bool          `yaml:"log_show_caller"`
+	APIAuthToken          string        `yaml:"api_auth_token"`
+	APICORSOrigins        string        `yaml:"api_cors_origins"`
 	UploadWorkers         int           `yaml:"upload_workers"`    // 上传工作池大小
 	UploadQueueSize       int           `yaml:"upload_queue_size"` // 上传队列大小
 	UploadRetryDelays     string        `yaml:"upload_retry_delays"`
@@ -65,4 +67,21 @@ type UploadStats struct {
 	QueueLength int // 上传队列长度
 	Workers     int // 上传 worker 数量
 	InFlight    int // 正在上传的数量
+}
+
+// FailureReasonCount 表示失败原因统计
+type FailureReasonCount struct {
+	Reason string `json:"reason"`
+	Count  uint64 `json:"count"`
+}
+
+// HealthSnapshot 表示健康检查返回的运行指标
+type HealthSnapshot struct {
+	QueueLength        int                  `json:"queue"`
+	Workers            int                  `json:"workers"`
+	InFlight           int                  `json:"inFlight"`
+	QueueFullTotal     uint64               `json:"queueFullTotal"`
+	RetryTotal         uint64               `json:"retryTotal"`
+	UploadFailureTotal uint64               `json:"uploadFailureTotal"`
+	FailureReasons     []FailureReasonCount `json:"failureReasons"`
 }

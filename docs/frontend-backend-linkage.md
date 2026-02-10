@@ -220,7 +220,7 @@ sequenceDiagram
 
 **7) 健康检查**
 - `GET /api/health`
-- 返回：`{ queue, workers }`
+- 返回：`{ queue, workers, inFlight, queueFullTotal, retryTotal, uploadFailureTotal, failureReasons }`
 
 **8) 告警面板**
 - `GET /api/alerts`

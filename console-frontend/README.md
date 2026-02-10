@@ -21,6 +21,7 @@ npm run dev
 ```
 
 默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。若后端地址不同可设置 `VITE_API_BASE`。
+若后端启用鉴权，可在前端环境变量中设置 `VITE_API_TOKEN`。
 
 ## 数据刷新策略
 - 仪表盘：每 3 秒刷新一次（`DASHBOARD_POLL_MS=3000`）。

@@ -27,9 +27,12 @@ go build -o bin/file-watch cmd/main.go
 - `S3_ENDPOINT` 可带协议或不带协议（如 `https://s3.example.com` 或 `s3.example.com`）。
 - `S3_FORCE_PATH_STYLE=true` 适配 MinIO 等场景。
 - `system_resource_enabled` 默认 `false`，需在控制台开启后才能访问 `/api/system`。
+- 管理接口要求 `API_AUTH_TOKEN`（`/api/health` 除外）。
+- `API_CORS_ORIGINS` 控制允许跨域来源，多个来源用逗号分隔。
+  - 本地开发建议包含 `http://localhost:5173`（Vite）与 `http://localhost:8081`（前端容器）。
 
 ### 环境变量覆盖范围
-- 仅会覆盖 S3 / 通知 / AI 相关字段（`S3_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`、`AI_*`）。
+- 仅会覆盖 S3 / 通知 / API 安全 / AI 相关字段（`S3_*`、`DINGTALK_*`、`EMAIL_*`、`ROBOT_KEY`、`API_*`、`AI_*`）。
 - `watch_dir` / `file_ext` / `watch_exclude` / `log_level` / `alert_*` 不会被环境变量覆盖。
 
 ### 告警模式配置要点
@@ -51,17 +54,19 @@ npm run dev
 ```
 
 前端默认通过 Vite 代理 `/api` 到 `http://localhost:8080`；若后端地址不同可设置 `VITE_API_BASE`。
+若后端启用鉴权，可设置 `VITE_API_TOKEN` 让控制台自动携带 `Authorization` 头。
 
 ## Docker Compose 启动（可选）
 ```bash
 cp .env.example .env
 mkdir -p data/watch data/logs
 # 如需固定监控目录 可将 go-watch-file/config.yaml 的 watch_dir 改为 /data/gwf/watch
+# 前端镜像会在构建时注入 API_AUTH_TOKEN 作为 VITE_API_TOKEN
 docker compose up --build -d
 ```
 
 访问地址：
-- 后端 API：`http://localhost:8080`
+- 后端 API：`http://localhost:8082`
 - 前端控制台：`http://localhost:8081`
 
 停止：
@@ -100,5 +105,6 @@ go test ./...
 ## 常见开发验证
 - 新建文件后等待静默窗口结束，再观察上传与通知。
 - 通过 `/api/dashboard` 验证目录树、上传记录与队列趋势。
+- 通过 `/api/health` 观察队列饱和计数、重试计数与失败原因分布。
 - 通过 `/api/alerts` 验证告警概览与决策列表。
 - `LOG_LEVEL=debug` 便于追踪 watcher 与 queue 行为。

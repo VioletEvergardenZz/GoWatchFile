@@ -49,6 +49,10 @@ upload_queue_size: 100
 # API 服务配置
 # API 监听地址 控制台通过此地址访问接口
 api_bind: ":8080"
+# 管理接口鉴权令牌（建议从环境变量读取）
+api_auth_token: "${API_AUTH_TOKEN}"
+# 允许跨域来源列表（逗号分隔）可填写 * 表示放开
+api_cors_origins: "${API_CORS_ORIGINS}"
 # 系统资源面板开关 默认关闭
 system_resource_enabled: false
 

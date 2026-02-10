@@ -3,10 +3,12 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -39,6 +41,11 @@ type FileService struct {
 	running       bool
 	mu            sync.Mutex      //互斥锁，用来保护 FileService 内部共享数据的并发读写
 	manualOnce    map[string]bool //标记“某个路径的下一次处理是手动上传”
+	metricsMu     sync.Mutex
+	queueFull     uint64
+	retryTotal    uint64
+	uploadFailure uint64
+	failReasons   map[string]uint64
 }
 
 const shutdownTimeout = 30 * time.Second
@@ -69,6 +76,7 @@ func NewFileService(config *models.Config, configPath string) (*FileService, err
 		emailSender:   newEmailSender(config),
 		state:         runtimeState,
 		manualOnce:    make(map[string]bool),
+		failReasons:   make(map[string]uint64),
 	}
 	// 初始化告警管理器并复用通知器
 	alertManager, err := alert.NewManager(config, &alert.NotifierSet{
@@ -498,6 +506,7 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	logger.Info("开始处理文件: %s", filePath)
 	downloadURL, err := fs.uploadFileWithRetry(ctx, filePath)
 	if err != nil {
+		fs.recordUploadFailure(err)
 		if fs.state != nil {
 			fs.state.MarkFailed(filePath, err)
 		}
@@ -543,6 +552,7 @@ func (fs *FileService) uploadFileWithRetry(ctx context.Context, filePath string)
 			break
 		}
 		delay := delays[attempt-1]
+		fs.recordRetryAttempt()
 		logger.Warn("上传失败，准备重试: %s, 第 %d/%d 次, 等待 %v, 错误: %v", filePath, attempt, tries, delay, err)
 		if err := sleepWithContext(ctx, delay); err != nil {
 			return "", err
@@ -724,6 +734,40 @@ func (fs *FileService) GetStats() models.UploadStats {
 	return models.UploadStats{}
 }
 
+// HealthSnapshot 返回运行健康指标
+func (fs *FileService) HealthSnapshot() models.HealthSnapshot {
+	queueStats := fs.GetStats()
+
+	fs.metricsMu.Lock()
+	snapshot := models.HealthSnapshot{
+		QueueLength:        queueStats.QueueLength,
+		Workers:            queueStats.Workers,
+		InFlight:           queueStats.InFlight,
+		QueueFullTotal:     fs.queueFull,
+		RetryTotal:         fs.retryTotal,
+		UploadFailureTotal: fs.uploadFailure,
+		FailureReasons:     make([]models.FailureReasonCount, 0, len(fs.failReasons)),
+	}
+	for reason, count := range fs.failReasons {
+		snapshot.FailureReasons = append(snapshot.FailureReasons, models.FailureReasonCount{
+			Reason: reason,
+			Count:  count,
+		})
+	}
+	fs.metricsMu.Unlock()
+
+	sort.Slice(snapshot.FailureReasons, func(i, j int) bool {
+		if snapshot.FailureReasons[i].Count == snapshot.FailureReasons[j].Count {
+			return snapshot.FailureReasons[i].Reason < snapshot.FailureReasons[j].Reason
+		}
+		return snapshot.FailureReasons[i].Count > snapshot.FailureReasons[j].Count
+	})
+	if len(snapshot.FailureReasons) > 10 {
+		snapshot.FailureReasons = snapshot.FailureReasons[:10]
+	}
+	return snapshot
+}
+
 // State 暴露运行态给 API 服务
 func (fs *FileService) State() *state.RuntimeState {
 	fs.mu.Lock()
@@ -896,6 +940,9 @@ func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 		return fmt.Errorf("上传工作池未初始化")
 	}
 	if err := fs.uploadPool.AddFile(filePath); err != nil {
+		if errors.Is(err, upload.ErrQueueFull) {
+			fs.recordQueueFull()
+		}
 		if fs.state != nil {
 			fs.state.MarkFailed(filePath, err)
 			fs.state.SetQueueStats(fs.uploadPool.GetStats())
@@ -906,4 +953,41 @@ func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 		fs.state.SetQueueStats(fs.uploadPool.GetStats())
 	}
 	return nil
+}
+
+func (fs *FileService) recordQueueFull() {
+	fs.metricsMu.Lock()
+	fs.queueFull++
+	fs.metricsMu.Unlock()
+}
+
+func (fs *FileService) recordRetryAttempt() {
+	fs.metricsMu.Lock()
+	fs.retryTotal++
+	fs.metricsMu.Unlock()
+}
+
+func (fs *FileService) recordUploadFailure(err error) {
+	fs.metricsMu.Lock()
+	fs.uploadFailure++
+	if fs.failReasons == nil {
+		fs.failReasons = make(map[string]uint64)
+	}
+	reason := normalizeFailureReason(err)
+	fs.failReasons[reason]++
+	fs.metricsMu.Unlock()
+}
+
+func normalizeFailureReason(err error) string {
+	if err == nil {
+		return "unknown"
+	}
+	reason := strings.TrimSpace(err.Error())
+	if reason == "" {
+		return "unknown"
+	}
+	if len(reason) > 120 {
+		return reason[:120]
+	}
+	return reason
 }

@@ -2,6 +2,7 @@ import type { AiLogSummaryResponse, DashboardPayload } from "../types";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 export const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
+export const API_TOKEN = ((import.meta.env.VITE_API_TOKEN as string | undefined) ?? "").trim();
 
 export type LogMode = "tail" | "search";
 
@@ -15,7 +16,26 @@ export type FileLogResponse = {
 
 type ConfigResponse = {
   ok?: boolean;
-  config?: { watchDir: string; fileExt: string; concurrency?: string; silence?: string; systemResourceEnabled?: boolean };
+  config?: {
+    watchDir: string;
+    fileExt: string;
+    concurrency?: string;
+    silence?: string;
+    uploadRetryDelays?: string;
+    uploadRetryEnabled?: boolean;
+    systemResourceEnabled?: boolean;
+  };
+};
+
+export const buildApiHeaders = (contentType = false): HeadersInit => {
+  const headers: Record<string, string> = {};
+  if (contentType) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (API_TOKEN) {
+    headers.Authorization = `Bearer ${API_TOKEN}`;
+  }
+  return headers;
 };
 
 const readErrorDetail = async (res: Response) => {
@@ -44,13 +64,17 @@ const ensureOk = async (res: Response, action: string) => {
 };
 
 export const fetchDashboard = async (): Promise<Partial<DashboardPayload>> => {
-  const res = await fetch(`${API_BASE}/api/dashboard`);
+  const res = await fetch(`${API_BASE}/api/dashboard`, {
+    headers: buildApiHeaders(),
+  });
   await ensureOk(res, "仪表盘数据加载");
   return (await res.json()) as Partial<DashboardPayload>;
 };
 
 export const fetchDashboardLite = async (): Promise<Partial<DashboardPayload>> => {
-  const res = await fetch(`${API_BASE}/api/dashboard?mode=light`);
+  const res = await fetch(`${API_BASE}/api/dashboard?mode=light`, {
+    headers: buildApiHeaders(),
+  });
   await ensureOk(res, "实时数据刷新");
   return (await res.json()) as Partial<DashboardPayload>;
 };
@@ -58,7 +82,7 @@ export const fetchDashboardLite = async (): Promise<Partial<DashboardPayload>> =
 export const postAutoUpload = async (path: string, enabled: boolean) => {
   const res = await fetch(`${API_BASE}/api/auto-upload`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildApiHeaders(true),
     body: JSON.stringify({ path, enabled }),
   });
   await ensureOk(res, "自动上传开关更新");
@@ -67,7 +91,7 @@ export const postAutoUpload = async (path: string, enabled: boolean) => {
 export const postManualUpload = async (path: string) => {
   const res = await fetch(`${API_BASE}/api/manual-upload`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildApiHeaders(true),
     body: JSON.stringify({ path }),
   });
   await ensureOk(res, "手动上传触发");
@@ -85,7 +109,7 @@ export const postConfig = async (payload: {
 }): Promise<ConfigResponse> => {
   const res = await fetch(`${API_BASE}/api/config`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildApiHeaders(true),
     body: JSON.stringify(payload),
   });
   await ensureOk(res, "配置保存");
@@ -95,7 +119,7 @@ export const postConfig = async (payload: {
 export const postSystemResourceEnabled = async (enabled: boolean): Promise<ConfigResponse> => {
   const res = await fetch(`${API_BASE}/api/config`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildApiHeaders(true),
     body: JSON.stringify({ systemResourceEnabled: enabled }),
   });
   await ensureOk(res, "系统资源控制台开关更新");
@@ -105,7 +129,7 @@ export const postSystemResourceEnabled = async (enabled: boolean): Promise<Confi
 export const postFileLog = async (payload: { path: string; query?: string }): Promise<FileLogResponse> => {
   const res = await fetch(`${API_BASE}/api/file-log`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildApiHeaders(true),
     body: JSON.stringify(payload),
   });
   await ensureOk(res, "文件内容读取");
@@ -123,7 +147,7 @@ export type AiLogSummaryRequest = {
 export const postAiLogSummary = async (payload: AiLogSummaryRequest): Promise<AiLogSummaryResponse> => {
   const res = await fetch(`${API_BASE}/api/ai/log-summary`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: buildApiHeaders(true),
     body: JSON.stringify(payload),
   });
   await ensureOk(res, "AI日志分析");

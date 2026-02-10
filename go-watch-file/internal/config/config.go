@@ -128,6 +128,8 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.LogLevel = sanitizeConfigString(cfg.LogLevel)
 	cfg.LogFile = sanitizeConfigString(cfg.LogFile)
 	cfg.APIBind = sanitizeConfigString(cfg.APIBind)
+	cfg.APIAuthToken = sanitizeConfigString(cfg.APIAuthToken)
+	cfg.APICORSOrigins = sanitizeConfigString(cfg.APICORSOrigins)
 	cfg.AlertRulesFile = sanitizeConfigString(cfg.AlertRulesFile)
 	cfg.AlertLogPaths = sanitizeConfigString(cfg.AlertLogPaths)
 	cfg.AlertPollInterval = sanitizeConfigString(cfg.AlertPollInterval)
@@ -160,6 +162,8 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.Bucket = stringFromEnv("S3_BUCKET", cfg.Bucket)
 	cfg.Endpoint = stringFromEnv("S3_ENDPOINT", cfg.Endpoint)
 	cfg.Region = stringFromEnv("S3_REGION", cfg.Region)
+	cfg.APIAuthToken = stringFromEnv("API_AUTH_TOKEN", cfg.APIAuthToken)
+	cfg.APICORSOrigins = stringFromEnv("API_CORS_ORIGINS", cfg.APICORSOrigins)
 	forcePathStyle, ok, err := boolFromEnv("S3_FORCE_PATH_STYLE")
 	if err != nil {
 		return err

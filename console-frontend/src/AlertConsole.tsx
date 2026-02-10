@@ -12,6 +12,7 @@ import type {
   AlertRuleset,
   AlertResponse,
 } from "./types";
+import { buildApiHeaders } from "./console/dashboardApi";
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
@@ -307,7 +308,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     if (USE_MOCK || fetchingRef.current || !aliveRef.current) return;
     fetchingRef.current = true;
     try {
-      const resp = await fetch(`${API_BASE}/api/alerts`, { cache: "no-store" });
+      const resp = await fetch(`${API_BASE}/api/alerts`, { cache: "no-store", headers: buildApiHeaders() });
       if (!resp.ok) {
         throw new Error(`接口异常 ${resp.status}`);
       }
@@ -353,7 +354,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
       setConfigLoading(true);
       setConfigError(null);
       try {
-        const resp = await fetch(`${API_BASE}/api/alert-config`, { cache: "no-store" });
+        const resp = await fetch(`${API_BASE}/api/alert-config`, { cache: "no-store", headers: buildApiHeaders() });
         if (!resp.ok) {
           throw new Error(`接口异常 ${resp.status}`);
         }
@@ -381,7 +382,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     setRulesLoading(true);
     setRulesError(null);
     try {
-      const resp = await fetch(`${API_BASE}/api/alert-rules`, { cache: "no-store" });
+      const resp = await fetch(`${API_BASE}/api/alert-rules`, { cache: "no-store", headers: buildApiHeaders() });
       if (!resp.ok) {
         const text = await resp.text();
         throw new Error(text || `接口异常 ${resp.status}`);
@@ -425,7 +426,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     try {
       const resp = await fetch(`${API_BASE}/api/alert-config`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: buildApiHeaders(true),
         body: JSON.stringify({
           enabled: alertConfig.enabled,
           suppressEnabled: alertConfig.suppressEnabled,
@@ -556,7 +557,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     try {
       const resp = await fetch(`${API_BASE}/api/alert-rules`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: buildApiHeaders(true),
         body: JSON.stringify({ rules: payload }),
       });
       if (!resp.ok) {

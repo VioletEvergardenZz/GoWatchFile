@@ -12,6 +12,7 @@
 - 钉钉机器人/邮件通知（可选）。
 - 告警决策：日志轮询、规则匹配、抑制/升级、告警概览与决策列表（规则由控制台维护并写入 `config.runtime.yaml`）。
 - 控制台 API：仪表盘、目录树、文件列表、自动上传开关、手动上传、文件 Tail/检索、运行时配置、告警面板与配置、系统资源面板。
+- 控制台 API 支持 Token 鉴权（`/api/health` 例外）与 CORS 白名单。
 - 路径安全：相对路径校验、防止目录穿越、对象 Key 归一化。
 - 控制台前端：目录树、上传历史、队列趋势、Tail/检索、运行时配置、告警控制台、系统资源控制台。
 - AI 日志分析（可选，需配置 AI_* 并启用）。
@@ -25,6 +26,7 @@
    cd go-watch-file
    cp .env.example .env
    # 填写密钥相关变量（S3_AK/S3_SK、DINGTALK_*、EMAIL_*）
+   # 填写 API 安全变量（API_AUTH_TOKEN、API_CORS_ORIGINS）
    # 如需覆盖 S3 参数，可设置 S3_BUCKET/S3_ENDPOINT/S3_REGION/S3_FORCE_PATH_STYLE/S3_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
@@ -43,17 +45,19 @@ npm run dev
 ```
 
 默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。若后端地址不同，可设置 `VITE_API_BASE`。
+如后端开启鉴权，可在前端环境变量中设置 `VITE_API_TOKEN`。
 
 ### Docker Compose（可选）
 ```bash
 cp .env.example .env
 mkdir -p data/watch data/logs
 # 如需固定监控目录 可将 go-watch-file/config.yaml 的 watch_dir 改为 /data/gwf/watch
+# 前端镜像会在构建时注入 API_AUTH_TOKEN 作为 VITE_API_TOKEN
 docker compose up --build -d
 ```
 
 访问地址：
-- 后端 API：`http://localhost:8080`
+- 后端 API：`http://localhost:8082`
 - 前端控制台：`http://localhost:8081`
 
 停止：
@@ -73,6 +77,7 @@ docker compose down
 - 开发指南：`docs/dev-guide.md`
 - 前后端联动：`docs/frontend-backend-linkage.md`
 - 队列与 worker：`docs/queue-worker-flow.md`
+- 队列持久化 Spike：`docs/queue-persistence-spike.md`
 - DTO 结构：`docs/state-types-visual.md`
 - 告警模式：`docs/alert-mode.md`
 - 告警控制台：`docs/alert-console.md`

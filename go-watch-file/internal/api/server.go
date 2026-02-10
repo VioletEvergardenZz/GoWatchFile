@@ -66,7 +66,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 
 	srv := &http.Server{
 		Addr:         cfg.APIBind,
-		Handler:      withRecovery(withCORS(mux)),
+		Handler:      withRecovery(withCORS(cfg, withAPIAuth(cfg, mux))),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: resolveWriteTimeout(cfg),
 	}
@@ -161,13 +161,40 @@ func (h *handler) manualUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	if err := h.fs.EnqueueManualUpload(req.Path); err != nil {
+	cleanedPath := filepath.Clean(filepath.FromSlash(strings.TrimSpace(req.Path)))
+	cfg := h.fs.Config()
+	if cfg == nil {
+		cfg = h.cfg
+	}
+	if cfg == nil || strings.TrimSpace(cfg.WatchDir) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "watch dir not configured"})
+		return
+	}
+	watchDirs := pathutil.SplitWatchDirs(cfg.WatchDir)
+	if len(watchDirs) == 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "watch dir not configured"})
+		return
+	}
+	if _, _, err := pathutil.RelativePathAny(watchDirs, cleanedPath); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	info, err := os.Stat(cleanedPath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
+		return
+	}
+	if info.IsDir() {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "path is a directory"})
+		return
+	}
+	if err := h.fs.EnqueueManualUpload(cleanedPath); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":   true,
-		"path": req.Path,
+		"path": cleanedPath,
 	})
 }
 
@@ -333,11 +360,11 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) health(w http.ResponseWriter, r *http.Request) {
-	stats := h.fs.GetStats()
-	writeJSON(w, http.StatusOK, map[string]any{
-		"queue":   stats.QueueLength,
-		"workers": stats.Workers,
-	})
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	writeJSON(w, http.StatusOK, h.fs.HealthSnapshot())
 }
 
 func (h *handler) alertDashboard(w http.ResponseWriter, r *http.Request) {
@@ -501,6 +528,7 @@ func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
 	}
 	mode := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("mode")))
 	includeProcesses := mode != "lite" && mode != "light"
+	includeProcessEnv := parseBoolQuery(r, "includeEnv")
 	limit := -1
 	if raw := strings.TrimSpace(r.URL.Query().Get("limit")); raw != "" {
 		val, err := strconv.Atoi(raw)
@@ -518,6 +546,11 @@ func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
+	}
+	if !includeProcessEnv {
+		for i := range snapshot.SystemProcesses {
+			snapshot.SystemProcesses[i].Env = []string{}
+		}
 	}
 	writeJSON(w, http.StatusOK, snapshot)
 }
@@ -562,17 +595,97 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 	_ = json.NewEncoder(w).Encode(payload) //编码成 JSON，直接写进响应体里（这里不处理错误）
 }
 
-func withCORS(next http.Handler) http.Handler {
+func withCORS(cfg *models.Config, next http.Handler) http.Handler {
+	allowAll := false
+	allowedOrigins := make(map[string]struct{})
+	if cfg != nil {
+		for _, origin := range strings.FieldsFunc(strings.TrimSpace(cfg.APICORSOrigins), func(r rune) bool {
+			return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+		}) {
+			normalized := strings.TrimSpace(origin)
+			if normalized == "" {
+				continue
+			}
+			if normalized == "*" {
+				allowAll = true
+				allowedOrigins = map[string]struct{}{}
+				break
+			}
+			allowedOrigins[normalized] = struct{}{}
+		}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		requestOrigin := strings.TrimSpace(r.Header.Get("Origin"))
+		originAllowed := requestOrigin == ""
+		if !originAllowed {
+			if allowAll {
+				originAllowed = true
+			} else if _, ok := allowedOrigins[requestOrigin]; ok {
+				originAllowed = true
+			}
+		}
+
+		if originAllowed && requestOrigin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", requestOrigin)
+			w.Header().Set("Vary", "Origin")
+		}
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization,X-API-Token")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
 		if r.Method == http.MethodOptions {
+			if !originAllowed {
+				writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
+				return
+			}
 			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		if !originAllowed {
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin not allowed"})
 			return
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func withAPIAuth(cfg *models.Config, next http.Handler) http.Handler {
+	token := ""
+	if cfg != nil {
+		token = strings.TrimSpace(cfg.APIAuthToken)
+	}
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if r.URL.Path == "/api/health" || r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if token == "" {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "API_AUTH_TOKEN 未配置，拒绝管理接口访问"})
+			return
+		}
+		requestToken := extractAuthToken(r)
+		if requestToken == "" || requestToken != token {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func extractAuthToken(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	if bearer := strings.TrimSpace(r.Header.Get("Authorization")); bearer != "" {
+		if strings.HasPrefix(strings.ToLower(bearer), "bearer ") {
+			return strings.TrimSpace(bearer[len("Bearer "):])
+		}
+	}
+	return strings.TrimSpace(r.Header.Get("X-API-Token"))
 }
 
 func withRecovery(next http.Handler) http.Handler {
@@ -600,6 +713,14 @@ func resolveWriteTimeout(cfg *models.Config) time.Duration {
 		}
 	}
 	return base
+}
+
+func parseBoolQuery(r *http.Request, key string) bool {
+	if r == nil {
+		return false
+	}
+	raw := strings.ToLower(strings.TrimSpace(r.URL.Query().Get(key)))
+	return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
 }
 
 // 读取目标文件内容
