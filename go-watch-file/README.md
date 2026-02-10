@@ -142,6 +142,8 @@ ai_max_lines: 200
 ### 1) 获取仪表盘
 - `GET /api/dashboard`
 - 返回：`DashboardData`（目录树、文件列表、指标、监控摘要、配置快照等）。
+- 全量仪表盘默认使用约 2 秒短缓存，减少目录高频扫描。
+- 可选：`refresh=true` 强制绕过缓存（返回头 `X-Dashboard-Cache=miss`）。
 
 ### 2) 自动上传开关
 - `POST /api/auto-upload`

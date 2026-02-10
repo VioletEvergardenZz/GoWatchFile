@@ -13,6 +13,7 @@ import (
 	"runtime/debug"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"file-watch/internal/alert"
@@ -34,6 +35,11 @@ type handler struct {
 	cfg *models.Config
 	fs  *service.FileService
 	sys *sysinfo.Collector
+
+	dashboardCacheMu     sync.Mutex
+	dashboardCacheData   any
+	dashboardCacheExpire time.Time
+	dashboardCacheTTL    time.Duration
 }
 
 // 日志读取的限制常量
@@ -42,14 +48,16 @@ const (
 	maxFileLogLines        = 500         //最多返回 500 行内容
 	maxFileSearchLines     = 2000        //最多返回 2000 行匹配结果
 	maxFileSearchLineBytes = 1024 * 1024 //单行最大 1MB，避免超长行撑爆内存
+	defaultDashboardTTL    = 2 * time.Second
 )
 
 // NewServer 创建接口服务并注册路由
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	h := &handler{
-		cfg: cfg,
-		fs:  fs,
-		sys: sysinfo.NewCollector(sysinfo.Options{}),
+		cfg:               cfg,
+		fs:                fs,
+		sys:               sysinfo.NewCollector(sysinfo.Options{}),
+		dashboardCacheTTL: defaultDashboardTTL,
 	}
 	mux := http.NewServeMux() //创建一个路由器（根据 URL 路径分发请求）
 	mux.HandleFunc("/api/dashboard", h.dashboard)
@@ -112,7 +120,18 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, runtimeState.DashboardLite(cfg))
 		return
 	}
-	writeJSON(w, http.StatusOK, runtimeState.Dashboard(cfg))
+	forceRefresh := parseBoolQuery(r, "refresh")
+	if !forceRefresh {
+		if cached, ok := h.loadDashboardCache(); ok {
+			w.Header().Set("X-Dashboard-Cache", "hit")
+			writeJSON(w, http.StatusOK, cached)
+			return
+		}
+	}
+	payload := runtimeState.Dashboard(cfg)
+	h.storeDashboardCache(payload)
+	w.Header().Set("X-Dashboard-Cache", "miss")
+	writeJSON(w, http.StatusOK, payload)
 }
 
 func (h *handler) toggleAutoUpload(w http.ResponseWriter, r *http.Request) {
@@ -138,6 +157,7 @@ func (h *handler) toggleAutoUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	state.SetAutoUpload(req.Path, req.Enabled)
+	h.invalidateDashboardCache()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":     true,
 		"path":   req.Path,
@@ -192,6 +212,7 @@ func (h *handler) manualUpload(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	h.invalidateDashboardCache()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":   true,
 		"path": cleanedPath,
@@ -353,6 +374,7 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.cfg = cfg
+	h.invalidateDashboardCache()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":     true,
 		"config": state.ConfigSnapshot(cfg),
@@ -721,6 +743,47 @@ func parseBoolQuery(r *http.Request, key string) bool {
 	}
 	raw := strings.ToLower(strings.TrimSpace(r.URL.Query().Get(key)))
 	return raw == "1" || raw == "true" || raw == "yes" || raw == "on"
+}
+
+func (h *handler) loadDashboardCache() (any, bool) {
+	if h == nil {
+		return nil, false
+	}
+	h.dashboardCacheMu.Lock()
+	defer h.dashboardCacheMu.Unlock()
+	if h.dashboardCacheData == nil {
+		return nil, false
+	}
+	if h.dashboardCacheExpire.IsZero() || time.Now().After(h.dashboardCacheExpire) {
+		h.dashboardCacheData = nil
+		h.dashboardCacheExpire = time.Time{}
+		return nil, false
+	}
+	return h.dashboardCacheData, true
+}
+
+func (h *handler) storeDashboardCache(payload any) {
+	if h == nil {
+		return
+	}
+	ttl := h.dashboardCacheTTL
+	if ttl <= 0 {
+		ttl = defaultDashboardTTL
+	}
+	h.dashboardCacheMu.Lock()
+	h.dashboardCacheData = payload
+	h.dashboardCacheExpire = time.Now().Add(ttl)
+	h.dashboardCacheMu.Unlock()
+}
+
+func (h *handler) invalidateDashboardCache() {
+	if h == nil {
+		return
+	}
+	h.dashboardCacheMu.Lock()
+	h.dashboardCacheData = nil
+	h.dashboardCacheExpire = time.Time{}
+	h.dashboardCacheMu.Unlock()
 }
 
 // 读取目标文件内容

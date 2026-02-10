@@ -182,6 +182,7 @@ sequenceDiagram
 **1) 获取仪表盘**
 - `GET /api/dashboard`
 - 可选：`mode=light` / `mode=lite` 返回轻量数据（不含目录树/文件列表）
+- 全量返回默认使用约 2 秒短缓存，`refresh=true` 可强制绕过缓存
 - 返回：`DashboardData`
 
 **2) 切换自动上传**

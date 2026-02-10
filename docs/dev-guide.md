@@ -95,6 +95,7 @@ S3 连接参数可在 `config.yaml` 或 `.env` 中设置，密钥配置在 `.env
 
 ## 仪表盘轻量刷新
 - `GET /api/dashboard?mode=light` 或 `mode=lite` 返回不含目录树与文件列表的轻量数据，适合高频轮询。
+- 全量 `GET /api/dashboard` 默认使用约 2 秒短缓存；调试时可加 `refresh=true` 强制刷新。
 
 ## 运行测试
 ```bash
