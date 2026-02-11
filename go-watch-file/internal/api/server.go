@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -70,6 +71,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/alert-config", h.alertConfig)
 	mux.HandleFunc("/api/alert-rules", h.alertRules)
 	mux.HandleFunc("/api/system", h.systemDashboard)
+	mux.HandleFunc("/api/system/terminate", h.systemTerminate)
 	mux.HandleFunc("/api/health", h.health)
 
 	srv := &http.Server{
@@ -585,6 +587,64 @@ func (h *handler) systemDashboard(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, snapshot)
+}
+
+// systemTerminate 用于终止指定 PID 的进程
+func (h *handler) systemTerminate(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+
+	cfg := h.fs.Config()
+	if cfg == nil {
+		cfg = h.cfg
+	}
+	if cfg == nil || !cfg.SystemResourceEnabled {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "system resource console disabled"})
+		return
+	}
+
+	var req struct {
+		PID   int32 `json:"pid"`
+		Force bool  `json:"force"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid request payload"})
+		return
+	}
+	if req.PID <= 0 {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pid"})
+		return
+	}
+	if req.PID == int32(os.Getpid()) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "refuse to terminate current api process"})
+		return
+	}
+
+	result, err := sysinfo.TerminateProcess(req.PID, req.Force)
+	if err != nil {
+		switch {
+		case errors.Is(err, sysinfo.ErrInvalidPID):
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid pid"})
+		case errors.Is(err, sysinfo.ErrProcessNotFound):
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "process not found"})
+		case errors.Is(err, sysinfo.ErrTerminatePermissionDenied):
+			writeJSON(w, http.StatusForbidden, map[string]string{"error": "permission denied"})
+		default:
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":     true,
+		"result": result,
+	})
 }
 
 // buildAlertConfigSnapshot 用于构建后续流程所需的数据

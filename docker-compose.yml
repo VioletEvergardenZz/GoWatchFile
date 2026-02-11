@@ -20,8 +20,6 @@ services:
     image: gwf-frontend:local
     build:
       context: ./console-frontend
-      args:
-        VITE_API_TOKEN: ${API_AUTH_TOKEN}
     depends_on:
       - gwf-backend
     ports:

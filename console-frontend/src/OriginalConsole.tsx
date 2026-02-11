@@ -43,14 +43,18 @@ import type {
 } from "./types";
 import {
   USE_MOCK,
+  clearApiToken,
   fetchDashboard,
   fetchDashboardLite,
+  getApiToken,
+  isApiTokenRemembered,
   postAiLogSummary,
   postAutoUpload,
   postConfig,
   postFileLog,
   postManualUpload,
   postSystemResourceEnabled,
+  setApiToken,
   type FileLogResponse,
   type LogMode,
 } from "./console/dashboardApi";
@@ -162,6 +166,10 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<"realtime" | "24h">("realtime");
   const [theme, setTheme] = useState<"dark" | "light">(() => getPreferredTheme());
+  const [apiTokenInput, setApiTokenInput] = useState(() => getApiToken());
+  const [tokenRemember, setTokenRemember] = useState(() => isApiTokenRemembered());
+  const [tokenApplied, setTokenApplied] = useState(() => getApiToken() !== "");
+  const [tokenSaving, setTokenSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [uploadSearchTerm, setUploadSearchTerm] = useState("");
   const [loading, setLoading] = useState(!USE_MOCK);
@@ -359,6 +367,28 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     } finally {
       dashboardFetchingRef.current = false;
     }
+  }, []);
+
+  const handleSaveApiToken = useCallback(async () => {
+    setTokenSaving(true);
+    setApiToken(apiTokenInput, tokenRemember);
+    setTokenApplied(apiTokenInput.trim() !== "");
+    setError(null);
+    try {
+      if (!USE_MOCK) {
+        await refreshDashboard();
+      }
+    } finally {
+      setTokenSaving(false);
+    }
+  }, [apiTokenInput, tokenRemember, refreshDashboard]);
+
+  const handleClearApiToken = useCallback(() => {
+    clearApiToken();
+    setApiTokenInput("");
+    setTokenRemember(false);
+    setTokenApplied(false);
+    setError(null);
   }, []);
 
   useEffect(() => {
@@ -1086,6 +1116,14 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
                 onTimeframeChange={setTimeframe}
                 theme={theme}
                 onThemeChange={setTheme}
+                apiToken={apiTokenInput}
+                tokenRemember={tokenRemember}
+                tokenApplied={tokenApplied}
+                tokenSaving={tokenSaving}
+                onApiTokenChange={setApiTokenInput}
+                onTokenRememberChange={setTokenRemember}
+                onSaveApiToken={() => void handleSaveApiToken()}
+                onClearApiToken={handleClearApiToken}
               />
               <OverviewSection metricCards={metricCardsState} hero={heroState} silenceValue={silenceValue} />
               <ConfigSection

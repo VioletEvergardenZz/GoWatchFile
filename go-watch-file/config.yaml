@@ -74,7 +74,7 @@ alert_poll_interval: "2s"
 alert_start_from_end: true
 
 # AI 分析配置（默认关闭）
-ai_enabled: true
+ai_enabled: false
 ai_base_url: "${AI_BASE_URL}"
 ai_api_key: "${AI_API_KEY}"
 ai_model: "${AI_MODEL}"

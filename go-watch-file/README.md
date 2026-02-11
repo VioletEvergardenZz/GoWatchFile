@@ -127,7 +127,7 @@ alert_log_paths: ""
 alert_poll_interval: "2s"
 alert_start_from_end: true
 
-ai_enabled: true
+ai_enabled: false
 ai_base_url: "${AI_BASE_URL}"
 ai_api_key: "${AI_API_KEY}"
 ai_model: "${AI_MODEL}"
@@ -230,7 +230,7 @@ ai_max_lines: 200
     "startFromEnd": true
   }
   ```
-- 说明：仅更新内存配置，重启后以配置文件为准。
+- 说明：更新运行时配置并尽力写入 `config.runtime.yaml`（best effort）。
 
 ### 10) 告警规则
 - `GET /api/alert-rules`
@@ -240,6 +240,10 @@ ai_max_lines: 200
 
 ### 11) 系统资源面板
 - `GET /api/system`
+- `POST /api/system/terminate`
+- Body：`{"pid": 12345, "force": false}`
+- 说明：按 PID 发送终止指令，默认 `TERM`，超时会回退 `KILL`；`force=true` 直接 `KILL`。
+- 返回：`{ ok: true, result: { pid, name, command, signal, forced } }`
 - Query：
   - `mode=lite` 或 `mode=light` → 仅返回概览/指标/分区，不返回进程列表
   - `limit=200` → 限制返回的进程数量，`0` 表示不限制

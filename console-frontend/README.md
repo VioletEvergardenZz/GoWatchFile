@@ -21,7 +21,7 @@ npm run dev
 ```
 
 默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。若后端地址不同可设置 `VITE_API_BASE`。
-若后端启用鉴权，可在前端环境变量中设置 `VITE_API_TOKEN`。
+若后端启用鉴权，请在控制台顶部输入 API Token（支持会话或本地保存，可清除）。
 
 ## 数据刷新策略
 - 仪表盘：每 3 秒刷新一次（`DASHBOARD_POLL_MS=3000`）。
@@ -51,5 +51,6 @@ npm run dev
 - `GET /api/alert-config` / `POST /api/alert-config`：告警配置读取与更新。
 - `GET /api/alert-rules` / `POST /api/alert-rules`：告警规则读取与保存。
 - `GET /api/system`：系统资源面板（需开启 `systemResourceEnabled`）。
+- `POST /api/system/terminate`：按 PID 终止进程（系统资源面板“一键关闭”触发）。
 
 字段与数据结构详见 `docs/state-types-visual.md`。

@@ -241,6 +241,8 @@ sequenceDiagram
 
 **11) 系统资源面板**
 - `GET /api/system`
+- `POST /api/system/terminate`
+- Body：`{"pid": 12345, "force": false}`
 - Query：`mode=lite|mode=light` / `limit` / `includeEnv=true`
 - 返回：`SystemDashboard`
 - 说明：需开启 `systemResourceEnabled`，否则返回 403；默认隐藏进程环境变量。

@@ -8,6 +8,10 @@
 
 **GET `/api/system`**
 
+**POST `/api/system/terminate`**
+- Body：`{"pid": 12345, "force": false}`
+- 说明：按 PID 终止进程；默认先发 `TERM`，超时自动回退 `KILL`；`force=true` 直接 `KILL`。
+
 ### Query 参数
 - `mode=lite` 或 `mode=light`
   - 仅返回概览/仪表盘/分区信息

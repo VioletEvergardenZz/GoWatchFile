@@ -174,6 +174,7 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
   const [selectedPid, setSelectedPid] = useState<number | null>(() => (USE_MOCK ? mockSystemProcesses[0]?.pid ?? null : null));
   const [procPage, setProcPage] = useState(1);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [terminating, setTerminating] = useState(false);
 
   useEffect(() => {
     aliveRef.current = true;
@@ -304,9 +305,32 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
   const showTopline = (usingMockData || error) && enabled;
   const toggleDisabled = !onToggleEnabled || toggleLoading;
 
-  const handleTerminate = () => {
-    if (!selectedProcess) return;
-    setActionMessage(`已发送 ${selectedProcess.name} (PID ${selectedProcess.pid}) 的关闭指令`);
+  const handleTerminate = async () => {
+    if (!selectedProcess || terminating) return;
+    setError(null);
+    setActionMessage(null);
+    setTerminating(true);
+    try {
+      const resp = await fetch(`${API_BASE}/api/system/terminate`, {
+        method: "POST",
+        cache: "no-store",
+        headers: buildApiHeaders(true),
+        body: JSON.stringify({ pid: selectedProcess.pid }),
+      });
+      const payload = (await resp.json().catch(() => ({}))) as {
+        error?: string;
+        result?: { signal?: string; forced?: boolean };
+      };
+      if (!resp.ok) {
+        throw new Error(payload.error?.trim() || `HTTP ${resp.status}`);
+      }
+      const signal = payload.result?.forced ? "KILL" : payload.result?.signal ?? "TERM";
+      setActionMessage(`已执行 ${selectedProcess.name} (PID ${selectedProcess.pid}) 终止动作：${signal}`);
+    } catch (err) {
+      setError((err as Error).message || "终止失败");
+    } finally {
+      setTerminating(false);
+    }
   };
 
   const renderProcessPorts = (proc: SystemProcess) =>
@@ -590,8 +614,8 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
                     PID {selectedProcess.pid} · {selectedProcess.user} · 启动 {selectedProcess.start}
                   </div>
                 </div>
-                <button className="btn danger" type="button" onClick={handleTerminate}>
-                  一键关闭
+                <button className="btn danger" type="button" onClick={() => void handleTerminate()} disabled={terminating || !selectedProcess}>
+                  {terminating ? "执行中..." : "一键关闭"}
                 </button>
               </div>
               {actionMessage ? <div className="badge ghost">{actionMessage}</div> : null}

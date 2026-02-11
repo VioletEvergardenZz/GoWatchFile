@@ -5,9 +5,7 @@ FROM ${BASE_IMAGE_PREFIX}/node:22.12.0-slim AS builder
 WORKDIR /app
 
 ARG NPM_REGISTRY=https://registry.npmmirror.com
-ARG VITE_API_TOKEN=
 RUN npm config set registry ${NPM_REGISTRY}
-ENV VITE_API_TOKEN=${VITE_API_TOKEN}
 
 COPY package.json package-lock.json ./
 RUN npm ci

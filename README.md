@@ -47,14 +47,14 @@ npm run dev
 ```
 
 默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。若后端地址不同，可设置 `VITE_API_BASE`。
-如后端开启鉴权，可在前端环境变量中设置 `VITE_API_TOKEN`。
+如后端开启鉴权，请在控制台顶部输入 API Token（支持会话或本地保存，可随时清除）。
 
 ### Docker Compose（可选）
 ```bash
 cp .env.example .env
 mkdir -p data/watch data/logs
 # 如需固定监控目录 可将 go-watch-file/config.yaml 的 watch_dir 改为 /data/gwf/watch
-# 前端镜像会在构建时注入 API_AUTH_TOKEN 作为 VITE_API_TOKEN
+# 前端镜像不注入鉴权口令；启动后在控制台页面输入 API Token
 docker compose up --build -d
 ```
 

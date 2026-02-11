@@ -6,6 +6,14 @@ type ConsoleHeaderProps = {
   onTimeframeChange: (value: "realtime" | "24h") => void;
   theme: "dark" | "light";
   onThemeChange: (value: "dark" | "light") => void;
+  apiToken: string;
+  tokenRemember: boolean;
+  tokenApplied: boolean;
+  tokenSaving: boolean;
+  onApiTokenChange: (value: string) => void;
+  onTokenRememberChange: (value: boolean) => void;
+  onSaveApiToken: () => void;
+  onClearApiToken: () => void;
 };
 
 export function ConsoleHeader({
@@ -16,41 +24,70 @@ export function ConsoleHeader({
   onTimeframeChange,
   theme,
   onThemeChange,
+  apiToken,
+  tokenRemember,
+  tokenApplied,
+  tokenSaving,
+  onApiTokenChange,
+  onTokenRememberChange,
+  onSaveApiToken,
+  onClearApiToken,
 }: ConsoleHeaderProps) {
   return (
     <header className="page-header">
       <div className="brand">
         <div className="title">
-          <p className="eyebrow">Agent 控制台</p>
-          <h1>文件监控 Agent 控制台</h1>
+          <p className="eyebrow">Agent Console</p>
+          <h1>File Watch Agent Console</h1>
           <div className="title-meta">
-            <span className="badge ghost">主机 {agent}</span>
+            <span className="badge ghost">Host {agent}</span>
           </div>
         </div>
       </div>
       <div className="controls">
-        {loading ? <span className="badge">刷新中</span> : null}
+        {loading ? <span className="badge">Refreshing...</span> : null}
         {error ? (
           <>
-            <span className="pill danger">接口异常</span>
+            <span className="pill danger">API Error</span>
             <span className="badge ghost">{error}</span>
           </>
         ) : null}
         <div className={`chip ${timeframe === "realtime" ? "active" : ""}`} onClick={() => onTimeframeChange("realtime")}>
-          实时
+          Realtime
         </div>
         <div className="theme-toggle">
-          <span className="muted small">背景</span>
+          <span className="muted small">Theme</span>
           <label className="switch mini">
             <input
               type="checkbox"
-              aria-label="切换深色/浅色背景"
+              aria-label="Toggle light and dark themes"
               checked={theme === "light"}
               onChange={(e) => onThemeChange(e.target.checked ? "light" : "dark")}
             />
             <span className="slider" />
           </label>
-          <span className="badge ghost">{theme === "light" ? "浅色" : "深色"}</span>
+          <span className="badge ghost">{theme === "light" ? "Light" : "Dark"}</span>
+        </div>
+        <div className="api-token-panel">
+          <input
+            className="input api-token-input"
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            placeholder="API Token"
+            value={apiToken}
+            onChange={(e) => onApiTokenChange(e.target.value)}
+          />
+          <label className="token-remember">
+            <input type="checkbox" checked={tokenRemember} onChange={(e) => onTokenRememberChange(e.target.checked)} />
+            <span>Remember</span>
+          </label>
+          <button className="btn secondary btn-token" type="button" onClick={onSaveApiToken} disabled={tokenSaving}>
+            {tokenSaving ? "Saving..." : tokenApplied ? "Update Token" : "Set Token"}
+          </button>
+          <button className="btn secondary btn-token-clear" type="button" onClick={onClearApiToken}>
+            Clear
+          </button>
         </div>
       </div>
     </header>
