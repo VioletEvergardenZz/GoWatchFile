@@ -1,3 +1,5 @@
+﻿/* 本文件用于知识库控制台页面 负责条目管理 审核与问答交互 */
+
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import "./KnowledgeConsole.css";
 import type { KnowledgeArticle, KnowledgeAskResponse } from "./types";
@@ -724,3 +726,4 @@ export function KnowledgeConsole() {
     </div>
   );
 }
+

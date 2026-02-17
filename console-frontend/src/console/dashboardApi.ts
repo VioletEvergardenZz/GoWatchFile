@@ -1,3 +1,5 @@
+﻿/* 本文件用于控制台 API 封装 将网络请求统一收敛便于复用和排障 */
+
 import type {
   AiLogSummaryResponse,
   DashboardPayload,
@@ -369,3 +371,4 @@ export const fetchKBRecommendations = async (params: {
   await ensureOk(res, "知识推荐加载");
   return (await res.json()) as KnowledgeRecommendationsResponse;
 };
+

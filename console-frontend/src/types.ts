@@ -1,3 +1,5 @@
+﻿/* 本文件用于前端类型定义 统一接口契约减少页面间结构分歧 */
+
 export type FileNode = {
   name: string;
   path: string;
@@ -397,3 +399,4 @@ export type KnowledgeRecommendationsResponse = {
   ok: boolean;
   items: KnowledgeArticle[];
 };
+

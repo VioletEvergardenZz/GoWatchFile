@@ -1,17 +1,21 @@
-# 通用文件监控与处理平台（Go Watch File / GWF）
+# 运维事件分析与知识决策平台（GWF）
 
-> 面向 SRE/运维的文件监控与 AIOps 平台。当前版本聚焦 Go Agent + 本地 API + 控制台；AI 分析与告警能力已落地，路由/编排/多 Agent 等能力在路线图中。
+> 面向 SRE/运维的事件分析与决策平台。当前版本聚焦告警决策、AI 分析与知识复用闭环；文件监控上传能力作为可选采集器保留并持续维护。
+
+## 平台定位（当前口径）
+- 主线能力：告警决策闭环 + AI 分析闭环 + 知识库复用闭环。
+- 输入能力：文件监控上传是当前已落地的输入适配器之一，不再是唯一主线。
+- 演进策略：后续可根据新需求调整输入侧重点，但保持“可观测、可追溯、可回滚”原则不变。
 
 ## 当前能力
-- 递归监控目录，自动发现新增子目录（fsnotify）。
-- 多后缀过滤，可为空表示全量目录。
-- 临时文件后缀过滤（如 `.tmp/.part/.crdownload`）。
-- 写入完成判定（silence window，默认 10s，支持 `10s` / `10秒` / `10`）。
-- worker pool 并发上传到阿里云 OSS（默认内存队列，可选持久化恢复）。
-- 上传失败重试（可开关，可配置重试间隔）。
+- 文件输入适配器：递归监控目录、自动发现新增子目录（fsnotify）。
+- 文件输入治理：多后缀过滤、临时文件后缀过滤、写入完成判定（silence window）。
+- 文件上传链路：worker pool 并发上传 OSS（默认内存队列，可选持久化恢复）。
+- 上传可靠性：失败重试、饱和阈值、熔断限流（可配置）。
 - 钉钉机器人/邮件通知（可选）。
 - 告警决策：日志轮询、规则匹配、抑制/升级、告警概览与决策列表（规则由控制台维护并写入 `config.runtime.yaml`）。
 - 控制台 API：仪表盘、目录树、文件列表、自动上传开关、手动上传、文件 Tail/检索、运行时配置、告警面板与配置、系统资源面板。
+- Prometheus 指标接口：`/metrics`（事件速率、队列长度、上传耗时、错误分类、AI/知识库命中率）。
 - 控制台 API 支持 Token 鉴权（`/api/health` 例外）与 CORS 白名单。
 - 路径安全：相对路径校验、防止目录穿越、对象 Key 归一化。
 - 控制台前端：目录树、上传历史、队列趋势、Tail/检索、运行时配置、告警控制台、系统资源控制台。
@@ -75,22 +79,13 @@ docker compose down
 - `todo.md` / `大纲.md`：路线图与蓝图说明。
 
 ## 文档入口
-- 平台概述：`docs/overview.md`
-- 阶段评估：`docs/tech-lead-assessment.md`
-- 开发指南：`docs/dev-guide.md`
-- 运维知识库 PRD：`docs/ops-knowledge-base-prd.md`
-- 运维知识库实施清单：`docs/ops-knowledge-base-work-items.md`
-- 运维知识库迁移回滚：`docs/kb-migration-rollback.md`
-- 运维知识库端到端验收：`docs/kb-e2e-acceptance.md`
-- 运维知识库命中率样本：`docs/kb-hitrate-samples.json`
-- 运维知识库 MTTD 基线样本：`docs/kb-mttd-baseline.csv`
-- 前后端联动：`docs/frontend-backend-linkage.md`
-- 队列与 worker：`docs/queue-worker-flow.md`
-- 队列持久化运行手册：`docs/queue-persistence-runbook.md`
-- DTO 结构：`docs/state-types-visual.md`
-- 告警模式：`docs/alert-mode.md`
-- 告警控制台：`docs/alert-console.md`
-- FAQ：`docs/faq.md`
+- 总入口：`docs/文档导航.md`
+- 总览规划：`docs/01-总览规划/`
+- 开发运维：`docs/02-开发运维/`
+- 告警与 AI：`docs/03-告警与AI/`
+- 知识库：`docs/04-知识库/`
+- 指标与评估：`docs/05-指标与评估/`
+- 架构附录：`docs/99-架构附录/`
 
 ## 现阶段限制（与代码一致）
 - 支持多监控目录（`watch_dir` 可用逗号或分号分隔），多后缀已支持。
@@ -102,3 +97,4 @@ docker compose down
 如需了解规划内容，参考 `todo.md` 与 `大纲.md`。
 
 维护：运维团队；旧版材料参考 `legacy/`。
+

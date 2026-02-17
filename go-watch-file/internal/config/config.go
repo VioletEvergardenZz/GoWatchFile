@@ -21,18 +21,21 @@ import (
 )
 
 const (
-	defaultUploadWorkers          = 3
-	defaultUploadQueueSize        = 100
-	defaultUploadQueuePersistFile = "logs/upload-queue.json"
-	defaultLogLevel               = "info"
-	defaultLogToStd               = true
-	defaultAPIBind                = ":8080"
-	defaultSilence                = "10s"
-	defaultAlertPollInterval      = "2s"
-	defaultAlertStartFromEnd      = true
-	defaultAlertSuppressEnabled   = true
-	defaultAIMaxLines             = 200
-	defaultAITimeout              = "20s"
+	defaultUploadWorkers                    = 3
+	defaultUploadQueueSize                  = 100
+	defaultUploadQueuePersistFile           = "logs/upload-queue.json"
+	defaultUploadQueueSaturationThreshold   = 0.9
+	defaultUploadQueueCircuitBreakerEnabled = true
+	defaultLogLevel                         = "info"
+	defaultLogToStd                         = true
+	defaultAPIBind                          = ":8080"
+	defaultSilence                          = "10s"
+	defaultAlertPollInterval                = "2s"
+	defaultAlertStartFromEnd                = true
+	defaultAlertSuppressEnabled             = true
+	defaultAIMaxLines                       = 200
+	defaultAITimeout                        = "20s"
+	defaultUploadRetryMaxAttempts           = 4
 )
 
 var allowedLogLevels = map[string]struct{}{
@@ -114,6 +117,9 @@ func ValidateConfig(config *models.Config) error {
 	if err := validateAIConfig(config); err != nil {
 		return err
 	}
+	if err := validateUploadQueueStrategy(config); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -137,6 +143,9 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.APIAuthToken = sanitizeConfigString(cfg.APIAuthToken)
 	cfg.APICORSOrigins = sanitizeConfigString(cfg.APICORSOrigins)
 	cfg.UploadQueuePersistFile = sanitizeConfigString(cfg.UploadQueuePersistFile)
+	if cfg.UploadQueueSaturationThreshold < 0 {
+		cfg.UploadQueueSaturationThreshold = 0
+	}
 	cfg.AlertRulesFile = sanitizeConfigString(cfg.AlertRulesFile)
 	cfg.AlertLogPaths = sanitizeConfigString(cfg.AlertLogPaths)
 	cfg.AlertPollInterval = sanitizeConfigString(cfg.AlertPollInterval)
@@ -179,6 +188,20 @@ func applyEnvOverrides(cfg *models.Config) error {
 	if ok {
 		cfg.UploadQueuePersistEnabled = queuePersistEnabled
 	}
+	queueSaturationThreshold, ok, err := floatFromEnv("UPLOAD_QUEUE_SATURATION_THRESHOLD")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadQueueSaturationThreshold = queueSaturationThreshold
+	}
+	queueCircuitBreakerEnabled, ok, err := boolFromEnv("UPLOAD_QUEUE_CIRCUIT_BREAKER_ENABLED")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadQueueCircuitBreakerEnabled = boolPtr(queueCircuitBreakerEnabled)
+	}
 	forcePathStyle, ok, err := boolFromEnv("OSS_FORCE_PATH_STYLE")
 	if err != nil {
 		return err
@@ -213,6 +236,13 @@ func applyEnvOverrides(cfg *models.Config) error {
 	if ok {
 		cfg.AIMaxLines = aiMaxLines
 	}
+	retryMaxAttempts, ok, err := intFromEnv("UPLOAD_RETRY_MAX_ATTEMPTS")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadRetryMaxAttempts = retryMaxAttempts
+	}
 	return nil
 }
 
@@ -229,6 +259,15 @@ func applyDefaults(cfg *models.Config) {
 	}
 	if cfg.UploadQueuePersistEnabled && strings.TrimSpace(cfg.UploadQueuePersistFile) == "" {
 		cfg.UploadQueuePersistFile = defaultUploadQueuePersistFile
+	}
+	if cfg.UploadQueueCircuitBreakerEnabled == nil {
+		cfg.UploadQueueCircuitBreakerEnabled = boolPtr(defaultUploadQueueCircuitBreakerEnabled)
+	}
+	if cfg.UploadQueueSaturationThreshold <= 0 || cfg.UploadQueueSaturationThreshold > 1 {
+		cfg.UploadQueueSaturationThreshold = defaultUploadQueueSaturationThreshold
+	}
+	if cfg.UploadRetryMaxAttempts <= 0 {
+		cfg.UploadRetryMaxAttempts = defaultUploadRetryMaxAttempts
 	}
 	if strings.TrimSpace(cfg.Silence) == "" {
 		cfg.Silence = defaultSilence
@@ -305,6 +344,22 @@ func intFromEnv(envKey string) (int, bool, error) {
 	parsed, err := strconv.Atoi(strings.TrimSpace(val))
 	if err != nil {
 		return 0, false, fmt.Errorf("环境变量 %s 不是合法的整数: %w", envKey, err)
+	}
+	return parsed, true, nil
+}
+
+// floatFromEnv 读取并解析浮点环境变量
+func floatFromEnv(envKey string) (float64, bool, error) {
+	val, ok := os.LookupEnv(envKey)
+	if !ok {
+		return 0, false, nil
+	}
+	if strings.TrimSpace(val) == "" {
+		return 0, false, nil
+	}
+	parsed, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
+	if err != nil {
+		return 0, false, fmt.Errorf("环境变量 %s 不是合法的浮点数: %w", envKey, err)
 	}
 	return parsed, true, nil
 }
@@ -450,6 +505,19 @@ func validateAIConfig(config *models.Config) error {
 	}
 	if config.AIMaxLines <= 0 {
 		return fmt.Errorf("AI_MAX_LINES必须大于零")
+	}
+	return nil
+}
+
+func validateUploadQueueStrategy(config *models.Config) error {
+	if config == nil {
+		return nil
+	}
+	if config.UploadQueueSaturationThreshold < 0 || config.UploadQueueSaturationThreshold > 1 {
+		return fmt.Errorf("upload_queue_saturation_threshold 必须在 [0,1] 范围内")
+	}
+	if config.UploadRetryMaxAttempts < 0 {
+		return fmt.Errorf("upload_retry_max_attempts 必须大于零")
 	}
 	return nil
 }

@@ -1,3 +1,5 @@
+﻿/* 本文件用于主控制台头部组件 集中处理状态栏和快捷操作区 */
+
 type ConsoleHeaderProps = {
   agent: string;
   loading: boolean;
@@ -93,3 +95,4 @@ export function ConsoleHeader({
     </header>
   );
 }
+

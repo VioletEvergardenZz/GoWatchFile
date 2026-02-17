@@ -1,3 +1,5 @@
+﻿/* 本文件用于全局基础样式 定义主题变量和通用排版基线 */
+
 @import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Manrope:wght@500;600&display=swap");
 
 :root {
@@ -93,3 +95,4 @@ select {
 #root {
   min-height: 100vh;
 }
+

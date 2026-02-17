@@ -1,3 +1,5 @@
+﻿/* 本文件用于主控制台页面 聚合上传 告警 系统和知识库视图 */
+
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChartOptions } from "chart.js";
 import { CategoryScale, Chart as ChartJS, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from "chart.js";
@@ -1252,3 +1254,4 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     </div>
   );
 }
+

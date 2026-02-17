@@ -1,3 +1,5 @@
+﻿/* 本文件用于知识库控制台样式 保持编辑 列表 问答区域布局稳定 */
+
 .knowledge-shell {
   display: flex;
   flex-direction: column;
@@ -257,3 +259,4 @@
     grid-template-columns: 1fr;
   }
 }
+

@@ -1,3 +1,5 @@
+﻿/* 本文件用于前端应用入口组件 负责视图切换与初始化状态控制 */
+
 import { useEffect, useState } from "react";
 import "./App.css";
 import { OriginalConsole } from "./OriginalConsole";
@@ -27,3 +29,4 @@ function App() {
 }
 
 export default App;
+

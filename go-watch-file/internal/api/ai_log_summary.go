@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"file-watch/internal/logger"
+	"file-watch/internal/metrics"
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
 )
@@ -87,9 +88,12 @@ type aiLogSummaryResult struct {
 }
 
 type aiLogSummaryMeta struct {
-	UsedLines int   `json:"usedLines"`
-	Truncated bool  `json:"truncated"`
-	ElapsedMs int64 `json:"elapsedMs"`
+	UsedLines  int    `json:"usedLines"`
+	Truncated  bool   `json:"truncated"`
+	ElapsedMs  int64  `json:"elapsedMs"`
+	Retries    int    `json:"retries,omitempty"`
+	Degraded   bool   `json:"degraded"`
+	ErrorClass string `json:"errorClass,omitempty"`
 }
 
 type openAIChatMessage struct {
@@ -173,40 +177,64 @@ func (h *handler) aiLogSummary(w http.ResponseWriter, r *http.Request) {
 	logText := strings.Join(linesForAI, "\n")
 	logger.Info("AI日志分析输入准备: path=%s mode=%s lines=%d compressed=%v truncated=%v", cleanedPath, mode, len(linesForAI), compressed, truncated)
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(r.Context(), parseAITimeout(cfg.AITimeout))
-	defer cancel()
-	analysisText, err := callAIForLogSummary(ctx, cfg, logText, cleanedPath, truncated)
-	if err != nil && isTimeoutError(err) {
+	retries := 0
+	analysisText, aiErr := "", error(nil)
+	for {
+		ctx, cancel := context.WithTimeout(r.Context(), parseAITimeout(cfg.AITimeout))
+		analysisText, aiErr = callAIForLogSummary(ctx, cfg, logText, cleanedPath, truncated)
+		cancel()
+		if aiErr == nil {
+			break
+		}
 		retryLines, changed := buildRetryLines(lines, linesForAI)
-		if changed {
-			logger.Warn("AI分析超时，已降级重试: before=%d after=%d", len(linesForAI), len(retryLines))
-			truncated = true
-			linesForAI = retryLines
-			logText = strings.Join(linesForAI, "\n")
-			ctxRetry, cancelRetry := context.WithTimeout(r.Context(), parseAITimeout(cfg.AITimeout))
-			analysisText, err = callAIForLogSummary(ctxRetry, cfg, logText, cleanedPath, truncated)
-			cancelRetry()
+		if !changed {
+			break
+		}
+		if !isRetryableAIError(aiErr) {
+			break
+		}
+		retries++
+		logger.Warn("AI分析失败，执行降级重试: retries=%d before=%d after=%d err=%v", retries, len(linesForAI), len(retryLines), aiErr)
+		truncated = true
+		linesForAI = retryLines
+		logText = strings.Join(linesForAI, "\n")
+	}
+
+	result := aiLogSummaryResult{}
+	degraded := false
+	errorClass := ""
+	if aiErr != nil {
+		errorClass = classifyAIError(aiErr)
+		logger.Warn("AI分析失败，已降级为规则摘要: class=%s err=%v", errorClass, aiErr)
+		result = buildFallbackAIResult(linesForAI, errorClass)
+		degraded = true
+	} else {
+		parsed, parseErr := parseAIResult(analysisText)
+		if parseErr != nil {
+			errorClass = "parse_error"
+			logger.Warn("AI结果解析失败，已降级为规则摘要: %v", parseErr)
+			result = buildFallbackAIResult(linesForAI, errorClass)
+			degraded = true
+		} else {
+			result = parsed
 		}
 	}
-	if err != nil {
-		logger.Warn("AI分析失败: %v", err)
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-		return
-	}
-	result, err := parseAIResult(analysisText)
-	if err != nil {
-		logger.Warn("AI结果解析失败: %v", err)
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "AI结果解析失败"})
-		return
-	}
 	normalizeAIResult(&result)
+	outcome := "success"
+	if degraded {
+		outcome = "degraded"
+	}
+	metrics.Global().ObserveAILogSummary(outcome, time.Since(start), retries)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":       true,
 		"analysis": result,
 		"meta": aiLogSummaryMeta{
-			UsedLines: len(linesForAI),
-			Truncated: truncated,
-			ElapsedMs: time.Since(start).Milliseconds(),
+			UsedLines:  len(linesForAI),
+			Truncated:  truncated,
+			ElapsedMs:  time.Since(start).Milliseconds(),
+			Retries:    retries,
+			Degraded:   degraded,
+			ErrorClass: errorClass,
 		},
 	})
 }
@@ -522,6 +550,134 @@ func isTimeoutError(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "deadline exceeded") || strings.Contains(msg, "timeout")
+}
+
+func isRetryableAIError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if isTimeoutError(err) {
+		return true
+	}
+	class := classifyAIError(err)
+	return class == "network" || class == "upstream_5xx" || class == "rate_limit"
+}
+
+func classifyAIError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case isTimeoutError(err):
+		return "timeout"
+	case strings.Contains(msg, "connection refused"),
+		strings.Contains(msg, "connection reset"),
+		strings.Contains(msg, "dial tcp"),
+		strings.Contains(msg, "no such host"),
+		strings.Contains(msg, "network"):
+		return "network"
+	case strings.Contains(msg, "429"), strings.Contains(msg, "rate limit"):
+		return "rate_limit"
+	case strings.Contains(msg, "401"), strings.Contains(msg, "403"), strings.Contains(msg, "unauthorized"), strings.Contains(msg, "forbidden"):
+		return "auth"
+	case strings.Contains(msg, "500"), strings.Contains(msg, "502"), strings.Contains(msg, "503"), strings.Contains(msg, "504"):
+		return "upstream_5xx"
+	case strings.Contains(msg, "400"), strings.Contains(msg, "422"):
+		return "upstream_4xx"
+	default:
+		return "unknown"
+	}
+}
+
+func buildFallbackAIResult(lines []string, errorClass string) aiLogSummaryResult {
+	keyErrors := extractFallbackKeyErrors(lines, aiMaxItems)
+	severity := detectFallbackSeverity(keyErrors)
+	summary := "AI 服务当前不可用，已降级为规则摘要。"
+	if len(keyErrors) > 0 {
+		summary = fmt.Sprintf("%s检测到 %d 条疑似异常日志，请优先按关键错误排查。", summary, len(keyErrors))
+	}
+	if strings.TrimSpace(errorClass) != "" {
+		summary = fmt.Sprintf("%s（降级原因：%s）", summary, errorClass)
+	}
+	confidence := 0.35
+	causes := []string{
+		"外部 AI 服务超时或网络波动",
+		"模型响应不稳定或返回格式不符合约束",
+	}
+	suggestions := []string{
+		"先根据关键错误行定位服务、模块和时间窗口",
+		"确认依赖服务连通性与认证配置后重试 AI 分析",
+		"若故障持续，优先执行本地 Runbook 并人工复核",
+	}
+	return aiLogSummaryResult{
+		Summary:     summary,
+		Severity:    severity,
+		KeyErrors:   keyErrors,
+		Causes:      causes,
+		Suggestions: suggestions,
+		Confidence:  &confidence,
+	}
+}
+
+func extractFallbackKeyErrors(lines []string, limit int) []string {
+	if limit <= 0 {
+		limit = aiMaxItems
+	}
+	if len(lines) == 0 {
+		return nil
+	}
+	collected := make([]string, 0, limit)
+	seen := make(map[string]struct{})
+	for i := len(lines) - 1; i >= 0 && len(collected) < limit; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if !containsKeyword(line) {
+			continue
+		}
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		collected = append(collected, line)
+	}
+	for i := len(lines) - 1; i >= 0 && len(collected) < limit; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if _, ok := seen[line]; ok {
+			continue
+		}
+		seen[line] = struct{}{}
+		collected = append(collected, line)
+	}
+	// 保持时间顺序展示
+	for i, j := 0, len(collected)-1; i < j; i, j = i+1, j-1 {
+		collected[i], collected[j] = collected[j], collected[i]
+	}
+	return collected
+}
+
+func detectFallbackSeverity(keyErrors []string) string {
+	if len(keyErrors) == 0 {
+		return "low"
+	}
+	highWords := []string{"panic", "fatal", "oom", "out of memory", "segfault", "崩溃", "致命"}
+	for _, line := range keyErrors {
+		lower := strings.ToLower(line)
+		for _, word := range highWords {
+			if strings.Contains(lower, word) {
+				return "high"
+			}
+		}
+	}
+	if len(keyErrors) >= 3 {
+		return "high"
+	}
+	return "medium"
 }
 
 // parseAITimeout 用于解析输入参数或配置

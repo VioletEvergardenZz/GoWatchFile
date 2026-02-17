@@ -1,4 +1,4 @@
-# File Watch Service（go-watch-file）
+﻿# File Watch Service（go-watch-file）
 
 一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到阿里云 OSS，支持上传失败重试、钉钉机器人通知与邮件通知，并提供 AI 日志分析。AI 能力是平台主线能力，运行时可按环境开关控制。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail/检索、系统资源面板与运行时配置。
 
@@ -6,7 +6,7 @@
 
 - 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, upload_retry_enabled, upload_retry_delays, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
 - `config.yaml` 保留静态配置（OSS 连接参数/日志/API bind/队列持久化开关），也可被环境变量覆盖。
-- 环境变量主要用于密钥、安全与 AI 配置（OSS_AK/OSS_SK, DINGTALK_*, EMAIL_*, API_*, AI_*），并支持可选覆盖 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL/UPLOAD_QUEUE_PERSIST_*。
+- 环境变量主要用于密钥、安全与 AI 配置（OSS_AK/OSS_SK, DINGTALK_*, EMAIL_*, API_*, AI_*），并支持可选覆盖 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL/UPLOAD_QUEUE_PERSIST_*/UPLOAD_QUEUE_SATURATION_THRESHOLD/UPLOAD_QUEUE_CIRCUIT_BREAKER_ENABLED/UPLOAD_RETRY_MAX_ATTEMPTS。
 
 ## 工作方式（按实际代码）
 1) fsnotify 递归监听 `watch_dir`（支持多目录 运行中自动发现新建子目录）
@@ -24,6 +24,8 @@
    # 填写密钥（OSS_AK/OSS_SK, DINGTALK_*, EMAIL_*）
    # 填写 API 安全（API_AUTH_TOKEN, API_CORS_ORIGINS）
    # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
+   # 可选调整背压保护：UPLOAD_QUEUE_SATURATION_THRESHOLD/UPLOAD_QUEUE_CIRCUIT_BREAKER_ENABLED
+   # 可选调整上传重试上限：UPLOAD_RETRY_MAX_ATTEMPTS
    # 如需覆盖 OSS 参数，可设置 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
@@ -61,6 +63,9 @@
   - 当持久化文件损坏时，会自动备份为 `<原文件>.corrupt-时间戳.bak`，并降级为空队列继续启动。
 - `upload_retry_enabled`：是否启用上传失败重试（默认 true）。
 - `upload_retry_delays`：重试间隔列表（逗号/空白/分号分隔），默认 `1s,2s,5s`，非法项会忽略。
+- `upload_retry_max_attempts`：上传最大尝试次数（含首次，默认 `4`）。
+- `upload_queue_saturation_threshold`：队列饱和阈值（`0~1`，默认 `0.9`）。
+- `upload_queue_circuit_breaker_enabled`：队列熔断限流开关（默认 `true`）。
 - `system_resource_enabled`：系统资源面板开关（默认 false，开启后 `/api/system` 可用）。
 - `force_path_style` / `disable_ssl`：OSS 地址开关。
 - `dingtalk_webhook` / `dingtalk_secret`：钉钉机器人（可选）。
@@ -115,8 +120,11 @@ upload_workers: 10
 upload_queue_size: 100
 upload_queue_persist_enabled: false
 upload_queue_persist_file: "logs/upload-queue.json"
+upload_queue_saturation_threshold: 0.9
+upload_queue_circuit_breaker_enabled: true
 upload_retry_enabled: true
 upload_retry_delays: "1s,2s,5s"
+upload_retry_max_attempts: 4
 api_bind: ":8080"
 system_resource_enabled: false
 
@@ -170,6 +178,7 @@ ai_max_lines: 200
 - Body：`{ "path": "/path/to/file", "mode": "tail", "query": "", "limit": 200, "caseSensitive": false }`
 - 说明：需 `ai_enabled=true` 且 AI_* 配置齐全；`mode=search` 必须带 `query`；`limit` 不传时使用 `ai_max_lines`。
 - 路径范围：`path` 支持 `watch_dir` 下的文件，也支持 `alert_log_paths` 中声明的日志路径（便于直接分析后端报错日志）。
+- AI 超时或异常时会自动压缩输入并重试；若仍失败则降级返回规则摘要（`meta.degraded=true`）。
 
 ### 6) 运行时配置更新
 - `POST /api/config`
@@ -197,6 +206,7 @@ ai_max_lines: 200
     "workers": 3,
     "inFlight": 0,
     "queueFullTotal": 0,
+    "queueShedTotal": 0,
     "retryTotal": 0,
     "uploadFailureTotal": 0,
     "failureReasons": [],
@@ -209,6 +219,11 @@ ai_max_lines: 200
     }
   }
   ```
+
+### 12) Prometheus 指标
+- `GET /metrics`
+- 说明：返回 Prometheus text exposition，可直接被采集器抓取。
+- 关键指标：上传队列、上传耗时、失败原因、AI 请求结果、知识库检索/问答命中率与评审延迟。
 
 ### 8) 告警决策面板
 - `GET /api/alerts`
@@ -252,7 +267,7 @@ ai_max_lines: 200
 - 说明：需开启 `systemResourceEnabled`，否则返回 403；默认不返回进程环境变量，避免敏感信息暴露。
 
 ## 运行时配置更新说明
-`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*`（静态项需重启）。
+`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*` / `upload_queue_saturation_threshold` / `upload_queue_circuit_breaker_enabled` / `upload_retry_max_attempts`（静态项需重启）。
 Runtime updates are persisted to `config.runtime.yaml` (best effort).
 
 `/api/alert-config` 仅更新告警配置与轮询状态，不写回 `config.yaml`。
@@ -271,17 +286,55 @@ Alert config updates are persisted to `config.runtime.yaml` (best effort).
 - 已实现钉钉通知与邮件通知，企业微信未接入。
 - 目录过大时可能触发系统句柄限制，可通过 `watch_exclude` 跳过大目录或提升系统 `ulimit`。
 
+## 运维评估命令
+命中率评估：
+```bash
+cd go-watch-file
+go run ./cmd/kb-eval hitrate -base http://localhost:8082 -token "$API_AUTH_TOKEN" -samples ../docs/04-知识库/知识库命中率样本.json
+```
+
+问答引用率评估：
+```bash
+cd go-watch-file
+go run ./cmd/kb-eval citation -base http://localhost:8082 -token "$API_AUTH_TOKEN" -samples ../docs/04-知识库/知识库命中率样本.json -limit 3 -target 1.0
+```
+
+MTTD 对比评估：
+```bash
+cd go-watch-file
+go run ./cmd/kb-eval mttd -input ../docs/04-知识库/知识库MTTD基线.csv
+```
+
+## 可靠性演练脚本
+指标巡检：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/check-metrics.ps1 -BaseUrl http://localhost:8082 -OutputFile ../reports/metrics.prom
+```
+
+上传压测文件生成：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/upload-stress.ps1 -WatchDir D:\tmp\gwf-stress -Count 1000 -IntervalMs 20
+```
+
+AI 回放：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt -OutputFile ../reports/ai-replay-result.json
+```
+可直接维护 `../docs/03-告警与AI/AI回放路径清单.txt`，命令中的 `-PathsFile` 建议改为该路径。
+
 ## 相关文档
-- 平台概述：`../docs/overview.md`
-- 流程图：`../docs/system-flowchart.md`
-- 前后端联动：`../docs/frontend-backend-linkage.md`
-- 队列与 worker：`../docs/queue-worker-flow.md`
-- 队列持久化运行手册：`../docs/queue-persistence-runbook.md`
-- 系统资源面板：`../docs/system-resource-console.md`
-- 告警模式：`../docs/alert-mode.md`
-- 开发指南：`../docs/dev-guide.md`
-- 常见问题：`../docs/faq.md`
+- 文档导航：`../docs/文档导航.md`
+- 平台总览与计划：`../docs/01-总览规划/`
+- 开发与运维：`../docs/02-开发运维/`
+- 告警与 AI：`../docs/03-告警与AI/`
+- 知识库：`../docs/04-知识库/`
+- 指标与评估：`../docs/05-指标与评估/`
+- 架构附录：`../docs/99-架构附录/`
 
 ## 开发与测试
 - 运行测试：`go test ./...`
 - 代码格式：`gofmt`，遵循 Go 官方规范。
+

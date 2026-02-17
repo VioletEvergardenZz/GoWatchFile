@@ -20,6 +20,7 @@ import (
 	"file-watch/internal/alert"
 	"file-watch/internal/kb"
 	"file-watch/internal/logger"
+	"file-watch/internal/metrics"
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
 	"file-watch/internal/service"
@@ -88,6 +89,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/kb/recommendations", h.kbRecommendations)
 	mux.HandleFunc("/api/kb/reviews/pending", h.kbPendingReviews)
 	mux.HandleFunc("/api/health", h.health)
+	mux.HandleFunc("/metrics", h.prometheusMetrics)
 
 	srv := &http.Server{
 		Addr:         cfg.APIBind,
@@ -96,6 +98,19 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 		WriteTimeout: resolveWriteTimeout(cfg),
 	}
 	return &Server{httpServer: srv, kbService: kbService}
+}
+
+// prometheusMetrics 导出 Prometheus 采集格式的运行指标。
+func (h *handler) prometheusMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if h != nil && h.fs != nil {
+		metrics.Global().SetQueueStats(h.fs.GetStats())
+	}
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	_, _ = w.Write([]byte(metrics.MustGlobalPrometheus()))
 }
 
 // Start 启动接口服务并开始监听

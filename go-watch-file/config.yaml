@@ -48,6 +48,11 @@ upload_queue_size: 100
 # 上传队列持久化（静态配置，需重启生效）
 upload_queue_persist_enabled: false
 upload_queue_persist_file: "logs/upload-queue.json"
+# 上传队列饱和保护（静态配置，需重启生效）
+upload_queue_saturation_threshold: 0.9
+upload_queue_circuit_breaker_enabled: true
+# 上传重试策略（静态配置，需重启生效）
+upload_retry_max_attempts: 4
 
 # API 服务配置
 # API 监听地址 控制台通过此地址访问接口

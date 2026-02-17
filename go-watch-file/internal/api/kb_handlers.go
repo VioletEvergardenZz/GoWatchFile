@@ -1,3 +1,5 @@
+// 本文件用于知识库 HTTP 处理器 将知识库能力通过统一路由暴露给控制台
+
 package api
 
 import (
@@ -12,6 +14,7 @@ import (
 	"time"
 
 	"file-watch/internal/kb"
+	"file-watch/internal/metrics"
 	"file-watch/internal/models"
 )
 
@@ -182,6 +185,7 @@ func (h *handler) kbArticleByID(w http.ResponseWriter, r *http.Request) {
 		action := strings.TrimSpace(parts[1])
 		switch action {
 		case "submit", "approve", "reject", "archive":
+			start := time.Now()
 			var req struct {
 				Operator string `json:"operator"`
 				Comment  string `json:"comment"`
@@ -199,9 +203,11 @@ func (h *handler) kbArticleByID(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, status, map[string]string{"error": err.Error()})
 				return
 			}
+			metrics.Global().ObserveKBReviewLatency(time.Since(start))
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "article": article})
 			return
 		case "rollback":
+			start := time.Now()
 			var req struct {
 				TargetVersion int    `json:"targetVersion"`
 				Operator      string `json:"operator"`
@@ -220,6 +226,7 @@ func (h *handler) kbArticleByID(w http.ResponseWriter, r *http.Request) {
 				writeJSON(w, status, map[string]string{"error": err.Error()})
 				return
 			}
+			metrics.Global().ObserveKBReviewLatency(time.Since(start))
 			writeJSON(w, http.StatusOK, map[string]any{"ok": true, "article": article})
 			return
 		default:
@@ -258,6 +265,7 @@ func (h *handler) kbSearch(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	metrics.Global().ObserveKBSearch(len(items))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":    true,
 		"items": items,
@@ -290,6 +298,7 @@ func (h *handler) kbAsk(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
 	}
+	metrics.Global().ObserveKBAsk(len(result.Citations))
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":         true,
 		"answer":     result.Answer,

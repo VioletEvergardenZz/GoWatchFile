@@ -1,4 +1,4 @@
-# File Watch 控制台（前端）
+﻿# File Watch 控制台（前端）
 
 React + TypeScript + Vite 单页应用，用于展示 Go 后端的仪表盘与操作入口（目录树/文件列表/上传记录/文件内容/配置更新）。
 
@@ -53,4 +53,5 @@ npm run dev
 - `GET /api/system`：系统资源面板（需开启 `systemResourceEnabled`）。
 - `POST /api/system/terminate`：按 PID 终止进程（系统资源面板“一键关闭”触发）。
 
-字段与数据结构详见 `docs/state-types-visual.md`。
+字段与数据结构详见 `docs/99-架构附录/状态类型可视化.md`。
+

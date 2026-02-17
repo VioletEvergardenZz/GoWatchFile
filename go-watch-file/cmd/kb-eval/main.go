@@ -1,3 +1,5 @@
+﻿// 本文件用于知识库评估命令入口 将命中率和 MTTD 评估集中到一个 CLI 便于回归复用
+
 package main
 
 import (
@@ -29,6 +31,17 @@ type searchResponse struct {
 	} `json:"items"`
 }
 
+type askResponse struct {
+	OK         bool    `json:"ok"`
+	Answer     string  `json:"answer"`
+	Confidence float64 `json:"confidence"`
+	Citations  []struct {
+		ArticleID string `json:"articleId"`
+		Title     string `json:"title"`
+		Version   int    `json:"version"`
+	} `json:"citations"`
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -38,6 +51,11 @@ func main() {
 	case "hitrate":
 		if err := runHitrate(os.Args[2:]); err != nil {
 			fmt.Fprintf(os.Stderr, "hitrate failed: %v\n", err)
+			os.Exit(1)
+		}
+	case "citation":
+		if err := runCitation(os.Args[2:]); err != nil {
+			fmt.Fprintf(os.Stderr, "citation failed: %v\n", err)
 			os.Exit(1)
 		}
 	case "mttd":
@@ -53,15 +71,16 @@ func main() {
 
 func usage() {
 	fmt.Println("Usage:")
-	fmt.Println("  kb-eval hitrate -base http://localhost:8082 -token <token> -samples ../../docs/kb-hitrate-samples.json [-limit 5]")
-	fmt.Println("  kb-eval mttd -input ../../docs/kb-mttd-baseline.csv")
+	fmt.Println("  kb-eval hitrate -base http://localhost:8082 -token <token> -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 5]")
+	fmt.Println("  kb-eval citation -base http://localhost:8082 -token <token> -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 3] [-target 1.0]")
+	fmt.Println("  kb-eval mttd -input ../../docs/04-知识库/知识库MTTD基线.csv")
 }
 
 func runHitrate(args []string) error {
 	fs := flag.NewFlagSet("hitrate", flag.ContinueOnError)
 	baseURL := fs.String("base", "http://localhost:8082", "api base url")
 	token := fs.String("token", "", "api token")
-	samplesPath := fs.String("samples", filepath.FromSlash("../../docs/kb-hitrate-samples.json"), "samples json path")
+	samplesPath := fs.String("samples", filepath.FromSlash("../../docs/04-知识库/知识库命中率样本.json"), "samples json path")
 	limit := fs.Int("limit", 5, "search result limit")
 	timeoutSec := fs.Int("timeout", 8, "request timeout seconds")
 	if err := fs.Parse(args); err != nil {
@@ -168,9 +187,109 @@ func boolLabel(v bool) string {
 	return "miss"
 }
 
+func runCitation(args []string) error {
+	fs := flag.NewFlagSet("citation", flag.ContinueOnError)
+	baseURL := fs.String("base", "http://localhost:8082", "api base url")
+	token := fs.String("token", "", "api token")
+	samplesPath := fs.String("samples", filepath.FromSlash("../../docs/04-知识库/知识库命中率样本.json"), "samples json path")
+	limit := fs.Int("limit", 3, "ask result limit")
+	target := fs.Float64("target", 1.0, "required citation ratio 0~1")
+	timeoutSec := fs.Int("timeout", 8, "request timeout seconds")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if strings.TrimSpace(*token) == "" {
+		return fmt.Errorf("token is required")
+	}
+	if *target < 0 || *target > 1 {
+		return fmt.Errorf("target must be between 0 and 1")
+	}
+	raw, err := os.ReadFile(*samplesPath)
+	if err != nil {
+		return fmt.Errorf("read samples failed: %w", err)
+	}
+	var samples []hitrateSample
+	if err := json.Unmarshal(raw, &samples); err != nil {
+		return fmt.Errorf("parse samples failed: %w", err)
+	}
+	if len(samples) == 0 {
+		return fmt.Errorf("samples is empty")
+	}
+
+	client := &http.Client{Timeout: time.Duration(*timeoutSec) * time.Second}
+	total := 0
+	withCitation := 0
+	for i, sample := range samples {
+		ok, citationTitles, err := evaluateCitationSample(client, *baseURL, *token, sample.Question, *limit)
+		total++
+		if err != nil {
+			fmt.Printf("[%02d] %s => error: %v\n", i+1, sample.Question, err)
+			continue
+		}
+		if ok {
+			withCitation++
+		}
+		fmt.Printf("[%02d] %s => %s\n", i+1, sample.Question, boolLabel(ok))
+		if len(citationTitles) > 0 {
+			fmt.Printf("     citations: %s\n", strings.Join(citationTitles, " | "))
+		}
+	}
+	ratio := 0.0
+	if total > 0 {
+		ratio = float64(withCitation) / float64(total)
+	}
+	fmt.Printf("\nCitation ratio: %d/%d = %.2f%%\n", withCitation, total, ratio*100)
+	fmt.Printf("Target ratio  : %.2f%%\n", *target*100)
+	if ratio < *target {
+		return fmt.Errorf("citation ratio %.2f%% below target %.2f%%", ratio*100, *target*100)
+	}
+	return nil
+}
+
+func evaluateCitationSample(client *http.Client, baseURL, token, question string, limit int) (bool, []string, error) {
+	payload := map[string]any{
+		"question": question,
+		"limit":    limit,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return false, nil, err
+	}
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(baseURL, "/")+"/api/kb/ask", bytes.NewBuffer(body))
+	if err != nil {
+		return false, nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-API-Token", token)
+	resp, err := client.Do(req)
+	if err != nil {
+		return false, nil, err
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return false, nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return false, nil, fmt.Errorf("status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(data)))
+	}
+	var parsed askResponse
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		return false, nil, err
+	}
+	if !parsed.OK {
+		return false, nil, fmt.Errorf("ask response not ok")
+	}
+	titles := make([]string, 0, len(parsed.Citations))
+	for _, citation := range parsed.Citations {
+		titles = append(titles, citation.Title)
+	}
+	return len(parsed.Citations) > 0, titles, nil
+}
+
 func runMTTD(args []string) error {
 	fs := flag.NewFlagSet("mttd", flag.ContinueOnError)
-	input := fs.String("input", filepath.FromSlash("../../docs/kb-mttd-baseline.csv"), "csv path")
+	input := fs.String("input", filepath.FromSlash("../../docs/04-知识库/知识库MTTD基线.csv"), "csv path")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -224,3 +343,4 @@ func runMTTD(args []string) error {
 	fmt.Printf("Drop ratio    : %.2f%%\n", drop*100)
 	return nil
 }
+

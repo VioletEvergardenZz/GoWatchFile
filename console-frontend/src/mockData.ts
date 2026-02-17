@@ -1,3 +1,5 @@
+﻿/* 本文件用于控制台示例数据 在离线或演示场景提供回退数据源 */
+
 import type {
   AlertConfigSnapshot,
   AlertDashboard,
@@ -702,3 +704,4 @@ export const systemProcesses: SystemProcess[] = [
     env: ["CONTAINERD_LOG_LEVEL=info"],
   },
 ];
+

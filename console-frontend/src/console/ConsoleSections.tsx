@@ -1,3 +1,5 @@
+﻿/* 本文件用于主控制台分区组件 统一渲染指标 区域块和图表内容 */
+
 import type { ReactNode, RefObject } from "react";
 import { Line } from "react-chartjs-2";
 import type { ChartData, ChartOptions } from "chart.js";
@@ -720,3 +722,4 @@ export function MonitorSection({ summary, notes, chartData, chartOptions }: Moni
     </section>
   );
 }
+

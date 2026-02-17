@@ -1,3 +1,5 @@
+﻿/* 本文件用于控制台数据处理工具 统一格式化和树结构构建逻辑 */
+
 import type { ConfigSnapshot, FileNode, UploadRecord } from "../types";
 
 const hasDatePrefix = (value: string) => /\d{4}-\d{2}-\d{2}/.test(value);
@@ -224,3 +226,4 @@ export const updateAutoUpload = (nodes: FileNode[], path: string, value: boolean
     return node;
   });
 };
+

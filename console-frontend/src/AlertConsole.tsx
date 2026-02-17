@@ -1,3 +1,5 @@
+﻿/* 本文件用于告警控制台页面 负责告警列表 配置和知识推荐联动 */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./Alert.css";
 import { alertConfigSnapshot, alertDashboard, alertRulesSnapshot } from "./mockData";
@@ -1918,3 +1920,4 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     </div>
   );
 }
+

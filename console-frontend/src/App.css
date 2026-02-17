@@ -1,3 +1,5 @@
+﻿/* 本文件用于应用外层布局样式 统一控制台壳层视觉和状态表现 */
+
 .page-shell {
   padding: 22px 18px 42px;
 }
@@ -1591,3 +1593,4 @@
   background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), rgba(34, 211, 238, 0.08));
   box-shadow: var(--card-glow);
 }
+

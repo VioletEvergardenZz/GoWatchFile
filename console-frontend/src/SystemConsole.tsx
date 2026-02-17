@@ -1,3 +1,5 @@
+﻿/* 本文件用于系统资源控制台页面 负责资源采样展示与进程操作 */
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./SystemConsole.css";
 import { systemGauges as mockSystemGauges, systemOverview as mockSystemOverview, systemProcesses as mockSystemProcesses, systemVolumes as mockSystemVolumes } from "./mockData";
@@ -194,7 +196,7 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
     const refresh = async () => {
       if (fetchingRef.current || !aliveRef.current) return;
       fetchingRef.current = true;
-      // Only poll when enabled to avoid extra load.
+      // 仅在启用时轮询，避免无效请求增加后端负载
       try {
         const resp = await fetch(`${API_BASE}/api/system?limit=0`, { cache: "no-store", headers: buildApiHeaders() });
         if (!resp.ok) {
@@ -682,3 +684,4 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
     </div>
   );
 }
+

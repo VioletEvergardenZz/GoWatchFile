@@ -1,3 +1,5 @@
+﻿/* 本文件用于主控制台侧栏组件 负责视图切换和导航入口管理 */
+
 type ConsoleView = "console" | "alert" | "system" | "knowledge";
 
 type ConsoleSidebarProps = {
@@ -129,3 +131,4 @@ export function ConsoleSidebar({ view, activeSection, sectionIds, systemSectionI
     </aside>
   );
 }
+

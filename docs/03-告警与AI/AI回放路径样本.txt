@@ -1,0 +1,6 @@
+# AI 回放路径样本（每行一个日志文件绝对路径）
+# 可复制为 docs/03-告警与AI/AI回放路径清单.txt 后按环境修改
+
+D:\logs\gwf\backend-error.log
+D:\logs\gwf\upload-worker.log
+D:\logs\gwf\alert-engine.log

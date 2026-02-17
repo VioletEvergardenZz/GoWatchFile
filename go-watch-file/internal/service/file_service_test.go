@@ -79,3 +79,41 @@ func TestIsUploadRetryEnabled(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildUploadRetryPlan(t *testing.T) {
+	cfg := &models.Config{
+		UploadRetryDelays:      "1s,2s",
+		UploadRetryMaxAttempts: 5,
+	}
+	plan := buildUploadRetryPlan(cfg)
+	want := []time.Duration{time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second}
+	if len(plan) != len(want) {
+		t.Fatalf("retry plan expected %d, got %d", len(want), len(plan))
+	}
+	for i := range plan {
+		if plan[i] != want[i] {
+			t.Fatalf("retry plan[%d] expected %v, got %v", i, want[i], plan[i])
+		}
+	}
+}
+
+func TestResolveQueueSaturationThreshold(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  *models.Config
+		want float64
+	}{
+		{name: "nil config", cfg: nil, want: 0.9},
+		{name: "zero threshold", cfg: &models.Config{UploadQueueSaturationThreshold: 0}, want: 0.9},
+		{name: "invalid threshold", cfg: &models.Config{UploadQueueSaturationThreshold: 1.5}, want: 0.9},
+		{name: "valid threshold", cfg: &models.Config{UploadQueueSaturationThreshold: 0.75}, want: 0.75},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := resolveQueueSaturationThreshold(tc.cfg)
+			if got != tc.want {
+				t.Fatalf("expected %.2f, got %.2f", tc.want, got)
+			}
+		})
+	}
+}

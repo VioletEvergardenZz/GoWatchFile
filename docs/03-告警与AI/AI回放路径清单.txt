@@ -1,0 +1,6 @@
+# AI 回放路径清单（每行一个日志文件绝对路径）
+# 可在此文件直接维护回放样本
+
+D:\logs\gwf\backend-error.log
+D:\logs\gwf\upload-worker.log
+D:\logs\gwf\alert-engine.log

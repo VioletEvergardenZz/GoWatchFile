@@ -19,6 +19,7 @@ import (
 	"file-watch/internal/email"
 	"file-watch/internal/logger"
 	"file-watch/internal/match"
+	"file-watch/internal/metrics"
 	"file-watch/internal/models"
 	"file-watch/internal/oss"
 	"file-watch/internal/pathutil"
@@ -45,6 +46,7 @@ type FileService struct {
 	manualOnce    map[string]bool //标记“某个路径的下一次处理是手动上传”
 	metricsMu     sync.Mutex
 	queueFull     uint64
+	queueShed     uint64
 	retryTotal    uint64
 	uploadFailure uint64
 	failReasons   map[string]uint64
@@ -52,12 +54,18 @@ type FileService struct {
 
 const shutdownTimeout = 30 * time.Second
 const defaultUploadQueuePersistFile = "logs/upload-queue.json"
+const defaultQueueSaturationThreshold = 0.9
 
 var defaultUploadRetryDelays = []time.Duration{
 	1 * time.Second,
 	2 * time.Second,
 	5 * time.Second,
 }
+
+const (
+	defaultUploadRetryMaxAttempts = 4
+	maxUploadRetryDelay           = 60 * time.Second
+)
 
 // NewFileService 构造并初始化 FileService 的依赖
 func NewFileService(config *models.Config, configPath string) (*FileService, error) {
@@ -227,6 +235,7 @@ func (fs *FileService) handlePoolStats(stats models.UploadStats) {
 	if fs.state != nil {
 		fs.state.SetQueueStats(stats)
 	}
+	metrics.Global().SetQueueStats(stats)
 }
 
 // newFileWatcher 创建文件监听器
@@ -551,6 +560,7 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	if fs.state != nil {
 		fs.state.MarkUploaded(filePath, downloadURL, time.Since(start), manual)
 	}
+	metrics.Global().ObserveUploadSuccess(time.Since(start))
 
 	fullPath := filepath.Clean(filePath)
 	fs.sendDingTalk(ctx, downloadURL, fullPath)
@@ -568,7 +578,7 @@ func (fs *FileService) uploadFileWithRetry(ctx context.Context, filePath string)
 	if !isUploadRetryEnabled(fs.config) {
 		return fs.ossClient.UploadFile(ctx, filePath)
 	}
-	delays := parseUploadRetryDelays(fs.config)
+	delays := buildUploadRetryPlan(fs.config)
 	tries := len(delays) + 1
 	var lastErr error
 	for attempt := 1; attempt <= tries; attempt++ {
@@ -605,6 +615,39 @@ func isUploadRetryEnabled(cfg *models.Config) bool {
 	return *cfg.UploadRetryEnabled
 }
 
+// isQueueCircuitBreakerEnabled 判断是否启用队列饱和熔断。
+func isQueueCircuitBreakerEnabled(cfg *models.Config) bool {
+	if cfg == nil {
+		return true
+	}
+	if cfg.UploadQueueCircuitBreakerEnabled == nil {
+		return true
+	}
+	return *cfg.UploadQueueCircuitBreakerEnabled
+}
+
+// resolveQueueSaturationThreshold 解析队列饱和阈值，范围 (0,1]。
+func resolveQueueSaturationThreshold(cfg *models.Config) float64 {
+	if cfg == nil {
+		return defaultQueueSaturationThreshold
+	}
+	threshold := cfg.UploadQueueSaturationThreshold
+	if threshold <= 0 || threshold > 1 {
+		return defaultQueueSaturationThreshold
+	}
+	return threshold
+}
+
+func resolveUploadQueueSize(cfg *models.Config) int {
+	if cfg == nil {
+		return 100
+	}
+	if cfg.UploadQueueSize <= 0 {
+		return 100
+	}
+	return cfg.UploadQueueSize
+}
+
 // parseUploadRetryDelays 解析上传重试间隔配置
 func parseUploadRetryDelays(cfg *models.Config) []time.Duration {
 	if cfg == nil {
@@ -639,6 +682,51 @@ func parseUploadRetryDelays(cfg *models.Config) []time.Duration {
 		return defaultUploadRetryDelays
 	}
 	return delays
+}
+
+// resolveUploadRetryMaxAttempts 解析重试上限，包含首次尝试。
+func resolveUploadRetryMaxAttempts(cfg *models.Config) int {
+	if cfg == nil {
+		return defaultUploadRetryMaxAttempts
+	}
+	if cfg.UploadRetryMaxAttempts <= 0 {
+		return defaultUploadRetryMaxAttempts
+	}
+	if cfg.UploadRetryMaxAttempts > 20 {
+		return 20
+	}
+	return cfg.UploadRetryMaxAttempts
+}
+
+// buildUploadRetryPlan 构建退避计划，返回每次重试前等待时长。
+func buildUploadRetryPlan(cfg *models.Config) []time.Duration {
+	maxAttempts := resolveUploadRetryMaxAttempts(cfg)
+	if maxAttempts <= 1 {
+		return nil
+	}
+	need := maxAttempts - 1
+	base := parseUploadRetryDelays(cfg)
+	plan := make([]time.Duration, 0, need)
+	for _, delay := range base {
+		if len(plan) >= need {
+			break
+		}
+		if delay <= 0 {
+			continue
+		}
+		plan = append(plan, delay)
+	}
+	if len(plan) == 0 {
+		plan = append(plan, defaultUploadRetryDelays[0])
+	}
+	for len(plan) < need {
+		next := plan[len(plan)-1] * 2
+		if next > maxUploadRetryDelay {
+			next = maxUploadRetryDelay
+		}
+		plan = append(plan, next)
+	}
+	return plan
 }
 
 // sleepWithContext 支持在等待期间响应停止信号
@@ -801,6 +889,7 @@ func (fs *FileService) HealthSnapshot() models.HealthSnapshot {
 		Workers:            queueStats.Workers,
 		InFlight:           queueStats.InFlight,
 		QueueFullTotal:     fs.queueFull,
+		QueueShedTotal:     fs.queueShed,
 		RetryTotal:         fs.retryTotal,
 		UploadFailureTotal: fs.uploadFailure,
 		FailureReasons:     make([]models.FailureReasonCount, 0, len(fs.failReasons)),
@@ -997,6 +1086,15 @@ func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 	if fs.uploadPool == nil {
 		return fmt.Errorf("上传工作池未初始化")
 	}
+	if !manual && fs.shouldShedByQueueSaturation() {
+		err := fmt.Errorf("upload queue saturated")
+		fs.recordQueueShed()
+		if fs.state != nil {
+			fs.state.MarkFailed(filePath, err)
+			fs.state.SetQueueStats(fs.uploadPool.GetStats())
+		}
+		return err
+	}
 	if err := fs.uploadPool.AddFile(filePath); err != nil {
 		if errors.Is(err, upload.ErrQueueFull) {
 			// 队列满单独记指标，便于区分是容量问题还是上传失败
@@ -1008,10 +1106,35 @@ func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 		}
 		return err
 	}
+	metrics.Global().IncFileEvent()
 	if fs.state != nil {
 		fs.state.SetQueueStats(fs.uploadPool.GetStats())
 	}
 	return nil
+}
+
+// shouldShedByQueueSaturation 在队列接近满载时触发限流，避免持续堆积。
+func (fs *FileService) shouldShedByQueueSaturation() bool {
+	if fs == nil || fs.uploadPool == nil {
+		return false
+	}
+	fs.mu.Lock()
+	cfg := fs.config
+	fs.mu.Unlock()
+	if !isQueueCircuitBreakerEnabled(cfg) {
+		return false
+	}
+	queueCap := resolveUploadQueueSize(cfg)
+	if queueCap <= 0 {
+		return false
+	}
+	stats := fs.uploadPool.GetStats()
+	ratio := float64(stats.QueueLength) / float64(queueCap)
+	if ratio < resolveQueueSaturationThreshold(cfg) {
+		return false
+	}
+	logger.Warn("上传队列触发限流: queue=%d cap=%d ratio=%.2f", stats.QueueLength, queueCap, ratio)
+	return true
 }
 
 // recordQueueFull 记录上传队列满次数
@@ -1019,6 +1142,15 @@ func (fs *FileService) recordQueueFull() {
 	fs.metricsMu.Lock()
 	fs.queueFull++
 	fs.metricsMu.Unlock()
+	metrics.Global().IncQueueFull()
+}
+
+// recordQueueShed 记录饱和阈值触发的限流次数
+func (fs *FileService) recordQueueShed() {
+	fs.metricsMu.Lock()
+	fs.queueShed++
+	fs.metricsMu.Unlock()
+	metrics.Global().IncQueueShed()
 }
 
 // recordRetryAttempt 记录上传重试次数
@@ -1026,6 +1158,7 @@ func (fs *FileService) recordRetryAttempt() {
 	fs.metricsMu.Lock()
 	fs.retryTotal++
 	fs.metricsMu.Unlock()
+	metrics.Global().IncUploadRetry()
 }
 
 // recordUploadFailure 记录上传失败次数与失败原因分布
@@ -1038,6 +1171,7 @@ func (fs *FileService) recordUploadFailure(err error) {
 	reason := normalizeFailureReason(err)
 	fs.failReasons[reason]++
 	fs.metricsMu.Unlock()
+	metrics.Global().ObserveUploadFailure(reason)
 }
 
 // normalizeFailureReason 将错误信息规整为可聚合的统计键

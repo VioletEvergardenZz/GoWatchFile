@@ -1,3 +1,5 @@
+// 本文件用于知识库领域类型定义 统一约束条目与操作输入输出结构
+
 package kb
 
 import "errors"
