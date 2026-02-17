@@ -78,6 +78,12 @@ docker compose down
 - 平台概述：`docs/overview.md`
 - 阶段评估：`docs/tech-lead-assessment.md`
 - 开发指南：`docs/dev-guide.md`
+- 运维知识库 PRD：`docs/ops-knowledge-base-prd.md`
+- 运维知识库实施清单：`docs/ops-knowledge-base-work-items.md`
+- 运维知识库迁移回滚：`docs/kb-migration-rollback.md`
+- 运维知识库端到端验收：`docs/kb-e2e-acceptance.md`
+- 运维知识库命中率样本：`docs/kb-hitrate-samples.json`
+- 运维知识库 MTTD 基线样本：`docs/kb-mttd-baseline.csv`
 - 前后端联动：`docs/frontend-backend-linkage.md`
 - 队列与 worker：`docs/queue-worker-flow.md`
 - 队列持久化运行手册：`docs/queue-persistence-runbook.md`

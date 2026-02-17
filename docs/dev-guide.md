@@ -107,6 +107,19 @@ cd go-watch-file
 go test ./...
 ```
 
+## 运维知识库评估
+命中率评估（20 条样本）：
+```bash
+cd go-watch-file
+go run ./cmd/kb-eval hitrate -base http://localhost:8082 -token "$API_AUTH_TOKEN" -samples ../docs/kb-hitrate-samples.json
+```
+
+MTTD 对比评估：
+```bash
+cd go-watch-file
+go run ./cmd/kb-eval mttd -input ../docs/kb-mttd-baseline.csv
+```
+
 ## 常见开发验证
 - 新建文件后等待静默窗口结束，再观察上传与通知。
 - 通过 `/api/dashboard` 验证目录树、上传记录与队列趋势。

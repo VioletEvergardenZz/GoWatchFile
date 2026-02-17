@@ -1,0 +1,9 @@
+scenario,before_mttd_ms,after_mttd_ms
+upload_queue_full,540000,360000
+oss_endpoint_timeout,420000,300000
+alert_rule_misfire,300000,210000
+file_log_search_failure,480000,320000
+ai_log_summary_timeout,600000,390000
+watch_dir_permission_denied,360000,250000
+api_token_unauthorized,240000,170000
+system_console_403,210000,150000

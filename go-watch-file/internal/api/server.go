@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"file-watch/internal/alert"
+	"file-watch/internal/kb"
 	"file-watch/internal/logger"
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
@@ -29,6 +30,7 @@ import (
 // 统一启动/停止 HTTP 服务
 type Server struct {
 	httpServer *http.Server //负责监听端口、接收请求、管理超时/连接等
+	kbService  *kb.Service
 }
 
 // 请求处理器
@@ -36,6 +38,7 @@ type handler struct {
 	cfg *models.Config
 	fs  *service.FileService
 	sys *sysinfo.Collector
+	kb  *kb.Service
 
 	dashboardCacheMu     sync.Mutex
 	dashboardCacheData   any
@@ -54,10 +57,15 @@ const (
 
 // NewServer 创建接口服务并注册路由
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
+	kbService, err := kb.NewService("")
+	if err != nil {
+		logger.Error("知识库初始化失败: %v", err)
+	}
 	h := &handler{
 		cfg:               cfg,
 		fs:                fs,
 		sys:               sysinfo.NewCollector(sysinfo.Options{}),
+		kb:                kbService,
 		dashboardCacheTTL: defaultDashboardTTL,
 	}
 	mux := http.NewServeMux() //创建一个路由器（根据 URL 路径分发请求）
@@ -72,6 +80,13 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/alert-rules", h.alertRules)
 	mux.HandleFunc("/api/system", h.systemDashboard)
 	mux.HandleFunc("/api/system/terminate", h.systemTerminate)
+	mux.HandleFunc("/api/kb/articles", h.kbArticles)
+	mux.HandleFunc("/api/kb/articles/", h.kbArticleByID)
+	mux.HandleFunc("/api/kb/search", h.kbSearch)
+	mux.HandleFunc("/api/kb/ask", h.kbAsk)
+	mux.HandleFunc("/api/kb/import/docs", h.kbImportDocs)
+	mux.HandleFunc("/api/kb/recommendations", h.kbRecommendations)
+	mux.HandleFunc("/api/kb/reviews/pending", h.kbPendingReviews)
 	mux.HandleFunc("/api/health", h.health)
 
 	srv := &http.Server{
@@ -80,7 +95,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: resolveWriteTimeout(cfg),
 	}
-	return &Server{httpServer: srv}
+	return &Server{httpServer: srv, kbService: kbService}
 }
 
 // Start 启动接口服务并开始监听
@@ -99,7 +114,13 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.httpServer == nil {
 		return nil
 	}
-	return s.httpServer.Shutdown(ctx)
+	err := s.httpServer.Shutdown(ctx)
+	if s.kbService != nil {
+		if closeErr := s.kbService.Close(); closeErr != nil {
+			logger.Warn("关闭知识库失败: %v", closeErr)
+		}
+	}
+	return err
 }
 
 // dashboard 用于返回系统总览数据供控制台展示

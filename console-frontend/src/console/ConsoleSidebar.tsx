@@ -1,4 +1,4 @@
-type ConsoleView = "console" | "alert" | "system";
+type ConsoleView = "console" | "alert" | "system" | "knowledge";
 
 type ConsoleSidebarProps = {
   view: ConsoleView;
@@ -78,6 +78,15 @@ export function ConsoleSidebar({ view, activeSection, sectionIds, systemSectionI
           onClick={() => onViewChange("system")}
         >
           系统资源控制台
+        </button>
+        <button
+          className={`view-tab ${view === "knowledge" ? "active" : ""}`}
+          type="button"
+          role="tab"
+          aria-selected={view === "knowledge"}
+          onClick={() => onViewChange("knowledge")}
+        >
+          运维知识库
         </button>
       </div>
       {view === "console" ? (

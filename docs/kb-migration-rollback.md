@@ -1,0 +1,70 @@
+# 运维知识库数据迁移与回滚说明
+
+更新时间：2026-02-17
+
+## 1. 存储位置
+
+- SQLite 文件：`go-watch-file/data/kb/knowledge.db`
+- 驱动：`modernc.org/sqlite`
+- 迁移方式：应用启动时自动执行 `internal/kb/service.go` 中 `migrate()`
+
+## 2. 迁移策略
+
+系统采用“向前兼容的增量 DDL”：
+
+1. 仅使用 `CREATE TABLE IF NOT EXISTS` 与 `CREATE INDEX IF NOT EXISTS`。
+2. 新字段默认通过追加列/新表实现，避免破坏历史数据。
+3. 迁移失败时服务启动中止，避免以半迁移状态运行。
+
+## 3. 发布前检查
+
+1. 备份当前数据库文件：
+
+```powershell
+Copy-Item go-watch-file\data\kb\knowledge.db go-watch-file\data\kb\knowledge.db.bak-$(Get-Date -Format yyyyMMddHHmmss)
+```
+
+2. 执行后端测试：
+
+```powershell
+cd go-watch-file
+go test ./...
+```
+
+3. 启动服务后检查知识库接口：
+
+```powershell
+curl http://localhost:8082/api/kb/articles
+```
+
+## 4. 回滚方案
+
+### 4.1 应用级回滚（推荐）
+
+对单个条目回退到历史版本：
+
+`POST /api/kb/articles/{id}/rollback`
+
+请求示例：
+
+```json
+{
+  "targetVersion": 2,
+  "operator": "sre",
+  "comment": "rollback bad content"
+}
+```
+
+### 4.2 数据级回滚（紧急）
+
+1. 停止服务。
+2. 用备份文件覆盖当前 `knowledge.db`。
+3. 启动服务并验证接口可用。
+
+注意：数据级回滚会丢失备份时间点之后的知识变更。
+
+## 5. 常见故障处理
+
+1. 启动时报数据库锁：确认没有重复进程占用 DB，必要时重启服务。
+2. 数据库损坏：使用最近备份恢复，并检查磁盘异常。
+3. 迁移后查询变慢：检查索引是否创建成功（`idx_kb_*`）。

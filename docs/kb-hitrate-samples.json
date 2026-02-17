@@ -1,0 +1,22 @@
+[
+  { "question": "上传队列堆积如何排查", "expectAny": ["队列", "上传", "重试"] },
+  { "question": "upload queue full 的处理步骤", "expectAny": ["queue", "upload"] },
+  { "question": "OSS endpoint 报错怎么办", "expectAny": ["oss", "endpoint"] },
+  { "question": "上传失败自动重试如何配置", "expectAny": ["重试", "upload_retry"] },
+  { "question": "file-log 检索不到关键字", "expectAny": ["file-log", "检索"] },
+  { "question": "AI 日志分析超时如何降级", "expectAny": ["AI", "超时", "降级"] },
+  { "question": "告警规则怎么保存", "expectAny": ["规则", "保存"] },
+  { "question": "告警抑制窗口是什么意思", "expectAny": ["抑制", "窗口"] },
+  { "question": "alert_start_from_end 对历史日志有何影响", "expectAny": ["start_from_end", "历史"] },
+  { "question": "系统资源控制台 403", "expectAny": ["system", "403", "开启"] },
+  { "question": "watch_dir 支持多个目录吗", "expectAny": ["watch_dir", "多目录"] },
+  { "question": "临时文件为什么不上传", "expectAny": ["tmp", "临时文件"] },
+  { "question": "如何手动触发上传", "expectAny": ["手动上传"] },
+  { "question": "API Token 未配置会怎样", "expectAny": ["token", "鉴权"] },
+  { "question": "CORS origin not allowed 怎么处理", "expectAny": ["cors", "origin"] },
+  { "question": "队列持久化文件损坏会发生什么", "expectAny": ["持久化", "损坏"] },
+  { "question": "上传 worker 并发怎么调优", "expectAny": ["worker", "并发"] },
+  { "question": "日志轮询间隔如何设置", "expectAny": ["poll", "轮询"] },
+  { "question": "告警没有历史数据怎么办", "expectAny": ["历史", "告警"] },
+  { "question": "fsnotify too many open files 怎么处理", "expectAny": ["too many open files", "ulimit"] }
+]

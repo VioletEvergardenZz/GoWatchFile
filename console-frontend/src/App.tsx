@@ -4,13 +4,14 @@ import { OriginalConsole } from "./OriginalConsole";
 
 const VIEW_STORAGE_KEY = "gwf-console-view";
 
-type ViewType = "console" | "alert" | "system";
+type ViewType = "console" | "alert" | "system" | "knowledge";
 
 const resolveInitialView = (): ViewType => {
   if (typeof window === "undefined") return "console";
   const stored = window.localStorage.getItem(VIEW_STORAGE_KEY);
   if (stored === "alert") return "alert";
   if (stored === "system") return "system";
+  if (stored === "knowledge") return "knowledge";
   return "console";
 };
 

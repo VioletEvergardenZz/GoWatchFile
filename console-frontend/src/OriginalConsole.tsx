@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import type { ChartOptions } from "chart.js";
 import { CategoryScale, Chart as ChartJS, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from "chart.js";
 import { AlertConsole } from "./AlertConsole";
+import { KnowledgeConsole } from "./KnowledgeConsole";
 import { SystemConsole } from "./SystemConsole";
 import { ConsoleHeader } from "./console/ConsoleHeader";
 import { ConsoleSidebar } from "./console/ConsoleSidebar";
@@ -82,7 +83,7 @@ const FILE_PAGE_SIZE = 10;
 const LOG_POLL_MS = 2000;
 const DASHBOARD_POLL_MS = 3000;
 const THEME_STORAGE_KEY = "gwf-theme";
-type ConsoleView = "console" | "alert" | "system";
+type ConsoleView = "console" | "alert" | "system" | "knowledge";
 
 type OriginalConsoleProps = {
   view: ConsoleView;
@@ -419,7 +420,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   }, [currentRoot, rootNodes, activePath]);
 
   useEffect(() => {
-    if (view === "alert") return;
+    if (view === "alert" || view === "knowledge") return;
     if (view === "console" && !bootstrapped) return;
     const sectionIds = view === "system" ? SYSTEM_SECTION_IDS : SECTION_IDS;
     const visibleSections = visibleSectionsRef.current;
@@ -1241,8 +1242,10 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
             </>
           ) : view === "alert" ? (
             <AlertConsole embedded />
-          ) : (
+          ) : view === "system" ? (
             <SystemConsole embedded enabled={systemResourceEnabled} toggleLoading={systemToggleSaving || saving} onToggleEnabled={handleSystemResourceToggle} />
+          ) : (
+            <KnowledgeConsole />
           )}
         </div>
       </div>

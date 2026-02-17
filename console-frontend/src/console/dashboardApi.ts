@@ -1,4 +1,14 @@
-import type { AiLogSummaryResponse, DashboardPayload } from "../types";
+import type {
+  AiLogSummaryResponse,
+  DashboardPayload,
+  KnowledgeArticleResponse,
+  KnowledgeAskResponse,
+  KnowledgeImportResponse,
+  KnowledgeListResponse,
+  KnowledgePendingReviewsResponse,
+  KnowledgeRecommendationsResponse,
+  KnowledgeSearchResponse,
+} from "../types";
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 export const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
@@ -203,4 +213,159 @@ export const postAiLogSummary = async (payload: AiLogSummaryRequest): Promise<Ai
   });
   await ensureOk(res, "AI日志分析");
   return (await res.json()) as AiLogSummaryResponse;
+};
+
+export type KnowledgeArticlePayload = {
+  title: string;
+  summary: string;
+  category: string;
+  severity: "low" | "medium" | "high";
+  content: string;
+  tags: string[];
+  changeNote?: string;
+  createdBy?: string;
+  updatedBy?: string;
+};
+
+export const fetchKBArticles = async (params?: {
+  q?: string;
+  status?: string;
+  severity?: string;
+  tag?: string;
+  page?: number;
+  pageSize?: number;
+  includeArchived?: boolean;
+}): Promise<KnowledgeListResponse> => {
+  const query = new URLSearchParams();
+  if (params?.q) query.set("q", params.q);
+  if (params?.status) query.set("status", params.status);
+  if (params?.severity) query.set("severity", params.severity);
+  if (params?.tag) query.set("tag", params.tag);
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  if (params?.includeArchived) query.set("includeArchived", "true");
+  const suffix = query.toString();
+  const res = await fetch(`${API_BASE}/api/kb/articles${suffix ? `?${suffix}` : ""}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "知识条目加载");
+  return (await res.json()) as KnowledgeListResponse;
+};
+
+export const fetchKBArticle = async (id: string): Promise<KnowledgeArticleResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/articles/${encodeURIComponent(id)}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "知识详情加载");
+  return (await res.json()) as KnowledgeArticleResponse;
+};
+
+export const postKBArticle = async (payload: KnowledgeArticlePayload): Promise<KnowledgeArticleResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/articles`, {
+    method: "POST",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify(payload),
+  });
+  await ensureOk(res, "创建知识条目");
+  return (await res.json()) as KnowledgeArticleResponse;
+};
+
+export const putKBArticle = async (id: string, payload: KnowledgeArticlePayload): Promise<KnowledgeArticleResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/articles/${encodeURIComponent(id)}`, {
+    method: "PUT",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify(payload),
+  });
+  await ensureOk(res, "更新知识条目");
+  return (await res.json()) as KnowledgeArticleResponse;
+};
+
+export const postKBArticleAction = async (
+  id: string,
+  action: "submit" | "approve" | "reject" | "archive",
+  payload?: { operator?: string; comment?: string }
+): Promise<KnowledgeArticleResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/articles/${encodeURIComponent(id)}/${action}`, {
+    method: "POST",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify(payload ?? {}),
+  });
+  await ensureOk(res, "知识状态更新");
+  return (await res.json()) as KnowledgeArticleResponse;
+};
+
+export const postKBRollback = async (
+  id: string,
+  payload: { targetVersion: number; operator?: string; comment?: string }
+): Promise<KnowledgeArticleResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/articles/${encodeURIComponent(id)}/rollback`, {
+    method: "POST",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify(payload),
+  });
+  await ensureOk(res, "知识版本回滚");
+  return (await res.json()) as KnowledgeArticleResponse;
+};
+
+export const postKBSearch = async (payload: {
+  query: string;
+  limit?: number;
+  includeArchived?: boolean;
+}): Promise<KnowledgeSearchResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/search`, {
+    method: "POST",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify(payload),
+  });
+  await ensureOk(res, "知识检索");
+  return (await res.json()) as KnowledgeSearchResponse;
+};
+
+export const postKBAsk = async (payload: { question: string; limit?: number }): Promise<KnowledgeAskResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/ask`, {
+    method: "POST",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify(payload),
+  });
+  await ensureOk(res, "知识问答");
+  return (await res.json()) as KnowledgeAskResponse;
+};
+
+export const postKBImportDocs = async (payload?: { path?: string; operator?: string }): Promise<KnowledgeImportResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/import/docs`, {
+    method: "POST",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify(payload ?? {}),
+  });
+  await ensureOk(res, "文档导入");
+  return (await res.json()) as KnowledgeImportResponse;
+};
+
+export const fetchKBPendingReviews = async (limit = 20): Promise<KnowledgePendingReviewsResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/reviews/pending?limit=${encodeURIComponent(String(limit))}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "待复审队列加载");
+  return (await res.json()) as KnowledgePendingReviewsResponse;
+};
+
+export const fetchKBRecommendations = async (params: {
+  query?: string;
+  rule?: string;
+  message?: string;
+  alertId?: string;
+  limit?: number;
+}): Promise<KnowledgeRecommendationsResponse> => {
+  const query = new URLSearchParams();
+  if (params.query) query.set("query", params.query);
+  if (params.rule) query.set("rule", params.rule);
+  if (params.message) query.set("message", params.message);
+  if (params.alertId) query.set("alertId", params.alertId);
+  if (params.limit) query.set("limit", String(params.limit));
+  const suffix = query.toString();
+  const res = await fetch(`${API_BASE}/api/kb/recommendations${suffix ? `?${suffix}` : ""}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "知识推荐加载");
+  return (await res.json()) as KnowledgeRecommendationsResponse;
 };

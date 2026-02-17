@@ -412,6 +412,19 @@ body[data-theme="light"] .alert-shell .alert-banner {
   font-size: 13px;
 }
 
+.alert-shell .decisions-table tbody tr {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.alert-shell .decisions-table tbody tr:hover {
+  background: rgba(56, 189, 248, 0.06);
+}
+
+.alert-shell .decisions-table tbody tr.row-selected {
+  background: rgba(45, 212, 191, 0.12);
+}
+
 .alert-shell .decisions-table th {
   color: var(--muted);
   font-weight: 600;
@@ -522,6 +535,54 @@ body[data-theme="light"] .alert-shell .alert-banner {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 18px;
+}
+
+.alert-shell .kb-recommend-card {
+  margin-top: 16px;
+}
+
+.alert-shell .kb-recommend-content {
+  display: grid;
+  gap: 12px;
+}
+
+.alert-shell .kb-decision-meta {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+}
+
+.alert-shell .kb-recommend-list {
+  display: grid;
+  gap: 10px;
+}
+
+.alert-shell .kb-recommend-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-soft);
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.alert-shell .kb-recommend-main {
+  display: grid;
+  gap: 4px;
+}
+
+.alert-shell .kb-recommend-main span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.alert-shell .kb-recommend-tags {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .alert-shell .summary-list {

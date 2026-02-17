@@ -310,3 +310,90 @@ export type SystemDashboard = {
   systemVolumes: SystemVolume[];
   systemProcesses: SystemProcess[];
 };
+
+export type KnowledgeArticle = {
+  id: string;
+  title: string;
+  summary: string;
+  category: string;
+  severity: "low" | "medium" | "high";
+  status: "draft" | "published" | "archived";
+  needsReview?: boolean;
+  currentVersion: number;
+  content?: string;
+  changeNote?: string;
+  tags?: string[];
+  createdBy: string;
+  updatedBy: string;
+  createdAt: string;
+  updatedAt: string;
+  versions?: Array<{
+    version: number;
+    content: string;
+    changeNote: string;
+    sourceType: string;
+    sourceRef?: string;
+    createdBy: string;
+    createdAt: string;
+  }>;
+  reviews?: Array<{
+    action: string;
+    comment?: string;
+    operator: string;
+    createdAt: string;
+  }>;
+  references?: Array<{
+    refType: string;
+    refPath: string;
+    refTitle: string;
+  }>;
+};
+
+export type KnowledgeListResponse = {
+  ok: boolean;
+  items: KnowledgeArticle[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
+export type KnowledgeArticleResponse = {
+  ok: boolean;
+  article: KnowledgeArticle;
+};
+
+export type KnowledgeSearchResponse = {
+  ok: boolean;
+  items: KnowledgeArticle[];
+};
+
+export type KnowledgeAskResponse = {
+  ok: boolean;
+  answer: string;
+  confidence: number;
+  citations: Array<{
+    articleId: string;
+    title: string;
+    version: number;
+  }>;
+};
+
+export type KnowledgeImportResponse = {
+  ok: boolean;
+  result: {
+    imported: number;
+    updated: number;
+    skipped: number;
+    files?: string[];
+  };
+};
+
+export type KnowledgePendingReviewsResponse = {
+  ok: boolean;
+  items: KnowledgeArticle[];
+};
+
+export type KnowledgeRecommendationsResponse = {
+  ok: boolean;
+  items: KnowledgeArticle[];
+};

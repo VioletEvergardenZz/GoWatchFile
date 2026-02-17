@@ -12,8 +12,9 @@ import type {
   AlertRulesSaveResponse,
   AlertRuleset,
   AlertResponse,
+  KnowledgeArticle,
 } from "./types";
-import { buildApiHeaders, postAiLogSummary } from "./console/dashboardApi";
+import { buildApiHeaders, fetchKBRecommendations, postAiLogSummary } from "./console/dashboardApi";
 
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
@@ -305,6 +306,10 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [activePanel, setActivePanel] = useState<"rules" | "alerts" | "config">("rules");
   const [decisionPage, setDecisionPage] = useState(1);
+  const [selectedDecisionID, setSelectedDecisionID] = useState("");
+  const [recommendationLoading, setRecommendationLoading] = useState(false);
+  const [recommendationError, setRecommendationError] = useState<string | null>(null);
+  const [recommendations, setRecommendations] = useState<KnowledgeArticle[]>([]);
   const [expandedGroups, setExpandedGroups] = useState<Record<AlertLevel, boolean>>(() => ({
     fatal: false,
     system: false,
@@ -647,6 +652,34 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
   const stats = dashboard.stats;
   const polling = dashboard.polling;
   const decisions = dashboard.decisions ?? [];
+  const selectedDecision = useMemo(
+    () => decisions.find((decision) => decision.id === selectedDecisionID) ?? null,
+    [decisions, selectedDecisionID]
+  );
+
+  const loadRecommendations = async (decisionRule: string, decisionMessage: string, decisionID: string) => {
+    setRecommendationLoading(true);
+    setRecommendationError(null);
+    try {
+      if (USE_MOCK) {
+        setRecommendations([]);
+        return;
+      }
+      const payload = await fetchKBRecommendations({
+        rule: decisionRule,
+        message: decisionMessage,
+        alertId: decisionID,
+        limit: 3,
+      });
+      setRecommendations(payload.items ?? []);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "知识推荐加载失败";
+      setRecommendationError(msg);
+      setRecommendations([]);
+    } finally {
+      setRecommendationLoading(false);
+    }
+  };
 
   const totalSignals = stats.sent + stats.suppressed;
   const suppressionRate = totalSignals > 0 ? Math.round((stats.suppressed / totalSignals) * 100) : 0;
@@ -760,6 +793,27 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
       setDecisionPage(1);
     }
   }, [decisionPage, totalDecisionPages]);
+
+  useEffect(() => {
+    if (decisions.length === 0) {
+      setSelectedDecisionID("");
+      setRecommendations([]);
+      return;
+    }
+    const exists = decisions.some((decision) => decision.id === selectedDecisionID);
+    if (!exists) {
+      setSelectedDecisionID(decisions[0].id);
+    }
+  }, [decisions, selectedDecisionID]);
+
+  useEffect(() => {
+    if (activePanel !== "alerts") return;
+    if (!selectedDecision) {
+      setRecommendations([]);
+      return;
+    }
+    void loadRecommendations(selectedDecision.rule, selectedDecision.message, selectedDecision.id);
+  }, [activePanel, selectedDecision?.id, selectedDecision?.rule, selectedDecision?.message]);
 
   return (
     <div className={`alert-shell${embedded ? " alert-embedded" : ""}`}>
@@ -1677,7 +1731,11 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
               </thead>
               <tbody>
                 {pagedDecisions.map((decision) => (
-                  <tr key={decision.id}>
+                  <tr
+                    key={decision.id}
+                    className={decision.id === selectedDecisionID ? "row-selected" : ""}
+                    onClick={() => setSelectedDecisionID(decision.id)}
+                  >
                     <td className="mono">{decision.time}</td>
                     <td>
                       <span className={`badge ${resolveLevelTone(decision.level)}`}>
@@ -1729,6 +1787,52 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
             </div>
           </div>
         ) : null}
+        </section>
+      ) : null}
+
+      {activePanel === "alerts" ? (
+        <section className="card kb-recommend-card">
+          <div className="section-header">
+            <div>
+              <h2>知识库推荐</h2>
+              <p className="muted">基于选中告警自动检索处置知识</p>
+            </div>
+            <div className="section-meta">
+              {selectedDecision ? `当前告警 ${selectedDecision.id}` : "未选择告警"}
+            </div>
+          </div>
+          {!selectedDecision ? (
+            <div className="empty-state">请在上方告警列表中选择一条告警</div>
+          ) : (
+            <div className="kb-recommend-content">
+              <div className="kb-decision-meta">
+                <div className="muted small">规则：{selectedDecision.rule}</div>
+                <div className="muted small">内容：{selectedDecision.message}</div>
+                <div className="muted small">文件：{selectedDecision.file || "--"}</div>
+              </div>
+              {recommendationLoading ? <div className="empty-state">知识推荐加载中...</div> : null}
+              {recommendationError ? <div className="warn-text">{recommendationError}</div> : null}
+              {!recommendationLoading && !recommendationError && recommendations.length === 0 ? (
+                <div className="empty-state">暂无匹配知识，请补充知识条目或调整标签</div>
+              ) : null}
+              <div className="kb-recommend-list">
+                {recommendations.map((item) => (
+                  <div className="kb-recommend-item" key={`recommend-${item.id}`}>
+                    <div className="kb-recommend-main">
+                      <strong>{item.title}</strong>
+                      <span>{item.summary || "无摘要"}</span>
+                    </div>
+                    <div className="kb-recommend-tags">
+                      <span className="badge ghost">{item.status}</span>
+                      <span className="badge ghost">v{item.currentVersion}</span>
+                      <span className="badge ghost">{item.severity}</span>
+                      {item.needsReview ? <span className="badge ghost">待复审</span> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
       ) : null}
 
