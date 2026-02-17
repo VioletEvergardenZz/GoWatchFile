@@ -1,4 +1,4 @@
-﻿# File Watch Service（go-watch-file）
+﻿# 文件监控服务（go-watch-file）
 
 一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到阿里云 OSS，支持上传失败重试、钉钉机器人通知与邮件通知，并提供 AI 日志分析。AI 能力是平台主线能力，运行时可按环境开关控制。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail/检索、系统资源面板与运行时配置。
 
@@ -222,7 +222,7 @@ ai_max_lines: 200
 
 ### 12) Prometheus 指标
 - `GET /metrics`
-- 说明：返回 Prometheus text exposition，可直接被采集器抓取。
+- 说明：返回 Prometheus 文本暴露格式，可直接被采集器抓取。
 - 关键指标：上传队列、上传耗时、失败原因、AI 请求结果、知识库检索/问答命中率与评审延迟。
 
 ### 8) 告警决策面板
@@ -259,19 +259,37 @@ ai_max_lines: 200
 - Body：`{"pid": 12345, "force": false}`
 - 说明：按 PID 发送终止指令，默认 `TERM`，超时会回退 `KILL`；`force=true` 直接 `KILL`。
 - 返回：`{ ok: true, result: { pid, name, command, signal, forced } }`
-- Query：
+- 查询参数：
   - `mode=lite` 或 `mode=light` → 仅返回概览/指标/分区，不返回进程列表
   - `limit=200` → 限制返回的进程数量，`0` 表示不限制
   - `includeEnv=true` → 返回进程环境变量（默认不返回）
 - 返回：`{ systemOverview, systemGauges, systemVolumes, systemProcesses }`
 - 说明：需开启 `systemResourceEnabled`，否则返回 403；默认不返回进程环境变量，避免敏感信息暴露。
 
+### 13) 控制面 MVP（SQLite 持久化）
+- Agent：
+  - `POST /api/control/agents`（注册）
+  - `GET /api/control/agents`（列表）
+  - `GET /api/control/agents/{id}`（详情）
+  - `POST /api/control/agents/{id}/heartbeat`（心跳）
+  - `POST /api/control/agents/{id}/drain`（摘流）
+- 任务：
+  - `POST /api/control/tasks`（创建任务）
+  - `GET /api/control/tasks`（任务列表）
+  - `GET /api/control/tasks/{id}`（任务详情）
+  - `POST /api/control/tasks/{id}/cancel`（取消）
+  - `POST /api/control/tasks/{id}/retry`（重试）
+- 说明：
+  - 当前为 MVP 实现，默认落盘到 `data/control/control.db`，重启后可恢复。
+  - 可通过环境变量 `CONTROL_DATA_DIR` 指定存储目录。
+  - 若存储初始化失败，会降级为内存模式继续提供接口能力。
+
 ## 运行时配置更新说明
 `/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*` / `upload_queue_saturation_threshold` / `upload_queue_circuit_breaker_enabled` / `upload_retry_max_attempts`（静态项需重启）。
-Runtime updates are persisted to `config.runtime.yaml` (best effort).
+运行时更新会尽力持久化到 `config.runtime.yaml`。
 
 `/api/alert-config` 仅更新告警配置与轮询状态，不写回 `config.yaml`。
-Alert config updates are persisted to `config.runtime.yaml` (best effort).
+告警配置更新会尽力持久化到 `config.runtime.yaml`。
 
 
 ## 运行态与指标
@@ -337,4 +355,5 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 -BaseUrl http
 ## 开发与测试
 - 运行测试：`go test ./...`
 - 代码格式：`gofmt`，遵循 Go 官方规范。
+
 

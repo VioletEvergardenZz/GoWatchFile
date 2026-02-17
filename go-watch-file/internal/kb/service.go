@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	_ "modernc.org/sqlite"
 )
@@ -542,7 +543,14 @@ func (s *Service) Search(query string, limit int, includeArchived bool) ([]Artic
 		Page:     1,
 		PageSize: limit,
 	})
-	return items, err
+	if err != nil {
+		return nil, err
+	}
+	if len(items) > 0 {
+		return items, nil
+	}
+	// Fallback: when full sentence match misses, use token scoring for better recall.
+	return s.searchByTokens(q, limit, includeArchived)
 }
 
 func (s *Service) Ask(question string, limit int) (AskResult, error) {
@@ -590,6 +598,185 @@ func (s *Service) Ask(question string, limit int) (AskResult, error) {
 
 func (s *Service) Recommendations(query string, limit int) ([]Article, error) {
 	return s.Search(query, limit, false)
+}
+
+func (s *Service) searchByTokens(query string, limit int, includeArchived bool) ([]Article, error) {
+	if s == nil {
+		return []Article{}, nil
+	}
+	tokens := tokenizeSearchQuery(query)
+	if len(tokens) == 0 {
+		return []Article{}, nil
+	}
+	status := StatusPublished
+	if includeArchived {
+		status = ""
+	}
+	candidates := make([]Article, 0, maxPageSize)
+	page := 1
+	for {
+		items, total, err := s.ListArticles(ListQuery{
+			Status:          status,
+			IncludeArchived: includeArchived,
+			Page:            page,
+			PageSize:        maxPageSize,
+		})
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, items...)
+		if len(items) == 0 || len(candidates) >= total || page >= 10 {
+			break
+		}
+		page++
+	}
+	type scoredArticle struct {
+		article Article
+		score   int
+	}
+	scored := make([]scoredArticle, 0, len(candidates))
+	for _, item := range candidates {
+		score := scoreArticleByTokens(item, tokens)
+		if score <= 0 {
+			continue
+		}
+		scored = append(scored, scoredArticle{article: item, score: score})
+	}
+	sort.SliceStable(scored, func(i, j int) bool {
+		return scored[i].score > scored[j].score
+	})
+	if len(scored) == 0 {
+		return []Article{}, nil
+	}
+	if limit > len(scored) {
+		limit = len(scored)
+	}
+	out := make([]Article, 0, limit)
+	for _, item := range scored[:limit] {
+		out = append(out, item.article)
+	}
+	return out, nil
+}
+
+func tokenizeSearchQuery(query string) []string {
+	normalized := strings.ToLower(strings.TrimSpace(query))
+	if normalized == "" {
+		return nil
+	}
+	tokens := make([]string, 0, 16)
+	seen := make(map[string]struct{}, 32)
+	push := func(token string) {
+		token = strings.TrimSpace(token)
+		if token == "" {
+			return
+		}
+		if _, ok := seen[token]; ok {
+			return
+		}
+		seen[token] = struct{}{}
+		tokens = append(tokens, token)
+	}
+	parts := strings.FieldsFunc(normalized, func(r rune) bool {
+		return !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-')
+	})
+	for _, part := range parts {
+		part = strings.Trim(part, "-_")
+		if part == "" {
+			continue
+		}
+		runes := []rune(part)
+		if len(runes) >= minTokenLen(part) {
+			push(part)
+		}
+		if isASCIIWord(part) || len(runes) < 4 {
+			continue
+		}
+		for n := 2; n <= 3; n++ {
+			if len(runes) < n {
+				continue
+			}
+			for i := 0; i+n <= len(runes); i++ {
+				push(string(runes[i : i+n]))
+				if len(tokens) >= 32 {
+					return tokens
+				}
+			}
+		}
+	}
+	compact := strings.Builder{}
+	compact.Grow(len(normalized))
+	for _, r := range normalized {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			compact.WriteRune(r)
+		}
+	}
+	compactStr := compact.String()
+	if len([]rune(compactStr)) >= 4 {
+		push(compactStr)
+	}
+	if len(tokens) > 32 {
+		return tokens[:32]
+	}
+	return tokens
+}
+
+func minTokenLen(token string) int {
+	if isASCIIWord(token) {
+		return 3
+	}
+	return 2
+}
+
+func isASCIIWord(token string) bool {
+	for _, r := range token {
+		if r > unicode.MaxASCII {
+			return false
+		}
+		if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return token != ""
+}
+
+func scoreArticleByTokens(item Article, tokens []string) int {
+	if len(tokens) == 0 {
+		return 0
+	}
+	title := strings.ToLower(item.Title)
+	summary := strings.ToLower(item.Summary)
+	content := strings.ToLower(item.Content)
+	tags := make([]string, 0, len(item.Tags))
+	for _, tag := range item.Tags {
+		tags = append(tags, strings.ToLower(tag))
+	}
+	score := 0
+	for _, token := range tokens {
+		hit := false
+		if token != "" && strings.Contains(title, token) {
+			score += 8
+			hit = true
+		}
+		if token != "" && strings.Contains(summary, token) {
+			score += 5
+			hit = true
+		}
+		for _, tag := range tags {
+			if token != "" && strings.Contains(tag, token) {
+				score += 4
+				hit = true
+				break
+			}
+		}
+		if token != "" && strings.Contains(content, token) {
+			score += 2
+			hit = true
+		}
+		if hit {
+			score++
+		}
+	}
+	return score
 }
 
 func (s *Service) ImportDocs(rootPath, operator string) (ImportResult, error) {

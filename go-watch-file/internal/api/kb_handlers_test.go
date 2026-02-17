@@ -160,10 +160,24 @@ func TestKBHandlers_AskRecommendationsAndPendingReviews(t *testing.T) {
 		OK        bool          `json:"ok"`
 		Answer    string        `json:"answer"`
 		Citations []kb.Citation `json:"citations"`
+		Meta      struct {
+			Degraded       bool   `json:"degraded"`
+			ErrorClass     string `json:"errorClass"`
+			FallbackReason string `json:"fallbackReason"`
+		} `json:"meta"`
 	}
 	mustDecodeJSON(t, askResp.Body.Bytes(), &asked)
 	if !asked.OK || asked.Answer == "" || len(asked.Citations) == 0 {
 		t.Fatalf("unexpected ask response: %+v", asked)
+	}
+	if !asked.Meta.Degraded {
+		t.Fatalf("ask meta expected degraded=true when AI is disabled: %+v", asked.Meta)
+	}
+	if asked.Meta.ErrorClass != "ai_disabled" {
+		t.Fatalf("ask meta errorClass expected ai_disabled, got %s", asked.Meta.ErrorClass)
+	}
+	if asked.Meta.FallbackReason == "" {
+		t.Fatalf("ask meta fallbackReason expected non-empty")
 	}
 
 	recoResp := doJSONRequest(t, h.kbRecommendations, http.MethodGet, "/api/kb/recommendations?query=上传队列&limit=2", nil)

@@ -12,11 +12,11 @@ param(
 )
 
 if ($Count -le 0) {
-  Write-Error "Count 必须大于 0"
+  Write-Error "Count must be greater than 0"
   exit 2
 }
 if ($MinBytes -le 0 -or $MaxBytes -lt $MinBytes) {
-  Write-Error "MinBytes 和 MaxBytes 参数非法"
+  Write-Error "Invalid MinBytes/MaxBytes range"
   exit 2
 }
 
@@ -27,9 +27,9 @@ if (-not (Test-Path $WatchDir)) {
 $random = New-Object System.Random
 $start = Get-Date
 
-Write-Host "开始生成测试文件"
-Write-Host "目录: $WatchDir"
-Write-Host "数量: $Count"
+Write-Host "Start generating stress files"
+Write-Host "Directory: $WatchDir"
+Write-Host "Count: $Count"
 
 for ($i = 1; $i -le $Count; $i++) {
   $size = $random.Next($MinBytes, $MaxBytes + 1)
@@ -47,10 +47,10 @@ for ($i = 1; $i -le $Count; $i++) {
   }
 
   if ($i % 100 -eq 0) {
-    Write-Host "已生成 $i/$Count"
+    Write-Host "Generated $i/$Count"
   }
 }
 
 $elapsed = (Get-Date) - $start
-Write-Host ("完成 生成 {0} 个文件 耗时 {1:n2}s" -f $Count, $elapsed.TotalSeconds)
+Write-Host ("Done generated {0} files in {1:n2}s" -f $Count, $elapsed.TotalSeconds)
 exit 0

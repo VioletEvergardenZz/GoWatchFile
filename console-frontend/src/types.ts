@@ -378,6 +378,11 @@ export type KnowledgeAskResponse = {
     title: string;
     version: number;
   }>;
+  meta?: {
+    degraded: boolean;
+    errorClass?: string;
+    fallbackReason?: string;
+  };
 };
 
 export type KnowledgeImportResponse = {

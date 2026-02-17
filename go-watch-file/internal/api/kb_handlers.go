@@ -293,7 +293,7 @@ func (h *handler) kbAsk(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid payload"})
 		return
 	}
-	result, err := h.askKnowledge(req.Question, req.Limit)
+	result, meta, err := h.askKnowledge(req.Question, req.Limit)
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
 		return
@@ -304,6 +304,7 @@ func (h *handler) kbAsk(w http.ResponseWriter, r *http.Request) {
 		"answer":     result.Answer,
 		"citations":  result.Citations,
 		"confidence": result.Confidence,
+		"meta":       meta,
 	})
 }
 
@@ -407,22 +408,28 @@ func parsePositiveInt(raw string, fallback int) int {
 	return val
 }
 
-func (h *handler) askKnowledge(question string, limit int) (kb.AskResult, error) {
+type kbAskMeta struct {
+	Degraded       bool   `json:"degraded"`
+	ErrorClass     string `json:"errorClass,omitempty"`
+	FallbackReason string `json:"fallbackReason,omitempty"`
+}
+
+func (h *handler) askKnowledge(question string, limit int) (kb.AskResult, kbAskMeta, error) {
 	trimmedQuestion := strings.TrimSpace(question)
 	if trimmedQuestion == "" {
-		return kb.AskResult{}, fmt.Errorf("question is required")
+		return kb.AskResult{}, kbAskMeta{}, fmt.Errorf("question is required")
 	}
 	if limit <= 0 {
 		limit = 3
 	}
 	if h == nil || h.kb == nil {
-		return kb.AskResult{}, fmt.Errorf("knowledge service not ready")
+		return kb.AskResult{}, kbAskMeta{}, fmt.Errorf("knowledge service not ready")
 	}
 	items := make([]kb.Article, 0, limit)
 	for _, candidate := range buildQuestionCandidates(trimmedQuestion) {
 		found, err := h.kb.Search(candidate, limit, false)
 		if err != nil {
-			return kb.AskResult{}, err
+			return kb.AskResult{}, kbAskMeta{}, err
 		}
 		if len(found) == 0 {
 			continue
@@ -431,7 +438,7 @@ func (h *handler) askKnowledge(question string, limit int) (kb.AskResult, error)
 		break
 	}
 	if len(items) == 0 {
-		return kb.AskResult{}, fmt.Errorf("知识库中未找到可引用条目")
+		return kb.AskResult{}, kbAskMeta{}, fmt.Errorf("知识库中未找到可引用条目")
 	}
 
 	citations := make([]kb.Citation, 0, len(items))
@@ -453,7 +460,11 @@ func (h *handler) askKnowledge(question string, limit int) (kb.AskResult, error)
 
 	if !h.isKnowledgeAIReady() {
 		fallback.Confidence = 0.72
-		return fallback, nil
+		return fallback, kbAskMeta{
+			Degraded:       true,
+			ErrorClass:     "ai_disabled",
+			FallbackReason: "ai_disabled_or_unconfigured",
+		}, nil
 	}
 
 	answer, confidence, err := h.callAIForKnowledgeAnswer(ragPayload{
@@ -464,18 +475,48 @@ func (h *handler) askKnowledge(question string, limit int) (kb.AskResult, error)
 	if err != nil {
 		// AI 调用失败时降级回本地回答，但仍返回引用
 		fallback.Confidence = 0.65
-		return fallback, nil
+		return fallback, kbAskMeta{
+			Degraded:       true,
+			ErrorClass:     classifyKnowledgeAIError(err),
+			FallbackReason: "ai_request_failed",
+		}, nil
 	}
 	answer = strings.TrimSpace(answer)
 	if answer == "" {
 		fallback.Confidence = 0.65
-		return fallback, nil
+		return fallback, kbAskMeta{
+			Degraded:       true,
+			ErrorClass:     "empty_answer",
+			FallbackReason: "ai_response_empty",
+		}, nil
 	}
 	return kb.AskResult{
 		Answer:     answer,
 		Citations:  citations,
 		Confidence: confidence,
-	}, nil
+	}, kbAskMeta{}, nil
+}
+
+func classifyKnowledgeAIError(err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	switch {
+	case strings.Contains(msg, "deadline exceeded"), strings.Contains(msg, "timeout"):
+		return "timeout"
+	case strings.Contains(msg, "429"), strings.Contains(msg, "rate limit"):
+		return "rate_limit"
+	case strings.Contains(msg, "connection refused"),
+		strings.Contains(msg, "no such host"),
+		strings.Contains(msg, "dial tcp"),
+		strings.Contains(msg, "request failed"):
+		return "network"
+	case strings.Contains(msg, "status 5"), strings.Contains(msg, "bad gateway"), strings.Contains(msg, "service unavailable"):
+		return "upstream"
+	default:
+		return "request_error"
+	}
 }
 
 type ragPayload struct {

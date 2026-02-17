@@ -6,6 +6,7 @@ import type { KnowledgeArticle, KnowledgeAskResponse } from "./types";
 import {
   fetchKBArticle,
   fetchKBArticles,
+  fetchKBMetrics,
   fetchKBPendingReviews,
   postKBArticle,
   postKBArticleAction,
@@ -14,6 +15,7 @@ import {
   postKBRollback,
   postKBSearch,
   putKBArticle,
+  type KnowledgeMetricsSnapshot,
 } from "./console/dashboardApi";
 
 type Severity = "low" | "medium" | "high";
@@ -46,6 +48,16 @@ const parseTags = (raw: string) =>
     .filter(Boolean);
 
 const toTagText = (tags: string[] | undefined) => (tags?.length ? tags.join(", ") : "");
+
+const formatRatio = (value: number | null) => {
+  if (value === null) return "--";
+  return `${(value * 100).toFixed(1)}%`;
+};
+
+const formatLatencyMs = (value: number | null) => {
+  if (value === null) return "--";
+  return `${Math.round(value)} ms`;
+};
 
 type EditorMode = "edit" | "preview" | "diff";
 
@@ -184,6 +196,8 @@ export function KnowledgeConsole() {
   const [rollbackVersion, setRollbackVersion] = useState("");
   const [pendingReviews, setPendingReviews] = useState<KnowledgeArticle[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
+  const [kbMetrics, setKBMetrics] = useState<KnowledgeMetricsSnapshot | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(false);
 
   const selectedArticle = useMemo(
     () => articles.find((item) => item.id === selectedID) ?? null,
@@ -199,6 +213,9 @@ export function KnowledgeConsole() {
     () => buildLineDiff(previousVersionContent, form.content),
     [previousVersionContent, form.content]
   );
+  const searchHitRatio = kbMetrics?.searchHitRatio ?? null;
+  const askCitationRatio = kbMetrics?.askCitationRatio ?? null;
+  const reviewLatencyP95 = kbMetrics?.reviewLatencyP95Ms ?? null;
 
   const loadArticles = async () => {
     setLoading(true);
@@ -261,12 +278,28 @@ export function KnowledgeConsole() {
     }
   };
 
+  const loadKBMetrics = async () => {
+    setMetricsLoading(true);
+    try {
+      const snapshot = await fetchKBMetrics();
+      setKBMetrics(snapshot);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setMetricsLoading(false);
+    }
+  };
+
   useEffect(() => {
     void loadArticles();
   }, [query, statusFilter, severityFilter]);
 
   useEffect(() => {
     void loadPendingReviews();
+  }, []);
+
+  useEffect(() => {
+    void loadKBMetrics();
   }, []);
 
   useEffect(() => {
@@ -423,6 +456,7 @@ export function KnowledgeConsole() {
     try {
       const data = await postKBAsk({ question: askQuestion.trim(), limit: 3 });
       setAskResult(data);
+      await loadKBMetrics();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -442,6 +476,7 @@ export function KnowledgeConsole() {
       setArticles(data.items ?? []);
       setTotal(data.items?.length ?? 0);
       setSelectedID(data.items?.[0]?.id ?? "");
+      await loadKBMetrics();
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -495,6 +530,35 @@ export function KnowledgeConsole() {
         </div>
         {error ? <div className="knowledge-error">{error}</div> : null}
         {message ? <div className="knowledge-message">{message}</div> : null}
+      </section>
+
+      <section className="panel knowledge-metrics">
+        <div className="section-title">
+          <h2>知识库运营指标</h2>
+          <span>{metricsLoading ? "刷新中..." : "来源 /metrics"}</span>
+        </div>
+        <div className="knowledge-metrics-grid">
+          <div className={`knowledge-metric-card ${searchHitRatio !== null && searchHitRatio < 0.7 ? "warn" : ""}`}>
+            <div className="knowledge-metric-label">检索命中率</div>
+            <div className="knowledge-metric-value">{formatRatio(searchHitRatio)}</div>
+            <div className="knowledge-metric-desc">阈值建议 ≥ 70%</div>
+          </div>
+          <div className={`knowledge-metric-card ${askCitationRatio !== null && askCitationRatio < 0.95 ? "warn" : ""}`}>
+            <div className="knowledge-metric-label">问答引用率</div>
+            <div className="knowledge-metric-value">{formatRatio(askCitationRatio)}</div>
+            <div className="knowledge-metric-desc">阈值建议 ≥ 95%</div>
+          </div>
+          <div className={`knowledge-metric-card ${reviewLatencyP95 !== null && reviewLatencyP95 > 800 ? "warn" : ""}`}>
+            <div className="knowledge-metric-label">评审延迟 P95</div>
+            <div className="knowledge-metric-value">{formatLatencyMs(reviewLatencyP95)}</div>
+            <div className="knowledge-metric-desc">阈值建议 ≤ 800ms</div>
+          </div>
+        </div>
+        <div className="knowledge-metrics-actions">
+          <button className="btn secondary" type="button" onClick={() => void loadKBMetrics()} disabled={metricsLoading}>
+            {metricsLoading ? "刷新中..." : "刷新指标"}
+          </button>
+        </div>
       </section>
 
       <section className="panel knowledge-pending">
@@ -711,6 +775,17 @@ export function KnowledgeConsole() {
           <div className="knowledge-answer">
             <div className="knowledge-answer-main">{askResult.answer}</div>
             <div className="knowledge-answer-meta">可信度 {Math.round((askResult.confidence ?? 0) * 100)}%</div>
+            {askResult.meta?.degraded ? (
+              <div className="knowledge-ask-meta degraded">
+                <span className="badge ghost">degraded=true</span>
+                <span className="badge ghost">errorClass={askResult.meta.errorClass || "unknown"}</span>
+                <span className="badge ghost">回退依据={askResult.meta.fallbackReason || "fallback"}</span>
+              </div>
+            ) : (
+              <div className="knowledge-ask-meta">
+                <span className="badge ghost">degraded=false</span>
+              </div>
+            )}
             <div className="knowledge-citations">
               {(askResult.citations ?? []).map((item) => (
                 <span className="badge ghost" key={`${item.articleId}-${item.version}`}>

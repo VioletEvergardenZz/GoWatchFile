@@ -45,3 +45,7 @@ logs/
 
 dev/*
 template.md
+
+# Local runtime artifacts
+reports/
+go-watch-file/data/

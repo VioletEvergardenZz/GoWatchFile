@@ -836,12 +836,17 @@ func (s *RuntimeState) autoUploadLocked(path string) bool {
 	if v, ok := s.autoOn[norm]; ok {
 		return v
 	}
-	dir := filepath.Dir(norm)
-	for dir != "." && dir != "/" && dir != norm {
+	dir := normalizeKeyPath(filepath.Dir(norm))
+	for dir != "" && dir != "." && dir != "/" && dir != norm {
 		if v, ok := s.autoOn[dir]; ok { //找到上级目录的设置
 			return v
 		}
-		dir = filepath.Dir(dir)
+		next := normalizeKeyPath(filepath.Dir(dir))
+		// Windows 盘符根目录可能反复返回自身，避免死循环
+		if next == dir {
+			break
+		}
+		dir = next
 	}
 	return true
 }
@@ -938,12 +943,16 @@ func autoEnabledFromCopy(auto map[string]bool, path string) bool {
 	if v, ok := auto[norm]; ok {
 		return v
 	}
-	dir := filepath.Dir(norm)
-	for dir != "." && dir != "/" && dir != norm {
+	dir := normalizeKeyPath(filepath.Dir(norm))
+	for dir != "" && dir != "." && dir != "/" && dir != norm {
 		if v, ok := auto[dir]; ok {
 			return v
 		}
-		dir = filepath.Dir(dir)
+		next := normalizeKeyPath(filepath.Dir(dir))
+		if next == dir {
+			break
+		}
+		dir = next
 	}
 	return true
 }

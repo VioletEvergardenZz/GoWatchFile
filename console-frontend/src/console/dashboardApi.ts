@@ -372,3 +372,63 @@ export const fetchKBRecommendations = async (params: {
   return (await res.json()) as KnowledgeRecommendationsResponse;
 };
 
+export type KnowledgeMetricsSnapshot = {
+  searchHitRatio: number | null;
+  askCitationRatio: number | null;
+  reviewLatencyP95Ms: number | null;
+};
+
+const parseMetricValue = (text: string, metricName: string): number | null => {
+  const pattern = new RegExp(`^${metricName}(?:\\{[^\\n]*\\})?\\s+([0-9.eE+-]+)$`, "m");
+  const match = text.match(pattern);
+  if (!match) return null;
+  const value = Number.parseFloat(match[1]);
+  if (!Number.isFinite(value)) return null;
+  return value;
+};
+
+const parseReviewLatencyP95 = (text: string): number | null => {
+  const total = parseMetricValue(text, "gwf_kb_review_latency_ms_count");
+  if (total === null || total <= 0) {
+    return null;
+  }
+  const bucketPattern = /^gwf_kb_review_latency_ms_bucket\{[^}]*le="([^"]+)"[^}]*\}\s+([0-9.eE+-]+)$/gm;
+  const buckets: Array<{ le: number; count: number }> = [];
+  let match: RegExpExecArray | null;
+  while ((match = bucketPattern.exec(text)) !== null) {
+    if (!match[1] || match[1] === "+Inf") {
+      continue;
+    }
+    const le = Number.parseFloat(match[1]);
+    const count = Number.parseFloat(match[2]);
+    if (!Number.isFinite(le) || !Number.isFinite(count)) {
+      continue;
+    }
+    buckets.push({ le, count });
+  }
+  if (buckets.length === 0) {
+    return null;
+  }
+  buckets.sort((a, b) => a.le - b.le);
+  const target = total * 0.95;
+  for (const bucket of buckets) {
+    if (bucket.count >= target) {
+      return bucket.le;
+    }
+  }
+  return buckets[buckets.length - 1]?.le ?? null;
+};
+
+export const fetchKBMetrics = async (): Promise<KnowledgeMetricsSnapshot> => {
+  const res = await fetch(`${API_BASE}/metrics`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "知识库指标加载");
+  const text = await res.text();
+  return {
+    searchHitRatio: parseMetricValue(text, "gwf_kb_search_hit_ratio"),
+    askCitationRatio: parseMetricValue(text, "gwf_kb_ask_citation_ratio"),
+    reviewLatencyP95Ms: parseReviewLatencyP95(text),
+  };
+};
+

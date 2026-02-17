@@ -32,6 +32,7 @@ import (
 type Server struct {
 	httpServer *http.Server //负责监听端口、接收请求、管理超时/连接等
 	kbService  *kb.Service
+	controlDB  *controlSQLiteStore
 }
 
 // 请求处理器
@@ -40,6 +41,14 @@ type handler struct {
 	fs  *service.FileService
 	sys *sysinfo.Collector
 	kb  *kb.Service
+
+	controlMu           sync.RWMutex
+	controlAgents       map[string]controlAgentState
+	controlAgentKeyIdx  map[string]string
+	controlTasks        map[string]controlTaskState
+	controlNextAgentSeq uint64
+	controlNextTaskSeq  uint64
+	controlStore        *controlSQLiteStore
 
 	dashboardCacheMu     sync.Mutex
 	dashboardCacheData   any
@@ -62,12 +71,29 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	if err != nil {
 		logger.Error("知识库初始化失败: %v", err)
 	}
+	controlStore, err := newControlSQLiteStore("")
+	if err != nil {
+		logger.Warn("控制面存储初始化失败，已降级内存模式: %v", err)
+	}
 	h := &handler{
-		cfg:               cfg,
-		fs:                fs,
-		sys:               sysinfo.NewCollector(sysinfo.Options{}),
-		kb:                kbService,
-		dashboardCacheTTL: defaultDashboardTTL,
+		cfg:                cfg,
+		fs:                 fs,
+		sys:                sysinfo.NewCollector(sysinfo.Options{}),
+		kb:                 kbService,
+		controlAgents:      make(map[string]controlAgentState),
+		controlAgentKeyIdx: make(map[string]string),
+		controlTasks:       make(map[string]controlTaskState),
+		controlStore:       controlStore,
+		dashboardCacheTTL:  defaultDashboardTTL,
+	}
+	if h.controlStore != nil {
+		if err := h.loadControlSnapshot(); err != nil {
+			logger.Warn("控制面存储加载失败，已降级内存模式: %v", err)
+			_ = h.controlStore.Close()
+			h.controlStore = nil
+		} else {
+			logger.Info("控制面存储已加载: %s", h.controlStore.DBPath())
+		}
 	}
 	mux := http.NewServeMux() //创建一个路由器（根据 URL 路径分发请求）
 	mux.HandleFunc("/api/dashboard", h.dashboard)
@@ -88,6 +114,10 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/kb/import/docs", h.kbImportDocs)
 	mux.HandleFunc("/api/kb/recommendations", h.kbRecommendations)
 	mux.HandleFunc("/api/kb/reviews/pending", h.kbPendingReviews)
+	mux.HandleFunc("/api/control/agents", h.controlAgentsHandler)
+	mux.HandleFunc("/api/control/agents/", h.controlAgentByIDHandler)
+	mux.HandleFunc("/api/control/tasks", h.controlTasksHandler)
+	mux.HandleFunc("/api/control/tasks/", h.controlTaskByIDHandler)
 	mux.HandleFunc("/api/health", h.health)
 	mux.HandleFunc("/metrics", h.prometheusMetrics)
 
@@ -97,7 +127,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: resolveWriteTimeout(cfg),
 	}
-	return &Server{httpServer: srv, kbService: kbService}
+	return &Server{httpServer: srv, kbService: kbService, controlDB: h.controlStore}
 }
 
 // prometheusMetrics 导出 Prometheus 采集格式的运行指标。
@@ -133,6 +163,11 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	if s.kbService != nil {
 		if closeErr := s.kbService.Close(); closeErr != nil {
 			logger.Warn("关闭知识库失败: %v", closeErr)
+		}
+	}
+	if s.controlDB != nil {
+		if closeErr := s.controlDB.Close(); closeErr != nil {
+			logger.Warn("关闭控制面存储失败: %v", closeErr)
 		}
 	}
 	return err

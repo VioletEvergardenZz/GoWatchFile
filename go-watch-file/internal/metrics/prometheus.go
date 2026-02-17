@@ -314,6 +314,13 @@ func (c *Collector) RenderPrometheus() string {
 	uploadDurationCopy.writePrometheus(&builder, "gwf_upload_duration_seconds", nil)
 
 	writeMetricHeader(&builder, "gwf_ai_log_summary_total", "counter", "Total AI log summary requests grouped by outcome.")
+	// 始终输出 success/degraded 两个 outcome，避免零流量时缺失时序导致巡检误报
+	if _, ok := aiByOutcome["success"]; !ok {
+		aiByOutcome["success"] = 0
+	}
+	if _, ok := aiByOutcome["degraded"]; !ok {
+		aiByOutcome["degraded"] = 0
+	}
 	outcomes := sortedStringKeysFromUintMap(aiByOutcome)
 	for _, outcome := range outcomes {
 		writeCounter(&builder, "gwf_ai_log_summary_total", aiByOutcome[outcome], map[string]string{
