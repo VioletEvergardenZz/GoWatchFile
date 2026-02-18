@@ -1,4 +1,4 @@
-# 本脚本用于控制面任务生命周期回放
+﻿# 本脚本用于控制面任务生命周期回放
 # 目标：验证 control API 的最小闭环 (register -> pull -> ack -> complete) 并导出指标快照
 
 param(
@@ -202,3 +202,4 @@ if ($done.Count -lt $TaskCount) {
   exit 3
 }
 exit 0
+

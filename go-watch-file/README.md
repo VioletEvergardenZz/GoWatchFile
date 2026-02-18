@@ -377,6 +377,12 @@ cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -OutputFile ../reports/stage-recap-result.json
 ```
 
+阶段报告自动生成（根据 stage-recap 结果渲染 Markdown）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/stage-report.ps1 -RecapFile ../reports/stage-recap-result.json -OutputFile ../docs/05-指标与评估/阶段回归报告-$(Get-Date -Format yyyy-MM-dd).md -Operator "your-name" -Environment "dev-like (local)"
+```
+
 ## 相关文档
 - 文档导航：`../docs/文档导航.md`
 - 平台总览与计划：`../docs/01-总览规划/`

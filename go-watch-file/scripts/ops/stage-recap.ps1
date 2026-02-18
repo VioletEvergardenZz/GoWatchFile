@@ -1,4 +1,4 @@
-# 本脚本用于阶段回归一键复盘
+﻿# 本脚本用于阶段回归一键复盘
 # 顺序执行 metrics 巡检、控制面回放、知识库复盘，并汇总输出统一 JSON 报告
 
 param(
@@ -76,10 +76,16 @@ function Invoke-Stage {
     $stdoutText = ""
     $stderrText = ""
     if (Test-Path $stdoutPath) {
-      $stdoutText = (Get-Content -Raw $stdoutPath).Trim()
+      $stdoutRaw = Get-Content -Raw -Encoding UTF8 -ErrorAction SilentlyContinue $stdoutPath
+      if ($null -ne $stdoutRaw) {
+        $stdoutText = ([string]$stdoutRaw).Trim()
+      }
     }
     if (Test-Path $stderrPath) {
-      $stderrText = (Get-Content -Raw $stderrPath).Trim()
+      $stderrRaw = Get-Content -Raw -Encoding UTF8 -ErrorAction SilentlyContinue $stderrPath
+      if ($null -ne $stderrRaw) {
+        $stderrText = ([string]$stderrRaw).Trim()
+      }
     }
     $parts = @()
     if (-not [string]::IsNullOrWhiteSpace($stdoutText)) { $parts += $stdoutText }
@@ -101,6 +107,7 @@ function Invoke-Stage {
     exitCode  = $exitCode
     elapsedMs = $elapsedMs
     error     = ""
+    output    = $outputText
   }
 }
 
@@ -214,3 +221,4 @@ if (-not $allPassed) {
   exit 3
 }
 exit 0
+

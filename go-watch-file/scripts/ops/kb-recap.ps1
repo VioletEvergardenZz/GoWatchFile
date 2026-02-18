@@ -1,4 +1,4 @@
-# 本脚本用于知识库门禁复盘汇总
+﻿# 本脚本用于知识库门禁复盘汇总
 # 一次执行完成 hitrate / citation / mttd 三项评估并输出统一 JSON 报告
 
 param(
@@ -102,3 +102,4 @@ if (-not $summary.allPassed) {
   exit 3
 }
 exit 0
+
