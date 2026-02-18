@@ -3,8 +3,7 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [Parameter(Mandatory = $true)]
-  [string]$Token,
+  [string]$Token = "",
   [int]$AgentCount = 3,
   [int]$TaskCount = 30,
   [string]$OutputFile = "reports/control-replay-result.json",
@@ -15,7 +14,9 @@ param(
 $base = $BaseUrl.TrimEnd("/")
 $headers = @{
   "Content-Type" = "application/json"
-  "X-API-Token"  = $Token
+}
+if (-not [string]::IsNullOrWhiteSpace($Token)) {
+  $headers["X-API-Token"] = $Token.Trim()
 }
 
 $agentsEndpoint = "{0}/api/control/agents" -f $base

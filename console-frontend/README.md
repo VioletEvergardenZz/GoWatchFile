@@ -22,9 +22,11 @@ npm run dev
 
 默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。若后端地址不同可设置 `VITE_API_BASE`。
 若后端启用鉴权，请在控制台顶部输入 API Token（支持会话或本地保存，可清除）。
+若后端未启用鉴权（`API_AUTH_TOKEN` 为空或 `API_AUTH_DISABLED=true`），可直接空 token 访问。
 
 ## 数据刷新策略
 - 仪表盘：每 3 秒刷新一次（`DASHBOARD_POLL_MS=3000`）。
+- 仪表盘轻量刷新会优先拉取 `mode=light`，后端运行态未就绪时会返回降级结构（`200`）。
 - 文件内容：实时 Tail 每 2 秒拉取一次（`LOG_POLL_MS=2000`），关键词检索为按需触发。
 - AI 总结：按需触发，不做轮询。
 - 目录树与文件列表仅在首次加载或手动操作后全量刷新，避免频繁扫描。

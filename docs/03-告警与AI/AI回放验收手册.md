@@ -1,6 +1,6 @@
 ﻿# AI 回放与降级验收运行手册
 
-- 更新时间：2026-02-17
+- 更新时间：2026-02-18
 - 目标：验证 AI 日志分析在真实样本下的成功率、降级率与错误分类可观测性
 - 关联脚本：`go-watch-file/scripts/ops/ai-replay.ps1`
 
@@ -34,6 +34,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 `
   -Limit 200 `
   -OutputFile ../reports/ai-replay-result.json
 ```
+若后端未启用鉴权，可省略 `-Token` 参数。
 
 ## 3. 输出字段说明
 
@@ -78,6 +79,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/check-metrics.ps1 -BaseUrl 
 cd go-watch-file
 go run ./cmd/kb-eval citation -base http://localhost:8082 -token "$env:API_AUTH_TOKEN" -samples ../docs/04-知识库/知识库命中率样本.json -limit 3 -target 1.0
 ```
+若后端未启用鉴权，`-token` 参数可省略。
 
 说明：
 - 该命令会调用 `/api/kb/ask`

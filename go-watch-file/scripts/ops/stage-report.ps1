@@ -268,6 +268,11 @@ if ($null -ne $uploadSuccessTotal -and $null -ne $uploadFailureTotal) {
 $aiSuccess = Read-MetricValueByLabel -MetricsText $metricsText -MetricName "gwf_ai_log_summary_total" -LabelName "outcome" -LabelValue "success"
 $aiDegraded = Read-MetricValueByLabel -MetricsText $metricsText -MetricName "gwf_ai_log_summary_total" -LabelName "outcome" -LabelValue "degraded"
 $aiTotal = Read-MetricSum -MetricsText $metricsText -MetricName "gwf_ai_log_summary_total"
+$aiTargetRatio = 0.2
+if ($null -ne $recap.gateTargets -and $null -ne $recap.gateTargets.aiDegradedRatio) {
+  $aiTargetRatio = [double]$recap.gateTargets.aiDegradedRatio
+}
+$aiTargetPct = $aiTargetRatio * 100
 $aiDegradedRatioPct = $null
 if ($null -ne $aiTotal -and $aiTotal -gt 0 -and $null -ne $aiDegraded) {
   $aiDegradedRatioPct = ([double]$aiDegraded / [double]$aiTotal) * 100
@@ -329,7 +334,7 @@ if ($null -ne $uploadFailureRatePct) {
 }
 $aiPass = $null
 if ($null -ne $aiDegradedRatioPct) {
-  $aiPass = ([double]$aiDegradedRatioPct -le 20)
+  $aiPass = ([double]$aiDegradedRatioPct -le $aiTargetPct)
 }
 $kbHitratePass = $null
 if ($null -ne $kbHitratePct) {
@@ -352,11 +357,22 @@ if ($null -ne $controlTimeoutTotal) {
   $controlTimeoutPass = ([double]$controlTimeoutTotal -eq 0)
 }
 
+$aiTargetText = ("<= {0}%" -f (Format-Decimal -Value ([double]$aiTargetPct) -Digits 2))
+
+$primeStage = Get-Stage -Recap $recap -Name "stage-prime"
 $metricsStage = Get-Stage -Recap $recap -Name "metrics-check"
 $aiStage = Get-Stage -Recap $recap -Name "ai-replay"
 $controlStage = Get-Stage -Recap $recap -Name "control-replay"
 $kbStage = Get-Stage -Recap $recap -Name "kb-recap"
 
+$primeStagePF = if ($null -eq $primeStage) { "-" } else { To-PF -Pass $primeStage.ok }
+$primeStageRemark = if ($null -ne $recap.prime) {
+  "kb imported=$($recap.prime.kb.imported), updated=$($recap.prime.kb.updated), approved=$($recap.prime.kb.approved); ai samples=$($recap.prime.ai.sampleCount)"
+} elseif ($null -eq $primeStage) {
+  "未执行"
+} else {
+  "exitCode=$($primeStage.exitCode), elapsedMs=$($primeStage.elapsedMs)"
+}
 $metricsStagePF = if ($null -eq $metricsStage) { "-" } else { To-PF -Pass $metricsStage.ok }
 $metricsStageRemark = if ($null -eq $metricsStage) { "未执行" } else { "exitCode=$($metricsStage.exitCode), elapsedMs=$($metricsStage.elapsedMs)" }
 $aiStagePF = if ($null -eq $aiStage) { "-" } else { To-PF -Pass $aiStage.ok }
@@ -383,6 +399,7 @@ $kbMttdRemark = if ($null -ne $mttdDropPct) { "drop=$(Format-NullableNumber -Val
 $executionRows = @()
 $executionRows += "| 后端测试 | cd go-watch-file && go test ./... | - | 可选接入 stage-recap 扩展阶段 |"
 $executionRows += "| 前端构建 | cd console-frontend && npm run build | - | 可选接入 stage-recap 扩展阶段 |"
+$executionRows += ("| 阶段预备 | stage-prime.ps1 | {0} | {1} |" -f $primeStagePF, $primeStageRemark)
 $executionRows += ("| 指标巡检 | check-metrics.ps1 | {0} | {1} |" -f $metricsStagePF, $metricsStageRemark)
 $executionRows += "| 上传压测 | upload-stress.ps1 | - | 建议单独执行并写入备注 |"
 $executionRows += ("| AI 回放 | ai-replay.ps1 | {0} | {1} |" -f $aiStagePF, $aiStageRemark)
@@ -395,7 +412,7 @@ $executionRows += ("| MTTD 对比 | kb-eval mttd | {0} | {1} |" -f $kbMttdPF, $k
 $metricRows = @()
 $metricRows += "| gwf_upload_queue_full_total 增量 | 越低越好 | $(Format-NullableNumber -Value $uploadQueueFullTotal -Digits 0) | $(To-PF -Pass $uploadQueuePass) |"
 $metricRows += "| 上传失败率（10m） | < 5% | $(Format-NullableNumber -Value $uploadFailureRatePct -Digits 2 -Suffix '%') | $(To-PF -Pass $uploadFailurePass) |"
-$metricRows += "| AI 降级率 | <= 20% | $(Format-NullableNumber -Value $aiDegradedRatioPct -Digits 2 -Suffix '%') | $(To-PF -Pass $aiPass) |"
+$metricRows += "| AI 降级率 | $aiTargetText | $(Format-NullableNumber -Value $aiDegradedRatioPct -Digits 2 -Suffix '%') | $(To-PF -Pass $aiPass) |"
 $metricRows += "| 知识检索命中率 | >= 80% | $(Format-NullableNumber -Value $kbHitratePct -Digits 2 -Suffix '%') | $(To-PF -Pass $kbHitratePass) |"
 $metricRows += "| 问答引用率 | = 100% | $(Format-NullableNumber -Value $kbCitationPct -Digits 2 -Suffix '%') | $(To-PF -Pass $kbCitationPass) |"
 $metricRows += "| 控制面在线 Agent 数 | >= 1 | $(Format-NullableNumber -Value $controlOnline -Digits 0) | $(To-PF -Pass $controlOnlinePass) |"

@@ -3,16 +3,23 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [Parameter(Mandatory = $true)]
-  [string]$Token,
+  [string]$Token = "",
   [int]$AgentCount = 3,
   [int]$TaskCount = 30,
   [string]$AIPathsFile = "../docs/03-告警与AI/AI回放路径清单.txt",
   [int]$AILimit = 200,
+  [double]$AIDegradedRatioTarget = 0.2,
   [string]$SamplesFile = "../docs/04-知识库/知识库命中率样本.json",
   [string]$MttdFile = "../docs/04-知识库/知识库MTTD基线.csv",
   [double]$CitationTarget = 1.0,
   [string]$ReportsDir = "../reports",
+  [switch]$AutoPrime,
+  [string]$PrimeDocsPath = "../docs",
+  [string]$PrimeOperator = "stage-recap",
+  [bool]$PrimeApproveImported = $true,
+  [string]$PrimeAISamplesDir = "../reports/ai-replay-samples",
+  [bool]$PrimeUpdateAlertLogPaths = $true,
+  [string]$PrimeOutputFile = "../reports/stage-prime-result.json",
   [switch]$SkipAIReplay,
   [switch]$SkipControlReplay,
   [switch]$SkipKBRecap,
@@ -116,12 +123,21 @@ function Invoke-Stage {
 
 $opsDir = $PSScriptRoot
 $base = $BaseUrl.TrimEnd("/")
+$tokenArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($Token)) {
+  $tokenArgs = @("-Token", $Token.Trim())
+}
 
+$stagePrimeScript = Join-Path $opsDir "stage-prime.ps1"
 $checkMetricsScript = Join-Path $opsDir "check-metrics.ps1"
 $aiReplayScript = Join-Path $opsDir "ai-replay.ps1"
 $controlReplayScript = Join-Path $opsDir "control-replay.ps1"
 $kbRecapScript = Join-Path $opsDir "kb-recap.ps1"
 
+if (-not (Test-Path $stagePrimeScript) -and $AutoPrime) {
+  Write-Error "缺少脚本: stage-prime.ps1"
+  exit 2
+}
 if (-not (Test-Path $checkMetricsScript)) {
   Write-Error "缺少脚本: check-metrics.ps1"
   exit 2
@@ -140,6 +156,7 @@ if (-not (Test-Path $kbRecapScript) -and -not $SkipKBRecap) {
 }
 
 Ensure-Dir $ReportsDir
+$primeOutput = $PrimeOutputFile
 $metricsOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "metrics-stage.prom"
 $aiOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "ai-replay-result.json"
 $controlOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "control-replay-result.json"
@@ -148,6 +165,24 @@ $kbOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "kb-recap-result.j
 
 $stages = @()
 
+if ($AutoPrime) {
+  $primeArgs = @(
+    "-BaseUrl", $base,
+    "-DocsPath", $PrimeDocsPath,
+    "-Operator", $PrimeOperator,
+    "-ApproveImported", ([string]$PrimeApproveImported),
+    "-AIPathsFile", $AIPathsFile,
+    "-AISamplesDir", $PrimeAISamplesDir,
+    "-UpdateAlertLogPaths", ([string]$PrimeUpdateAlertLogPaths),
+    "-OutputFile", $primeOutput
+  )
+  if ($tokenArgs.Count -gt 0) {
+    $primeArgs += $tokenArgs
+  }
+  $primeStage = Invoke-Stage -Name "stage-prime" -ScriptPath $stagePrimeScript -Arguments $primeArgs
+  $stages += $primeStage
+}
+
 $metricsStage = Invoke-Stage -Name "metrics-check" -ScriptPath $checkMetricsScript -Arguments @(
   "-BaseUrl", $base,
   "-OutputFile", $metricsOutput
@@ -155,38 +190,56 @@ $metricsStage = Invoke-Stage -Name "metrics-check" -ScriptPath $checkMetricsScri
 $stages += $metricsStage
 
 if (-not $SkipAIReplay) {
-  $aiStage = Invoke-Stage -Name "ai-replay" -ScriptPath $aiReplayScript -Arguments @(
+  $aiArgs = @(
     "-BaseUrl", $base,
-    "-Token", $Token,
     "-PathsFile", $AIPathsFile,
     "-Limit", ([string]$AILimit),
     "-OutputFile", $aiOutput
   )
+  if ($tokenArgs.Count -gt 0) {
+    $aiArgs += $tokenArgs
+  }
+  $aiStage = Invoke-Stage -Name "ai-replay" -ScriptPath $aiReplayScript -Arguments $aiArgs
   $stages += $aiStage
 }
 
 if (-not $SkipControlReplay) {
-  $controlStage = Invoke-Stage -Name "control-replay" -ScriptPath $controlReplayScript -Arguments @(
+  $controlArgs = @(
     "-BaseUrl", $base,
-    "-Token", $Token,
     "-AgentCount", ([string]$AgentCount),
     "-TaskCount", ([string]$TaskCount),
     "-OutputFile", $controlOutput,
     "-MetricsFile", $controlMetricsOutput
   )
+  if ($tokenArgs.Count -gt 0) {
+    $controlArgs += $tokenArgs
+  }
+  $controlStage = Invoke-Stage -Name "control-replay" -ScriptPath $controlReplayScript -Arguments $controlArgs
   $stages += $controlStage
 }
 
 if (-not $SkipKBRecap) {
-  $kbStage = Invoke-Stage -Name "kb-recap" -ScriptPath $kbRecapScript -Arguments @(
+  $kbArgs = @(
     "-BaseUrl", $base,
-    "-Token", $Token,
     "-SamplesFile", $SamplesFile,
     "-MttdFile", $MttdFile,
     "-CitationTarget", ([string]$CitationTarget),
     "-OutputFile", $kbOutput
   )
+  if ($tokenArgs.Count -gt 0) {
+    $kbArgs += $tokenArgs
+  }
+  $kbStage = Invoke-Stage -Name "kb-recap" -ScriptPath $kbRecapScript -Arguments $kbArgs
   $stages += $kbStage
+}
+
+$primeResult = $null
+if ($AutoPrime -and (Test-Path $primeOutput)) {
+  try {
+    $primeResult = Get-Content -Raw -Encoding UTF8 $primeOutput | ConvertFrom-Json
+  } catch {
+    Write-Warning ("解析阶段预备结果失败: {0}" -f $_.Exception.Message)
+  }
 }
 
 $aiResult = $null
@@ -195,6 +248,28 @@ if (Test-Path $aiOutput) {
     $aiResult = Get-Content -Raw -Encoding UTF8 $aiOutput | ConvertFrom-Json
   } catch {
     Write-Warning ("解析 AI 回放结果失败: {0}" -f $_.Exception.Message)
+  }
+}
+
+if ($null -ne $aiResult -and $null -ne $aiResult.degradedRatio) {
+  $actualRatio = [double]$aiResult.degradedRatio
+  if ($actualRatio -gt $AIDegradedRatioTarget) {
+    $actualPct = [Math]::Round($actualRatio * 100, 2)
+    $targetPct = [Math]::Round($AIDegradedRatioTarget * 100, 2)
+    $gateMessage = "degraded ratio ${actualPct}% exceeds target ${targetPct}%"
+    foreach ($stage in $stages) {
+      if ([string]$stage.name -eq "ai-replay") {
+        $stage.ok = $false
+        $stage.exitCode = 3
+        $stage.error = $gateMessage
+        if ([string]::IsNullOrWhiteSpace([string]$stage.output)) {
+          $stage.output = $gateMessage
+        } else {
+          $stage.output = ([string]$stage.output + [Environment]::NewLine + $gateMessage).Trim()
+        }
+        break
+      }
+    }
   }
 }
 
@@ -227,15 +302,20 @@ foreach ($stage in $stages) {
 $report = [pscustomobject]@{
   generatedAt = (Get-Date).ToString("s")
   baseUrl     = $base
+  gateTargets = [pscustomobject]@{
+    aiDegradedRatio = $AIDegradedRatioTarget
+  }
   allPassed   = $allPassed
   stages      = $stages
   artifacts   = [pscustomobject]@{
+    primeResult          = $(if ($AutoPrime) { $primeOutput } else { "" })
     metricsSnapshot      = $metricsOutput
     aiReplayResult       = $(if ($SkipAIReplay) { "" } else { $aiOutput })
     controlReplayResult  = $(if ($SkipControlReplay) { "" } else { $controlOutput })
     controlMetrics       = $(if ($SkipControlReplay) { "" } else { $controlMetricsOutput })
     kbRecapResult        = $(if ($SkipKBRecap) { "" } else { $kbOutput })
   }
+  prime         = $primeResult
   aiReplay      = $aiResult
   controlReplay = $controlResult
   kbRecap       = $kbResult

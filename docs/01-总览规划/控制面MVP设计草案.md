@@ -113,7 +113,7 @@ flowchart LR
   - `from/to` 支持 `RFC3339` 与 `YYYY-MM-DDTHH:mm`（便于控制台 `datetime-local` 直接透传）
 
 接口约束：
-- 统一复用现有 `X-API-Token` 鉴权头。
+- 统一复用现有 `X-API-Token` 鉴权头（后端启用鉴权时生效）。
 - Agent 侧增加 `agent_token`（与控制台 token 分离）。
 - 所有写操作写入 `audit_logs`。
 

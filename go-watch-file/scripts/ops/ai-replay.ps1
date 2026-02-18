@@ -3,8 +3,7 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [Parameter(Mandatory = $true)]
-  [string]$Token,
+  [string]$Token = "",
   [Parameter(Mandatory = $true)]
   [string]$PathsFile,
   [int]$Limit = 200,
@@ -26,7 +25,9 @@ if ($paths.Count -eq 0) {
 $endpoint = "{0}/api/ai/log-summary" -f $BaseUrl.TrimEnd("/")
 $headers = @{
   "Content-Type" = "application/json"
-  "X-API-Token"  = $Token
+}
+if (-not [string]::IsNullOrWhiteSpace($Token)) {
+  $headers["X-API-Token"] = $Token.Trim()
 }
 
 $rows = @()

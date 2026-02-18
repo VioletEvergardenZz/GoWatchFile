@@ -16,7 +16,9 @@
 - 告警决策：日志轮询、规则匹配、抑制/升级、告警概览与决策列表（规则由控制台维护并写入 `config.runtime.yaml`）。
 - 控制台 API：仪表盘、目录树、文件列表、自动上传开关、手动上传、文件 Tail/检索、运行时配置、告警面板与配置、系统资源面板。
 - Prometheus 指标接口：`/metrics`（事件速率、队列长度、上传耗时、错误分类、AI/知识库命中率）。
-- 控制台 API 支持 Token 鉴权（`/api/health` 例外）与 CORS 白名单。
+- 控制台 API 支持可选 Token 鉴权与 CORS 白名单（`/api/health` 始终匿名可访问）。
+- 当 `API_AUTH_TOKEN` 为空、占位符（`${API_AUTH_TOKEN}`）或 `API_AUTH_DISABLED=true` 时，管理接口默认不校验 token。
+- 仪表盘接口在运行态未就绪时会返回降级数据（`200`），避免前端直接出现 `500`。
 - 路径安全：相对路径校验、防止目录穿越、对象 Key 归一化。
 - 控制台前端：目录树、上传历史、队列趋势、Tail/检索、运行时配置、告警控制台、系统资源控制台。
 - AI 日志分析（可选，需配置 AI_* 并启用）。
@@ -31,7 +33,9 @@
    cd go-watch-file
    cp .env.example .env
    # 填写密钥相关变量（OSS_AK/OSS_SK、DINGTALK_*、EMAIL_*）
-   # 填写 API 安全变量（API_AUTH_TOKEN、API_CORS_ORIGINS）
+   # API 鉴权可选：可设置 API_AUTH_TOKEN 开启鉴权
+   # 如需显式关闭可设置 API_AUTH_DISABLED=true
+   # 跨域来源建议设置 API_CORS_ORIGINS
    # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
    # 如需覆盖 OSS 参数，可设置 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
@@ -51,14 +55,15 @@ npm run dev
 ```
 
 默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。若后端地址不同，可设置 `VITE_API_BASE`。
-如后端开启鉴权，请在控制台顶部输入 API Token（支持会话或本地保存，可随时清除）。
+若后端启用鉴权，请在控制台顶部输入 API Token（支持会话或本地保存，可随时清除）。
+若后端未启用鉴权，可直接空 token 使用控制台。
 
 ### Docker Compose（可选）
 ```bash
 cp .env.example .env
 mkdir -p data/watch data/logs
 # 如需固定监控目录 可将 go-watch-file/config.yaml 的 watch_dir 改为 /data/gwf/watch
-# 前端镜像不注入鉴权口令；启动后在控制台页面输入 API Token
+# 前端镜像不注入鉴权口令；仅在后端启用鉴权时，启动后在控制台页面输入 API Token
 docker compose up --build -d
 ```
 
@@ -77,6 +82,7 @@ docker compose down
 - `docs/`：概述、流程图、开发指南、FAQ、数据结构说明。
 - `legacy/`：旧版 OOM 方案归档。
 - `todo.md` / `大纲.md`：路线图与蓝图说明。
+- `AGENTS.md`：仓库协作与代理执行规范。
 
 ## 文档入口
 - 总入口：`docs/文档导航.md`

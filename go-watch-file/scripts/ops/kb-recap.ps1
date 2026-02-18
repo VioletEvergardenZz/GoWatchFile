@@ -3,8 +3,7 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [Parameter(Mandatory = $true)]
-  [string]$Token,
+  [string]$Token = "",
   [string]$SamplesFile = "../docs/04-知识库/知识库命中率样本.json",
   [string]$MttdFile = "../docs/04-知识库/知识库MTTD基线.csv",
   [double]$CitationTarget = 1.0,
@@ -47,25 +46,31 @@ if (-not (Test-Path $MttdFile)) {
 
 # 统一规范 base URL，避免拼接 endpoint 时出现双斜杠
 $base = $BaseUrl.TrimEnd("/")
-
-# 命中率评估采用更高检索上限，尽量暴露召回不足问题
-$hitrate = Invoke-EvalCommand -Name "hitrate" -CommandArgs @(
+$tokenArgs = @()
+if (-not [string]::IsNullOrWhiteSpace($Token)) {
+  $tokenArgs = @("-token", $Token.Trim())
+}
+$hitrateArgs = @(
   "run", "./cmd/kb-eval", "hitrate",
-  "-base", $base,
-  "-token", $Token,
+  "-base", $base
+) + $tokenArgs + @(
   "-samples", $SamplesFile,
   "-limit", "5"
 )
-
-# 引用率评估限制返回条数，重点检查引用命中而非长答案稳定性
-$citation = Invoke-EvalCommand -Name "citation" -CommandArgs @(
+$citationArgs = @(
   "run", "./cmd/kb-eval", "citation",
-  "-base", $base,
-  "-token", $Token,
+  "-base", $base
+) + $tokenArgs + @(
   "-samples", $SamplesFile,
   "-limit", "3",
   "-target", ([string]$CitationTarget)
 )
+
+# 命中率评估采用更高检索上限，尽量暴露召回不足问题
+$hitrate = Invoke-EvalCommand -Name "hitrate" -CommandArgs $hitrateArgs
+
+# 引用率评估限制返回条数，重点检查引用命中而非长答案稳定性
+$citation = Invoke-EvalCommand -Name "citation" -CommandArgs $citationArgs
 
 # MTTD 仅依赖本地输入文件，和在线服务解耦，便于离线复盘
 $mttd = Invoke-EvalCommand -Name "mttd" -CommandArgs @(

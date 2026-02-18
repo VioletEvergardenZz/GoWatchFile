@@ -28,6 +28,7 @@ import (
 	"file-watch/internal/models"
 	"file-watch/internal/pathutil"
 	"file-watch/internal/service"
+	"file-watch/internal/state"
 	"file-watch/internal/sysinfo"
 )
 
@@ -225,13 +226,21 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
+	if h == nil || h.fs == nil {
+		writeJSON(w, http.StatusOK, buildFallbackDashboard(nil))
+		return
+	}
 	cfg := h.fs.Config()
 	if cfg == nil {
 		cfg = h.cfg
 	}
+	if cfg == nil {
+		cfg = &models.Config{}
+	}
 	runtimeState := h.fs.State()
 	if runtimeState == nil {
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "runtime state not ready"})
+		logger.Warn("dashboard fallback: runtime state not ready")
+		writeJSON(w, http.StatusOK, buildFallbackDashboard(cfg))
 		return
 	}
 	//从 ?mode=... 里取值
@@ -252,6 +261,15 @@ func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	h.storeDashboardCache(payload)
 	w.Header().Set("X-Dashboard-Cache", "miss")
 	writeJSON(w, http.StatusOK, payload)
+}
+
+// buildFallbackDashboard 在运行态缺失时提供最小可用结构，避免前端直接报 500
+func buildFallbackDashboard(cfg *models.Config) state.DashboardData {
+	if cfg == nil {
+		cfg = &models.Config{}
+	}
+	fallbackState := state.NewRuntimeState(cfg)
+	return fallbackState.DashboardLite(cfg)
 }
 
 // toggleAutoUpload 用于切换自动上传开关并返回最新状态
@@ -511,6 +529,10 @@ func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 func (h *handler) health(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
+		return
+	}
+	if h == nil || h.fs == nil {
+		writeJSON(w, http.StatusOK, models.HealthSnapshot{})
 		return
 	}
 	writeJSON(w, http.StatusOK, h.fs.HealthSnapshot())
@@ -871,6 +893,7 @@ func withAPIAuth(cfg *models.Config, next http.Handler) http.Handler {
 	if cfg != nil {
 		token = strings.TrimSpace(cfg.APIAuthToken)
 	}
+	authDisabled := isAPIAuthDisabled(token)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api/") {
@@ -881,8 +904,12 @@ func withAPIAuth(cfg *models.Config, next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
+		if authDisabled {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if token == "" {
-			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "API_AUTH_TOKEN 未配置，拒绝管理接口访问"})
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
 			return
 		}
 		requestToken := extractAuthToken(r)
@@ -892,6 +919,36 @@ func withAPIAuth(cfg *models.Config, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isAPIAuthDisabled 判断是否关闭 API 鉴权
+// 规则：
+// 1) 显式设置 API_AUTH_DISABLED=true
+// 2) 配置令牌为空
+// 3) 配置仍是占位符 ${API_AUTH_TOKEN}
+func isAPIAuthDisabled(token string) bool {
+	if parseBoolEnv("API_AUTH_DISABLED") {
+		return true
+	}
+	clean := strings.TrimSpace(token)
+	if clean == "" {
+		return true
+	}
+	upper := strings.ToUpper(clean)
+	if strings.Contains(upper, "${API_AUTH_TOKEN}") {
+		return true
+	}
+	return false
+}
+
+func parseBoolEnv(key string) bool {
+	raw := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	switch raw {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 // extractAuthToken 用于提取有效片段供后续处理

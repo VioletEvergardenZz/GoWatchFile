@@ -22,7 +22,9 @@
    ```bash
    cp .env.example .env
    # 填写密钥（OSS_AK/OSS_SK, DINGTALK_*, EMAIL_*）
-   # 填写 API 安全（API_AUTH_TOKEN, API_CORS_ORIGINS）
+   # API 鉴权可选：可设置 API_AUTH_TOKEN 开启鉴权
+   # 如需显式关闭可设置 API_AUTH_DISABLED=true
+   # 跨域来源建议设置 API_CORS_ORIGINS
    # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
    # 可选调整背压保护：UPLOAD_QUEUE_SATURATION_THRESHOLD/UPLOAD_QUEUE_CIRCUIT_BREAKER_ENABLED
    # 可选调整上传重试上限：UPLOAD_RETRY_MAX_ATTEMPTS
@@ -39,7 +41,9 @@
 
 配置优先级：config.yaml -> config.runtime.yaml -> 环境变量覆盖 -> 默认值。
 环境变量仅覆盖 OSS / 通知 / API 安全 / AI / 队列持久化相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
-管理接口默认要求 `API_AUTH_TOKEN`，仅 `/api/health` 允许匿名访问。
+当 `API_AUTH_TOKEN` 留空（或未配置）时，管理接口默认不校验 token；
+如需强制关闭可设置 `API_AUTH_DISABLED=true`，如需开启则设置 `API_AUTH_TOKEN`。
+`/api/health` 始终允许匿名访问。
 
 `.env` 读取策略：会尝试加载当前目录的 `.env`，以及配置文件同目录的 `.env`；仅在系统环境未设置时生效。
 
@@ -50,7 +54,7 @@
 - `bucket` / `ak` / `sk` / `endpoint` / `region`：OSS 访问配置。
 - `log_level`：`debug|info|warn|error`。
 - `api_bind`：API 监听地址（默认 `:8080`）。
-- `api_auth_token`：管理接口鉴权令牌（建议从 `API_AUTH_TOKEN` 注入）。
+- `api_auth_token`：管理接口鉴权令牌（可选，建议从 `API_AUTH_TOKEN` 注入；留空则关闭鉴权）。
 - `api_cors_origins`：允许跨域来源列表（逗号分隔，可填 `*`）。
 
 ### 可选字段
@@ -146,6 +150,7 @@ ai_max_lines: 200
 
 ### 环境变量模板（.env.example）
 `.env.example` 已提供模板，可按需补充 `OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL` 与 AI 相关变量。
+如需关闭 API 鉴权，可保持 `API_AUTH_TOKEN` 为空，或显式设置 `API_AUTH_DISABLED=true`。
 
 ### 告警规则文件示例
 参考 `alert-rules.example.yaml`，按需调整关键词、级别与抑制窗口。
@@ -156,6 +161,7 @@ ai_max_lines: 200
 - `GET /api/dashboard`
 - 返回：`DashboardData`（目录树、文件列表、指标、监控摘要、配置快照等）。
 - 全量仪表盘默认使用约 2 秒短缓存，减少目录高频扫描。
+- 当运行态未就绪时，接口会返回降级结构（`200`），避免控制台直接出现 `500`。
 - 可选：`refresh=true` 强制绕过缓存（返回头 `X-Dashboard-Cache=miss`）。
 
 ### 2) 自动上传开关
@@ -344,6 +350,7 @@ go run ./cmd/kb-eval mttd -input ../docs/04-知识库/知识库MTTD基线.csv
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -SamplesFile ../docs/04-知识库/知识库命中率样本.json -MttdFile ../docs/04-知识库/知识库MTTD基线.csv -OutputFile ../reports/kb-recap-result.json
 ```
+若后端未启用鉴权，上述命令可省略 `-Token` 参数；`kb-eval` 的 `-token` 参数同样可省略。
 
 ## 可靠性演练脚本
 指标巡检：
@@ -365,6 +372,12 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 -BaseUrl http
 ```
 可直接维护 `../docs/03-告警与AI/AI回放路径清单.txt`，命令中的 `-PathsFile` 建议改为该路径。
 
+阶段预备（自动导入并发布知识库文档 + 生成 AI 回放样本并登记告警日志路径）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/stage-prime.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -DocsPath ../docs -Operator stage-recap -AIPathsFile ../reports/ai-replay-paths-prime.txt -OutputFile ../reports/stage-prime-result.json
+```
+
 控制面回放：
 ```powershell
 cd go-watch-file
@@ -377,12 +390,18 @@ cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -AIPathsFile ../docs/03-告警与AI/AI回放路径清单.txt -AILimit 200 -OutputFile ../reports/stage-recap-result.json
 ```
 按需跳过阶段可增加 `-SkipAIReplay` / `-SkipControlReplay` / `-SkipKBRecap`。
+本地演练环境建议增加 `-AutoPrime`，自动补齐知识库与 AI 回放前置条件：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -AutoPrime -AIPathsFile ../reports/ai-replay-paths-prime.txt -OutputFile ../reports/stage-recap-result.json
+```
 
 阶段报告自动生成（根据 stage-recap 结果渲染 Markdown）：
 ```powershell
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/stage-report.ps1 -RecapFile ../reports/stage-recap-result.json -OutputFile ../docs/05-指标与评估/阶段回归报告-$(Get-Date -Format yyyy-MM-dd).md -Operator "your-name" -Environment "dev-like (local)"
 ```
+若后端未启用鉴权，`ai-replay.ps1` / `stage-prime.ps1` / `control-replay.ps1` / `stage-recap.ps1` 均可省略 `-Token` 参数。
 
 ## 相关文档
 - 文档导航：`../docs/文档导航.md`

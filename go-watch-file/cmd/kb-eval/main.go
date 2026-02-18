@@ -75,8 +75,8 @@ func main() {
 
 func usage() {
 	fmt.Println("Usage:")
-	fmt.Println("  kb-eval hitrate -base http://localhost:8082 -token <token> -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 5]")
-	fmt.Println("  kb-eval citation -base http://localhost:8082 -token <token> -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 3] [-target 1.0]")
+	fmt.Println("  kb-eval hitrate -base http://localhost:8082 [-token <token>] -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 5]")
+	fmt.Println("  kb-eval citation -base http://localhost:8082 [-token <token>] -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 3] [-target 1.0]")
 	fmt.Println("  kb-eval mttd -input ../../docs/04-知识库/知识库MTTD基线.csv")
 }
 
@@ -89,9 +89,6 @@ func runHitrate(args []string) error {
 	timeoutSec := fs.Int("timeout", 8, "request timeout seconds")
 	if err := fs.Parse(args); err != nil {
 		return err
-	}
-	if strings.TrimSpace(*token) == "" {
-		return fmt.Errorf("token is required")
 	}
 	raw, err := os.ReadFile(*samplesPath)
 	if err != nil {
@@ -139,7 +136,9 @@ func evaluateSample(client *http.Client, baseURL, token string, sample hitrateSa
 		return false, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Token", token)
+	if clean := strings.TrimSpace(token); clean != "" {
+		req.Header.Set("X-API-Token", clean)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, nil, err
@@ -202,9 +201,6 @@ func runCitation(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if strings.TrimSpace(*token) == "" {
-		return fmt.Errorf("token is required")
-	}
 	if *target < 0 || *target > 1 {
 		return fmt.Errorf("target must be between 0 and 1")
 	}
@@ -264,7 +260,9 @@ func evaluateCitationSample(client *http.Client, baseURL, token, question string
 		return false, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-API-Token", token)
+	if clean := strings.TrimSpace(token); clean != "" {
+		req.Header.Set("X-API-Token", clean)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, nil, err
@@ -347,4 +345,3 @@ func runMTTD(args []string) error {
 	fmt.Printf("Drop ratio    : %.2f%%\n", drop*100)
 	return nil
 }
-
