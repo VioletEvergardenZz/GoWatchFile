@@ -273,6 +273,21 @@ if ($null -ne $aiTotal -and $aiTotal -gt 0 -and $null -ne $aiDegraded) {
   $aiDegradedRatioPct = ([double]$aiDegraded / [double]$aiTotal) * 100
 }
 
+if ($null -ne $recap.aiReplay) {
+  if ($null -ne $recap.aiReplay.total) {
+    $aiTotal = [double]$recap.aiReplay.total
+  }
+  if ($null -ne $recap.aiReplay.success) {
+    $aiSuccess = [double]$recap.aiReplay.success
+  }
+  if ($null -ne $recap.aiReplay.degraded) {
+    $aiDegraded = [double]$recap.aiReplay.degraded
+  }
+  if ($null -ne $recap.aiReplay.degradedRatio) {
+    $aiDegradedRatioPct = [double]$recap.aiReplay.degradedRatio * 100
+  }
+}
+
 $kbSearchHitRatio = Read-MetricValue -MetricsText $metricsText -MetricName "gwf_kb_search_hit_ratio"
 $kbAskCitationRatio = Read-MetricValue -MetricsText $metricsText -MetricName "gwf_kb_ask_citation_ratio"
 $kbHitratePct = if ($null -ne $kbSearchHitRatio) { [double]$kbSearchHitRatio * 100 } else { $null }
@@ -338,11 +353,20 @@ if ($null -ne $controlTimeoutTotal) {
 }
 
 $metricsStage = Get-Stage -Recap $recap -Name "metrics-check"
+$aiStage = Get-Stage -Recap $recap -Name "ai-replay"
 $controlStage = Get-Stage -Recap $recap -Name "control-replay"
 $kbStage = Get-Stage -Recap $recap -Name "kb-recap"
 
 $metricsStagePF = if ($null -eq $metricsStage) { "-" } else { To-PF -Pass $metricsStage.ok }
 $metricsStageRemark = if ($null -eq $metricsStage) { "未执行" } else { "exitCode=$($metricsStage.exitCode), elapsedMs=$($metricsStage.elapsedMs)" }
+$aiStagePF = if ($null -eq $aiStage) { "-" } else { To-PF -Pass $aiStage.ok }
+$aiStageRemark = if ($null -ne $recap.aiReplay) {
+  "total=$($recap.aiReplay.total), success=$($recap.aiReplay.success), degraded=$($recap.aiReplay.degraded), ratio=$([Math]::Round([double]$recap.aiReplay.degradedRatio * 100, 2))%"
+} elseif ($null -eq $aiStage) {
+  "未执行"
+} else {
+  "exitCode=$($aiStage.exitCode), elapsedMs=$($aiStage.elapsedMs)"
+}
 $controlStagePF = if ($null -eq $controlStage) { "-" } else { To-PF -Pass $controlStage.ok }
 $controlStageRemark = if ($null -ne $recap.controlReplay) {
   "done=$($recap.controlReplay.done)/$($recap.controlReplay.total), success=$($recap.controlReplay.success), failed=$($recap.controlReplay.failed)"
@@ -361,7 +385,7 @@ $executionRows += "| 后端测试 | cd go-watch-file && go test ./... | - | 可�
 $executionRows += "| 前端构建 | cd console-frontend && npm run build | - | 可选接入 stage-recap 扩展阶段 |"
 $executionRows += ("| 指标巡检 | check-metrics.ps1 | {0} | {1} |" -f $metricsStagePF, $metricsStageRemark)
 $executionRows += "| 上传压测 | upload-stress.ps1 | - | 建议单独执行并写入备注 |"
-$executionRows += "| AI 回放 | ai-replay.ps1 | - | 本次未纳入 stage-recap 流程 |"
+$executionRows += ("| AI 回放 | ai-replay.ps1 | {0} | {1} |" -f $aiStagePF, $aiStageRemark)
 $executionRows += ("| 控制面回放 | control-replay.ps1 | {0} | {1} |" -f $controlStagePF, $controlStageRemark)
 $executionRows += "| 控制面审计查询 | GET /api/control/audit | - | 建议通过控制台筛选或接口抽样验证 |"
 $executionRows += ("| 检索命中率 | kb-eval hitrate | {0} | {1} |" -f $kbHitratePF, $kbHitrateRemark)

@@ -7,10 +7,13 @@ param(
   [string]$Token,
   [int]$AgentCount = 3,
   [int]$TaskCount = 30,
+  [string]$AIPathsFile = "../docs/03-告警与AI/AI回放路径清单.txt",
+  [int]$AILimit = 200,
   [string]$SamplesFile = "../docs/04-知识库/知识库命中率样本.json",
   [string]$MttdFile = "../docs/04-知识库/知识库MTTD基线.csv",
   [double]$CitationTarget = 1.0,
   [string]$ReportsDir = "../reports",
+  [switch]$SkipAIReplay,
   [switch]$SkipControlReplay,
   [switch]$SkipKBRecap,
   [string]$OutputFile = "../reports/stage-recap-result.json"
@@ -115,11 +118,16 @@ $opsDir = $PSScriptRoot
 $base = $BaseUrl.TrimEnd("/")
 
 $checkMetricsScript = Join-Path $opsDir "check-metrics.ps1"
+$aiReplayScript = Join-Path $opsDir "ai-replay.ps1"
 $controlReplayScript = Join-Path $opsDir "control-replay.ps1"
 $kbRecapScript = Join-Path $opsDir "kb-recap.ps1"
 
 if (-not (Test-Path $checkMetricsScript)) {
   Write-Error "缺少脚本: check-metrics.ps1"
+  exit 2
+}
+if (-not (Test-Path $aiReplayScript) -and -not $SkipAIReplay) {
+  Write-Error "缺少脚本: ai-replay.ps1"
   exit 2
 }
 if (-not (Test-Path $controlReplayScript) -and -not $SkipControlReplay) {
@@ -133,6 +141,7 @@ if (-not (Test-Path $kbRecapScript) -and -not $SkipKBRecap) {
 
 Ensure-Dir $ReportsDir
 $metricsOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "metrics-stage.prom"
+$aiOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "ai-replay-result.json"
 $controlOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "control-replay-result.json"
 $controlMetricsOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "metrics-control-replay.prom"
 $kbOutput = Resolve-OutputPath -BaseDir $ReportsDir -FileName "kb-recap-result.json"
@@ -144,6 +153,17 @@ $metricsStage = Invoke-Stage -Name "metrics-check" -ScriptPath $checkMetricsScri
   "-OutputFile", $metricsOutput
 )
 $stages += $metricsStage
+
+if (-not $SkipAIReplay) {
+  $aiStage = Invoke-Stage -Name "ai-replay" -ScriptPath $aiReplayScript -Arguments @(
+    "-BaseUrl", $base,
+    "-Token", $Token,
+    "-PathsFile", $AIPathsFile,
+    "-Limit", ([string]$AILimit),
+    "-OutputFile", $aiOutput
+  )
+  $stages += $aiStage
+}
 
 if (-not $SkipControlReplay) {
   $controlStage = Invoke-Stage -Name "control-replay" -ScriptPath $controlReplayScript -Arguments @(
@@ -167,6 +187,15 @@ if (-not $SkipKBRecap) {
     "-OutputFile", $kbOutput
   )
   $stages += $kbStage
+}
+
+$aiResult = $null
+if (Test-Path $aiOutput) {
+  try {
+    $aiResult = Get-Content -Raw -Encoding UTF8 $aiOutput | ConvertFrom-Json
+  } catch {
+    Write-Warning ("解析 AI 回放结果失败: {0}" -f $_.Exception.Message)
+  }
 }
 
 $controlResult = $null
@@ -202,10 +231,12 @@ $report = [pscustomobject]@{
   stages      = $stages
   artifacts   = [pscustomobject]@{
     metricsSnapshot      = $metricsOutput
+    aiReplayResult       = $(if ($SkipAIReplay) { "" } else { $aiOutput })
     controlReplayResult  = $(if ($SkipControlReplay) { "" } else { $controlOutput })
     controlMetrics       = $(if ($SkipControlReplay) { "" } else { $controlMetricsOutput })
     kbRecapResult        = $(if ($SkipKBRecap) { "" } else { $kbOutput })
   }
+  aiReplay      = $aiResult
   controlReplay = $controlResult
   kbRecap       = $kbResult
 }

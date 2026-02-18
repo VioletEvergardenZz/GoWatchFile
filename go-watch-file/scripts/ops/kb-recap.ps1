@@ -17,12 +17,12 @@ param(
 function Invoke-EvalCommand {
   param(
     [string]$Name,
-    [string[]]$Args
+    [string[]]$CommandArgs
   )
 
-  Write-Host ("执行 {0}: go {1}" -f $Name, ($Args -join " "))
+  Write-Host ("执行 {0}: go {1}" -f $Name, ($CommandArgs -join " "))
 
-  $output = & go @Args 2>&1
+  $output = & go @CommandArgs 2>&1
   $exitCode = $LASTEXITCODE
   # 输出统一转文本，避免后续写 JSON 时出现对象序列化差异
   $text = ($output | Out-String).Trim()
@@ -49,7 +49,7 @@ if (-not (Test-Path $MttdFile)) {
 $base = $BaseUrl.TrimEnd("/")
 
 # 命中率评估采用更高检索上限，尽量暴露召回不足问题
-$hitrate = Invoke-EvalCommand -Name "hitrate" -Args @(
+$hitrate = Invoke-EvalCommand -Name "hitrate" -CommandArgs @(
   "run", "./cmd/kb-eval", "hitrate",
   "-base", $base,
   "-token", $Token,
@@ -58,7 +58,7 @@ $hitrate = Invoke-EvalCommand -Name "hitrate" -Args @(
 )
 
 # 引用率评估限制返回条数，重点检查引用命中而非长答案稳定性
-$citation = Invoke-EvalCommand -Name "citation" -Args @(
+$citation = Invoke-EvalCommand -Name "citation" -CommandArgs @(
   "run", "./cmd/kb-eval", "citation",
   "-base", $base,
   "-token", $Token,
@@ -68,7 +68,7 @@ $citation = Invoke-EvalCommand -Name "citation" -Args @(
 )
 
 # MTTD 仅依赖本地输入文件，和在线服务解耦，便于离线复盘
-$mttd = Invoke-EvalCommand -Name "mttd" -Args @(
+$mttd = Invoke-EvalCommand -Name "mttd" -CommandArgs @(
   "run", "./cmd/kb-eval", "mttd",
   "-input", $MttdFile
 )
