@@ -90,7 +90,7 @@ flowchart LR
 ## 5. API 草案（v1）
 
 ## 5.1 Agent 管理
-- `POST /api/control/agents/register`
+- `POST /api/control/agents`（register）
 - `POST /api/control/agents/{id}/heartbeat`
 - `GET /api/control/agents`
 - `GET /api/control/agents/{id}`
@@ -108,6 +108,9 @@ flowchart LR
 - `POST /api/control/tasks/{id}/ack`
 - `POST /api/control/tasks/{id}/progress`
 - `POST /api/control/tasks/{id}/complete`
+- `GET /api/control/tasks/{id}/events`
+- `GET /api/control/audit`（支持 `resourceType/resourceId/operator/action/from/to/limit` 组合过滤）
+  - `from/to` 支持 `RFC3339` 与 `YYYY-MM-DDTHH:mm`（便于控制台 `datetime-local` 直接透传）
 
 接口约束：
 - 统一复用现有 `X-API-Token` 鉴权头。

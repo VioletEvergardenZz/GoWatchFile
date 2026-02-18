@@ -1,0 +1,115 @@
+/* 本文件用于控制面控制台样式 让表格与事件区域在不同屏幕下可读可用 */
+
+.control-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.control-grid {
+  display: grid;
+  grid-template-columns: 420px 1fr;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.control-table-wrap {
+  max-height: 520px;
+  overflow: auto;
+  border-radius: 12px;
+}
+
+.control-task-table tr {
+  cursor: pointer;
+}
+
+.control-task-table tr.active {
+  background: rgba(45, 212, 191, 0.08);
+}
+
+.control-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.btn.tiny {
+  padding: 7px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.control-detail {
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.control-events {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.control-event {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: rgba(2, 6, 23, 0.2);
+}
+
+.control-event-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.audit-toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.audit-toolbar .search {
+  min-width: 160px;
+}
+
+.audit-time-input {
+  min-width: 210px;
+}
+
+.audit-filter-hint {
+  margin-bottom: 8px;
+}
+
+.audit-detail-json {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: "IBM Plex Mono", Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1100px) {
+  .control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-toolbar .search {
+    min-width: 140px;
+    flex: 1 1 160px;
+  }
+}

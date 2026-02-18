@@ -1,4 +1,8 @@
 // 本文件用于 AI 日志总结接口
+// 文件职责：实现当前模块的核心业务逻辑与数据流转
+// 关键路径：入口参数先校验再执行业务处理 最后返回统一结果
+// 边界与容错：异常场景显式返回错误 由上层决定重试或降级
+
 package api
 
 import (
@@ -119,6 +123,8 @@ type openAIChatResponse struct {
 }
 
 // aiLogSummary 用于处理 AI 日志总结请求并返回结构化结果
+// 主流程是 路径校验 -> 日志采样压缩 -> AI 调用 -> 解析结果 -> 失败降级
+// 任何阶段出错都尽量返回可读的降级摘要 避免前端拿到空结果
 func (h *handler) aiLogSummary(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -372,6 +378,8 @@ func resolveLineLimit(requested, max int) int {
 }
 
 // loadLogLines 用于加载运行数据
+// loadLogLines 根据模式读取 tail 或 search 结果
+// 读取阶段只负责数据提取 不做 AI 相关处理 便于独立测试
 func loadLogLines(path, mode, query string, limit int, caseSensitive bool) ([]string, bool, error) {
 	if mode == "search" {
 		lines, truncated, err := searchFileLogLines(path, query, limit, caseSensitive)
@@ -396,6 +404,8 @@ func trimLines(lines []string, limit int) ([]string, bool) {
 }
 
 // compressLogLines 根据关键词与尾部上下文压缩日志行
+// compressLogLines 优先保留关键信息行附近上下文
+// 这样在强截断场景下仍能提升模型定位异常原因的概率
 func compressLogLines(lines []string, limit int) ([]string, bool) {
 	if limit <= 0 || len(lines) <= limit {
 		return lines, false
@@ -518,6 +528,8 @@ func readTailLinesForAI(path string, maxBytes int64) ([]string, bool, error) {
 }
 
 // buildRetryLines 用于构建后续流程所需的数据
+// buildRetryLines 构造重试输入
+// 重试策略是逐步收缩上下文 防止同样的超长输入反复触发超时
 func buildRetryLines(original, current []string) ([]string, bool) {
 	if len(current) <= aiRetryMinLines {
 		return current, false
@@ -563,6 +575,8 @@ func isRetryableAIError(err error) bool {
 	return class == "network" || class == "upstream_5xx" || class == "rate_limit"
 }
 
+// classifyAIError 把底层错误归类为稳定标签
+// 标签用于指标聚合和控制台展示 避免直接暴露底层实现细节
 func classifyAIError(err error) string {
 	if err == nil {
 		return ""
@@ -590,6 +604,8 @@ func classifyAIError(err error) string {
 	}
 }
 
+// buildFallbackAIResult 在 AI 失败时给出规则化摘要
+// 兜底结果保证字段完整 让前端无需区分成功与降级结构
 func buildFallbackAIResult(lines []string, errorClass string) aiLogSummaryResult {
 	keyErrors := extractFallbackKeyErrors(lines, aiMaxItems)
 	severity := detectFallbackSeverity(keyErrors)
@@ -696,6 +712,8 @@ func parseAITimeout(raw string) time.Duration {
 }
 
 // callAIForLogSummary 用于调用 AI 服务生成日志总结
+// callAIForLogSummary 是唯一的模型调用出口
+// 请求参数与超时策略集中在这里 便于后续统一替换模型供应商
 func callAIForLogSummary(ctx context.Context, cfg *models.Config, logText, logPath string, truncated bool) (string, error) {
 	endpoint, err := buildChatCompletionURL(cfg.AIBaseURL)
 	if err != nil {

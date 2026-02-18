@@ -1,4 +1,8 @@
 // 本文件用于 API 服务与路由处理
+// 文件职责：实现当前模块的核心业务逻辑与数据流转
+// 关键路径：入口参数先校验再执行业务处理 最后返回统一结果
+// 边界与容错：异常场景显式返回错误 由上层决定重试或降级
+
 package api
 
 import (
@@ -66,6 +70,8 @@ const (
 )
 
 // NewServer 创建接口服务并注册路由
+// 路由层只做编排 不在这里写业务细节 便于后续按域拆分 handler
+// 中间件顺序固定为 recovery -> cors -> auth 保证异常与鉴权行为可预期
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	kbService, err := kb.NewService("")
 	if err != nil {
@@ -118,6 +124,8 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/control/agents/", h.controlAgentByIDHandler)
 	mux.HandleFunc("/api/control/tasks", h.controlTasksHandler)
 	mux.HandleFunc("/api/control/tasks/", h.controlTaskByIDHandler)
+	mux.HandleFunc("/api/control/dispatch/pull", h.controlDispatchPullHandler)
+	mux.HandleFunc("/api/control/audit", h.controlAuditHandler)
 	mux.HandleFunc("/api/health", h.health)
 	mux.HandleFunc("/metrics", h.prometheusMetrics)
 
@@ -130,7 +138,8 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	return &Server{httpServer: srv, kbService: kbService, controlDB: h.controlStore}
 }
 
-// prometheusMetrics 导出 Prometheus 采集格式的运行指标。
+// prometheusMetrics 导出 Prometheus 采集格式的运行指标
+// 这里在读指标前先做一次状态快照汇总 避免各指标来源时间点不一致
 func (h *handler) prometheusMetrics(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -138,6 +147,41 @@ func (h *handler) prometheusMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	if h != nil && h.fs != nil {
 		metrics.Global().SetQueueStats(h.fs.GetStats())
+	}
+	if h != nil {
+		now := time.Now().UTC()
+		h.controlMu.RLock()
+		agentTotal := len(h.controlAgents)
+		agentOnline := 0
+		var heartbeatLagMax time.Duration
+		for _, agent := range h.controlAgents {
+			if agent.Status == "draining" {
+				continue
+			}
+			if !controlAgentIsActive(agent, now) {
+				continue
+			}
+			agentOnline++
+			if !agent.LastSeenAt.IsZero() {
+				lag := now.Sub(agent.LastSeenAt)
+				if lag > heartbeatLagMax {
+					heartbeatLagMax = lag
+				}
+			}
+		}
+		taskCounts := make(map[string]uint64)
+		backlog := 0
+		for _, task := range h.controlTasks {
+			key := task.Status + "|" + task.Type
+			taskCounts[key]++
+			if task.Status == "pending" {
+				backlog++
+			}
+		}
+		h.controlMu.RUnlock()
+
+		metrics.Global().SetControlAgentSnapshot(agentTotal, agentOnline, heartbeatLagMax)
+		metrics.Global().SetControlTaskSnapshot(backlog, taskCounts)
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
 	_, _ = w.Write([]byte(metrics.MustGlobalPrometheus()))
@@ -174,6 +218,8 @@ func (s *Server) Shutdown(ctx context.Context) error {
 }
 
 // dashboard 用于返回系统总览数据供控制台展示
+// 控制台高频轮询优先读取短缓存 只有 refresh=true 才强制重算
+// 这样可以降低目录扫描与状态聚合的热点开销
 func (h *handler) dashboard(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -373,6 +419,8 @@ func (h *handler) fileLog(w http.ResponseWriter, r *http.Request) {
 }
 
 // updateConfig 用于更新运行状态或配置
+// updateConfig 只允许更新运行态白名单字段
+// 静态策略字段仍要求改配置并重启 防止在线热切换引发行为漂移
 func (h *handler) updateConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -760,6 +808,8 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 }
 
 // withCORS 用于补充跨域响应头并处理预检请求
+// withCORS 负责统一处理跨域策略
+// 预检请求在这里直接返回 减少后续业务 handler 的重复分支
 func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 	allowAll := false
 	allowedOrigins := make(map[string]struct{})
@@ -814,6 +864,8 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 }
 
 // withAPIAuth 用于统一校验接口访问令牌
+// withAPIAuth 是管理接口鉴权总入口
+// 明确保留 /api/health 匿名访问 便于外部探针做存活检查
 func withAPIAuth(cfg *models.Config, next http.Handler) http.Handler {
 	token := ""
 	if cfg != nil {
@@ -856,6 +908,8 @@ func extractAuthToken(r *http.Request) string {
 }
 
 // withRecovery 用于兜底捕获 panic 防止服务崩溃
+// withRecovery 防御未捕获 panic
+// 这里统一兜底为 500 并记录堆栈 避免单请求异常导致进程退出
 func withRecovery(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		defer func() {

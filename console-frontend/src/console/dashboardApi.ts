@@ -1,7 +1,18 @@
-﻿/* 本文件用于控制台 API 封装 将网络请求统一收敛便于复用和排障 */
+/**
+ * 文件职责：承载当前页面或模块的核心交互与状态管理
+ * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
+ * 边界处理：对空数据 异常数据和超时请求提供兜底展示
+ */
+
+/* 本文件用于控制台 API 封装 将网络请求统一收敛便于复用和排障 */
 
 import type {
   AiLogSummaryResponse,
+  ControlAuditLogsResponse,
+  ControlAgentsResponse,
+  ControlTaskEventsResponse,
+  ControlTaskResponse,
+  ControlTasksResponse,
   DashboardPayload,
   KnowledgeArticleResponse,
   KnowledgeAskResponse,
@@ -17,6 +28,8 @@ export const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?
 const API_TOKEN_STORAGE_KEY = "gwf-api-token";
 let runtimeApiToken = "";
 
+// token 读取优先级为 session -> local
+// 这样默认“仅当前会话有效”，显式勾选记住后才落到 localStorage
 const readTokenFromStorage = () => {
   if (typeof window === "undefined") return "";
   const fromSession = window.sessionStorage.getItem(API_TOKEN_STORAGE_KEY);
@@ -99,6 +112,8 @@ export const buildApiHeaders = (contentType = false): HeadersInit => {
   return headers;
 };
 
+// ensureOk 统一把非 2xx 响应转换为可读错误
+// 页面层只处理业务状态 不重复拼装状态码和错误文本
 const readErrorDetail = async (res: Response) => {
   const text = await res.text();
   if (!text) return "";
@@ -126,6 +141,8 @@ const ensureOk = async (res: Response, action: string) => {
   throw new Error(formatErrorMessage(action, res, detail));
 };
 
+// 下面是业务 API 封装
+// 约定每个函数只做一件事 请求 + 基本错误归一化 + 类型化返回
 export const fetchDashboard = async (): Promise<Partial<DashboardPayload>> => {
   const res = await fetch(`${API_BASE}/api/dashboard`, {
     headers: buildApiHeaders(),
@@ -430,5 +447,86 @@ export const fetchKBMetrics = async (): Promise<KnowledgeMetricsSnapshot> => {
     askCitationRatio: parseMetricValue(text, "gwf_kb_ask_citation_ratio"),
     reviewLatencyP95Ms: parseReviewLatencyP95(text),
   };
+};
+
+export const fetchControlAgents = async (params?: { status?: string; group?: string }): Promise<ControlAgentsResponse> => {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.group) query.set("group", params.group);
+  const suffix = query.toString();
+  const res = await fetch(`${API_BASE}/api/control/agents${suffix ? `?${suffix}` : ""}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "控制面Agent加载");
+  return (await res.json()) as ControlAgentsResponse;
+};
+
+export const fetchControlTasks = async (params?: { status?: string; type?: string; limit?: number }): Promise<ControlTasksResponse> => {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.type) query.set("type", params.type);
+  if (params?.limit) query.set("limit", String(params.limit));
+  const suffix = query.toString();
+  const res = await fetch(`${API_BASE}/api/control/tasks${suffix ? `?${suffix}` : ""}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "控制面任务加载");
+  return (await res.json()) as ControlTasksResponse;
+};
+
+export const fetchControlTaskEvents = async (taskId: string, limit = 200): Promise<ControlTaskEventsResponse> => {
+  const id = encodeURIComponent(taskId);
+  const res = await fetch(`${API_BASE}/api/control/tasks/${id}/events?limit=${encodeURIComponent(String(limit))}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "控制面任务事件加载");
+  return (await res.json()) as ControlTaskEventsResponse;
+};
+
+export const postControlTaskCancel = async (taskId: string): Promise<ControlTaskResponse> => {
+  const id = encodeURIComponent(taskId);
+  const res = await fetch(`${API_BASE}/api/control/tasks/${id}/cancel`, {
+    method: "POST",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify({}),
+  });
+  await ensureOk(res, "控制面任务取消");
+  return (await res.json()) as ControlTaskResponse;
+};
+
+export const postControlTaskRetry = async (taskId: string): Promise<ControlTaskResponse> => {
+  const id = encodeURIComponent(taskId);
+  const res = await fetch(`${API_BASE}/api/control/tasks/${id}/retry`, {
+    method: "POST",
+    headers: buildApiHeaders(true),
+    body: JSON.stringify({}),
+  });
+  await ensureOk(res, "控制面任务重试");
+  return (await res.json()) as ControlTaskResponse;
+};
+
+export const fetchControlAuditLogs = async (params?: {
+  resourceType?: string;
+  resourceId?: string;
+  operator?: string;
+  action?: string;
+  from?: string;
+  to?: string;
+  limit?: number;
+}): Promise<ControlAuditLogsResponse> => {
+  const query = new URLSearchParams();
+  if (params?.resourceType) query.set("resourceType", params.resourceType);
+  if (params?.resourceId) query.set("resourceId", params.resourceId);
+  if (params?.operator) query.set("operator", params.operator);
+  if (params?.action) query.set("action", params.action);
+  if (params?.from) query.set("from", params.from);
+  if (params?.to) query.set("to", params.to);
+  if (params?.limit) query.set("limit", String(params.limit));
+  const suffix = query.toString();
+  const res = await fetch(`${API_BASE}/api/control/audit${suffix ? `?${suffix}` : ""}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "控制面审计日志加载");
+  return (await res.json()) as ControlAuditLogsResponse;
 };
 

@@ -1,6 +1,12 @@
-﻿/* 本文件用于主控制台侧栏组件 负责视图切换和导航入口管理 */
+/**
+ * 文件职责：承载当前页面或模块的核心交互与状态管理
+ * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
+ * 边界处理：对空数据 异常数据和超时请求提供兜底展示
+ */
 
-type ConsoleView = "console" | "alert" | "system" | "knowledge";
+/* 本文件用于主控制台侧栏组件 负责视图切换和导航入口管理 */
+
+type ConsoleView = "console" | "alert" | "system" | "knowledge" | "control";
 
 type ConsoleSidebarProps = {
   view: ConsoleView;
@@ -80,6 +86,15 @@ export function ConsoleSidebar({ view, activeSection, sectionIds, systemSectionI
           onClick={() => onViewChange("system")}
         >
           系统资源控制台
+        </button>
+        <button
+          className={`view-tab ${view === "control" ? "active" : ""}`}
+          type="button"
+          role="tab"
+          aria-selected={view === "control"}
+          onClick={() => onViewChange("control")}
+        >
+          控制面
         </button>
         <button
           className={`view-tab ${view === "knowledge" ? "active" : ""}`}

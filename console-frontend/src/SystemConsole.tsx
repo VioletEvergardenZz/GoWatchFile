@@ -1,4 +1,10 @@
-﻿/* 本文件用于系统资源控制台页面 负责资源采样展示与进程操作 */
+/**
+ * 文件职责：承载当前页面或模块的核心交互与状态管理
+ * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
+ * 边界处理：对空数据 异常数据和超时请求提供兜底展示
+ */
+
+/* 本文件用于系统资源控制台页面 负责资源采样展示与进程操作 */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./SystemConsole.css";
@@ -54,6 +60,8 @@ const safeStringArray = (value: unknown) => {
 
 type LooseRecord = Record<string, unknown>;
 
+// normalize* 系列函数统一处理后端返回的宽松结构
+// 先收敛成稳定类型再渲染 能显著降低页面空值判断复杂度
 const normalizeOverview = (raw: LooseRecord | null | undefined): SystemOverview => ({
   host: safeString(raw?.host, "--"),
   os: safeString(raw?.os, "--"),
@@ -155,6 +163,8 @@ const emptyOverview: SystemOverview = {
   topProcess: "--",
 };
 
+// SystemConsole 负责系统资源看板与进程操作入口
+// 页面采用“轮询 + 本地筛选”的模式 兼顾实时性和交互流畅度
 export function SystemConsole({ embedded = false, enabled = true, toggleLoading = false, onToggleEnabled }: SystemConsoleProps) {
   const [overview, setOverview] = useState<SystemOverview>(USE_MOCK ? mockSystemOverview : emptyOverview);
   const [gauges, setGauges] = useState<SystemResourceGauge[]>(USE_MOCK ? mockSystemGauges : []);
@@ -193,6 +203,8 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
       setUsingMockData(false);
       return;
     }
+    // refresh 是系统看板的统一拉取函数
+    // 同时使用 aliveRef 和 fetchingRef 避免组件卸载后 setState 与并发重入
     const refresh = async () => {
       if (fetchingRef.current || !aliveRef.current) return;
       fetchingRef.current = true;

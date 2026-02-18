@@ -1,4 +1,10 @@
-﻿/* 本文件用于知识库控制台页面 负责条目管理 审核与问答交互 */
+/**
+ * 文件职责：承载当前页面或模块的核心交互与状态管理
+ * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
+ * 边界处理：对空数据 异常数据和超时请求提供兜底展示
+ */
+
+/* 本文件用于知识库控制台页面 负责条目管理 审核与问答交互 */
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import "./KnowledgeConsole.css";
@@ -68,6 +74,8 @@ type DiffLine = {
 
 const splitLines = (value: string) => value.replace(/\r\n/g, "\n").split("\n");
 
+// buildLineDiff 用于编辑态与历史版本的行级对比
+// 采用轻量逐行比较 目标是快速定位改动而不是实现完整 diff 算法
 const buildLineDiff = (base: string, current: string): DiffLine[] => {
   const baseLines = splitLines(base);
   const currentLines = splitLines(current);
@@ -94,6 +102,8 @@ const buildLineDiff = (base: string, current: string): DiffLine[] => {
   return out;
 };
 
+// renderMarkdownPreview 提供受控的 Markdown 子集渲染
+// 只支持常用标题 列表 代码块 避免引入复杂解析器带来的安全和维护成本
 const renderMarkdownPreview = (content: string): ReactNode => {
   const lines = splitLines(content);
   const nodes: ReactNode[] = [];
@@ -175,6 +185,8 @@ const renderMarkdownPreview = (content: string): ReactNode => {
   return <div className="kb-md-preview">{nodes}</div>;
 };
 
+// KnowledgeConsole 承载知识库检索 编辑 审核和问答流程
+// 页面通过局部 loading 状态拆分 避免一次操作阻塞全部交互
 export function KnowledgeConsole() {
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<ArticleStatusFilter>("published");
@@ -217,6 +229,8 @@ export function KnowledgeConsole() {
   const askCitationRatio = kbMetrics?.askCitationRatio ?? null;
   const reviewLatencyP95 = kbMetrics?.reviewLatencyP95Ms ?? null;
 
+  // loadArticles 是列表主刷新函数
+  // 所有筛选条件最终都汇聚到这里 便于统一维护请求参数口径
   const loadArticles = async () => {
     setLoading(true);
     setError(null);

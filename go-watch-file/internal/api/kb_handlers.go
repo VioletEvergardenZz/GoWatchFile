@@ -1,5 +1,9 @@
 // 本文件用于知识库 HTTP 处理器 将知识库能力通过统一路由暴露给控制台
 
+// 文件职责：实现当前模块的核心业务逻辑与数据流转
+// 关键路径：入口参数先校验再执行业务处理 最后返回统一结果
+// 边界与容错：异常场景显式返回错误 由上层决定重试或降级
+
 package api
 
 import (
@@ -18,6 +22,8 @@ import (
 	"file-watch/internal/models"
 )
 
+// kbArticles 统一处理知识库列表查询与新增
+// GET/POST 共用一个入口便于保持参数口径和错误返回一致
 func (h *handler) kbArticles(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -98,6 +104,8 @@ func (h *handler) kbArticles(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// kbArticleByID 通过路径段分发详情 更新 审批与回滚动作
+// 这里显式拆分 action 分支 防止不同动作共享参数时出现歧义
 func (h *handler) kbArticleByID(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -272,6 +280,8 @@ func (h *handler) kbSearch(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// kbAsk 是知识问答入口
+// 先走检索问答基线 再按配置决定是否叠加 AI 生成 避免强依赖外部模型
 func (h *handler) kbAsk(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -414,6 +424,8 @@ type kbAskMeta struct {
 	FallbackReason string `json:"fallbackReason,omitempty"`
 }
 
+// askKnowledge 统一封装“检索问答 + 可选 AI 增强”的双阶段流程
+// 任何阶段失败都要保留可用的检索结果 保障问答能力可降级
 func (h *handler) askKnowledge(question string, limit int) (kb.AskResult, kbAskMeta, error) {
 	trimmedQuestion := strings.TrimSpace(question)
 	if trimmedQuestion == "" {
@@ -538,6 +550,8 @@ func (h *handler) isKnowledgeAIReady() bool {
 		strings.TrimSpace(cfg.AIModel) != ""
 }
 
+// callAIForKnowledgeAnswer 只负责调用模型并返回结构化结果
+// 业务侧是否采用该结果由上层决策 避免网络波动直接污染问答主流程
 func (h *handler) callAIForKnowledgeAnswer(payload ragPayload) (string, float64, error) {
 	cfg := h.resolveKBConfig()
 	if cfg == nil {
@@ -652,6 +666,8 @@ func buildKnowledgeRAGContent(payload ragPayload) string {
 	return builder.String()
 }
 
+// parseKnowledgeAIResponse 对模型输出做强约束解析
+// 解析失败直接上抛 由上层触发降级路径 保证返回字段稳定
 func parseKnowledgeAIResponse(raw string) (string, float64, error) {
 	clean := strings.TrimSpace(raw)
 	if clean == "" {

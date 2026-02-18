@@ -1,4 +1,10 @@
-﻿/* 本文件用于主控制台分区组件 统一渲染指标 区域块和图表内容 */
+/**
+ * 文件职责：承载当前页面或模块的核心交互与状态管理
+ * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
+ * 边界处理：对空数据 异常数据和超时请求提供兜底展示
+ */
+
+/* 本文件用于主控制台分区组件 统一渲染指标 区域块和图表内容 */
 
 import type { ReactNode, RefObject } from "react";
 import { Line } from "react-chartjs-2";
@@ -25,6 +31,8 @@ type OverviewSectionProps = {
   silenceValue: string;
 };
 
+// OverviewSection 展示运行总览与核心指标
+// 这里保持纯展示组件 不承载副作用逻辑
 export function OverviewSection({ metricCards, hero, silenceValue }: OverviewSectionProps) {
   return (
     <div id="overview" className="stack" style={{ gap: 12 }}>
@@ -95,6 +103,8 @@ type ConfigSectionProps = {
   retryDelayError?: string | null;
 };
 
+// ConfigSection 负责渲染可编辑配置表单
+// 保存和校验逻辑由父层注入 便于复用和测试
 export function ConfigSection({ configForm, saving, saveMessage, onChange, onSave, retryDelayError }: ConfigSectionProps) {
   return (
     <section className="panel" id="config">
@@ -196,6 +206,8 @@ type DirectorySectionProps = {
   onManualUpload: () => void;
 };
 
+// DirectorySection 展示目录树与节点操作
+// 与文件列表分离可以减少大列表渲染时的联动开销
 export function DirectorySection({
   tree,
   currentRoot,
@@ -304,6 +316,7 @@ type FilesSectionProps = {
   formatTime: (value: string) => string;
 };
 
+// FilesSection 专注文件筛选与分页
 export function FilesSection({
   searchTerm,
   fileFilter,
@@ -438,6 +451,7 @@ type TailSectionProps = {
   renderLogLine: (line: string) => ReactNode;
 };
 
+// TailSection 负责日志 tail 与 AI 分析入口
 export function TailSection({
   logMode,
   logQuery,
@@ -600,6 +614,7 @@ type UploadsSectionProps = {
   formatTime: (value: string) => string;
 };
 
+// UploadsSection 展示上传记录与分页检索
 export function UploadsSection({
   uploadSearchTerm,
   records,
@@ -690,6 +705,7 @@ type MonitorSectionProps = {
   chartOptions: ChartOptions<"line">;
 };
 
+// MonitorSection 展示趋势图与监控摘要
 export function MonitorSection({ summary, notes, chartData, chartOptions }: MonitorSectionProps) {
   return (
     <section className="panel" id="monitor">

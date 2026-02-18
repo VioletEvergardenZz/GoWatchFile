@@ -1,4 +1,10 @@
-﻿/* 本文件用于前端类型定义 统一接口契约减少页面间结构分歧 */
+/**
+ * 文件职责：承载当前页面或模块的核心交互与状态管理
+ * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
+ * 边界处理：对空数据 异常数据和超时请求提供兜底展示
+ */
+
+/* 本文件用于前端类型定义 统一接口契约减少页面间结构分歧 */
 
 export type FileNode = {
   name: string;
@@ -403,5 +409,87 @@ export type KnowledgePendingReviewsResponse = {
 export type KnowledgeRecommendationsResponse = {
   ok: boolean;
   items: KnowledgeArticle[];
+};
+
+export type ControlAgentStatus = "online" | "offline" | "draining";
+
+export type ControlAgent = {
+  id: string;
+  agentKey: string;
+  hostname: string;
+  version: string;
+  ip: string;
+  groupName: string;
+  status: ControlAgentStatus;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+  heartbeatCount: number;
+};
+
+export type ControlTaskStatus = "pending" | "assigned" | "running" | "success" | "failed" | "timeout" | "canceled";
+
+export type ControlTask = {
+  id: string;
+  type: string;
+  target: string;
+  payload?: Record<string, unknown>;
+  priority: string;
+  status: ControlTaskStatus | string;
+  assignedAgentId?: string;
+  retryCount: number;
+  maxRetries: number;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+};
+
+export type ControlAgentsResponse = {
+  ok: boolean;
+  items: ControlAgent[];
+  total: number;
+};
+
+export type ControlTasksResponse = {
+  ok: boolean;
+  items: ControlTask[];
+  total: number;
+};
+
+export type ControlTaskResponse = {
+  ok: boolean;
+  task: ControlTask;
+};
+
+export type ControlTaskEvent = {
+  id: number;
+  taskId: string;
+  agentId?: string;
+  eventType: string;
+  message?: string;
+  eventTime: string;
+};
+
+export type ControlTaskEventsResponse = {
+  ok: boolean;
+  items: ControlTaskEvent[];
+  total: number;
+};
+
+export type ControlAuditLog = {
+  id: number;
+  operator: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  detail?: Record<string, unknown>;
+  createdAt: string;
+};
+
+export type ControlAuditLogsResponse = {
+  ok: boolean;
+  items: ControlAuditLog[];
+  total: number;
 };
 

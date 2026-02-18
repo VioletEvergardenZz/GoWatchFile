@@ -1,4 +1,8 @@
 // 本文件用于控制面 MVP 的 Agent/Task 最小接口。
+// 文件职责：实现当前模块的核心业务逻辑与数据流转
+// 关键路径：入口参数先校验再执行业务处理 最后返回统一结果
+// 边界与容错：异常场景显式返回错误 由上层决定重试或降级
+
 package api
 
 import (
@@ -94,6 +98,8 @@ type controlCreateTaskRequest struct {
 	MaxRetries int            `json:"maxRetries"`
 }
 
+// controlAgentsHandler 统一承接 Agent 集合级接口
+// 这里保留最小分发逻辑 具体业务落到子函数避免单函数过大
 func (h *handler) controlAgentsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -109,6 +115,8 @@ func (h *handler) controlAgentsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// controlAgentByIDHandler 处理 agent 详情和动作子路由
+// 采用路径段分发 保持 net/http 原生实现而不引入额外路由依赖
 func (h *handler) controlAgentByIDHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -133,6 +141,7 @@ func (h *handler) controlAgentByIDHandler(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// controlTasksHandler 统一承接 Task 集合级接口
 func (h *handler) controlTasksHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -148,6 +157,8 @@ func (h *handler) controlTasksHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// controlTaskByIDHandler 处理 task 详情与动作入口
+// ACK/PROGRESS/COMPLETE 在这里与查询接口共用路径前缀 便于控制台调用
 func (h *handler) controlTaskByIDHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
@@ -167,11 +178,21 @@ func (h *handler) controlTaskByIDHandler(w http.ResponseWriter, r *http.Request)
 		h.controlCancelTask(w, taskID)
 	case len(parts) == 2 && r.Method == http.MethodPost && parts[1] == "retry":
 		h.controlRetryTask(w, taskID)
+	case len(parts) == 2 && r.Method == http.MethodPost && parts[1] == "ack":
+		h.controlAckTask(w, r, taskID)
+	case len(parts) == 2 && r.Method == http.MethodPost && parts[1] == "progress":
+		h.controlProgressTask(w, r, taskID)
+	case len(parts) == 2 && r.Method == http.MethodPost && parts[1] == "complete":
+		h.controlCompleteTask(w, r, taskID)
+	case len(parts) == 2 && r.Method == http.MethodGet && parts[1] == "events":
+		h.controlListTaskEvents(w, r, taskID)
 	default:
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
 	}
 }
 
+// controlRegisterAgent 以 agentKey 作为幂等键
+// 重复注册不会创建新实体 而是更新现有 agent 元信息
 func (h *handler) controlRegisterAgent(w http.ResponseWriter, r *http.Request) {
 	var req controlRegisterAgentRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -217,6 +238,13 @@ func (h *handler) controlRegisterAgent(w http.ResponseWriter, r *http.Request) {
 	}
 	h.controlAgents[state.ID] = state
 	h.controlAgentKeyIdx[state.AgentKey] = state.ID
+	h.controlAppendAuditLogLocked(state.AgentKey, "agent_register", "agent", state.ID, map[string]any{
+		"hostname":  state.Hostname,
+		"version":   state.Version,
+		"ip":        state.IP,
+		"groupName": state.GroupName,
+		"created":   created,
+	}, now)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":      true,
@@ -305,6 +333,7 @@ func (h *handler) controlHeartbeatAgent(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	h.controlAgents[agentID] = state
+	// 心跳属于高频动作，审计日志不做强制写入，避免对存储造成压力
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":    true,
@@ -331,6 +360,10 @@ func (h *handler) controlDrainAgent(w http.ResponseWriter, agentID string) {
 		return
 	}
 	h.controlAgents[agentID] = state
+	h.controlAppendAuditLogLocked("console", "agent_drain", "agent", agentID, map[string]any{
+		"agentKey":  state.AgentKey,
+		"groupName": state.GroupName,
+	}, now)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":    true,
@@ -338,6 +371,8 @@ func (h *handler) controlDrainAgent(w http.ResponseWriter, agentID string) {
 	})
 }
 
+// controlCreateTask 负责入队任务创建
+// 创建时统一补齐默认优先级与重试参数 保证调度器读取到稳定字段
 func (h *handler) controlCreateTask(w http.ResponseWriter, r *http.Request) {
 	var req controlCreateTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -378,6 +413,13 @@ func (h *handler) controlCreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.controlTasks[state.ID] = state
+	h.controlAppendTaskEventLocked(state.ID, "", "created", "任务已创建", now)
+	h.controlAppendAuditLogLocked(state.CreatedBy, "task_create", "task", state.ID, map[string]any{
+		"type":       state.Type,
+		"target":     state.Target,
+		"priority":   state.Priority,
+		"maxRetries": state.MaxRetries,
+	}, now)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":   true,
@@ -456,6 +498,11 @@ func (h *handler) controlCancelTask(w http.ResponseWriter, taskID string) {
 		return
 	}
 	h.controlTasks[taskID] = state
+	h.controlAppendTaskEventLocked(taskID, state.AssignedAgentID, "canceled", "任务已取消", now)
+	h.controlAppendAuditLogLocked("console", "task_cancel", "task", taskID, map[string]any{
+		"type":   state.Type,
+		"status": state.Status,
+	}, now)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":   true,
@@ -494,6 +541,12 @@ func (h *handler) controlRetryTask(w http.ResponseWriter, taskID string) {
 		return
 	}
 	h.controlTasks[taskID] = state
+	h.controlAppendTaskEventLocked(taskID, "", "retried", "任务已重试并重新进入 pending", now)
+	h.controlAppendAuditLogLocked("console", "task_retry", "task", taskID, map[string]any{
+		"type":       state.Type,
+		"retryCount": state.RetryCount,
+		"maxRetries": state.MaxRetries,
+	}, now)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":   true,
@@ -513,6 +566,8 @@ func (h *handler) ensureControlStoresLocked() {
 	}
 }
 
+// loadControlSnapshot 在启动阶段恢复 agents/tasks 快照
+// 恢复失败时由上层降级为内存模式 保持接口可用
 func (h *handler) loadControlSnapshot() error {
 	if h == nil || h.controlStore == nil {
 		return nil

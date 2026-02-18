@@ -1,9 +1,16 @@
-﻿/* 本文件用于主控制台页面 聚合上传 告警 系统和知识库视图 */
+/**
+ * 文件职责：承载当前页面或模块的核心交互与状态管理
+ * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
+ * 边界处理：对空数据 异常数据和超时请求提供兜底展示
+ */
+
+/* 本文件用于主控制台页面 聚合上传 告警 系统和知识库视图 */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ChartOptions } from "chart.js";
 import { CategoryScale, Chart as ChartJS, Filler, Legend, LineElement, LinearScale, PointElement, Tooltip } from "chart.js";
 import { AlertConsole } from "./AlertConsole";
+import { ControlConsole } from "./ControlConsole";
 import { KnowledgeConsole } from "./KnowledgeConsole";
 import { SystemConsole } from "./SystemConsole";
 import { ConsoleHeader } from "./console/ConsoleHeader";
@@ -85,7 +92,7 @@ const FILE_PAGE_SIZE = 10;
 const LOG_POLL_MS = 2000;
 const DASHBOARD_POLL_MS = 3000;
 const THEME_STORAGE_KEY = "gwf-theme";
-type ConsoleView = "console" | "alert" | "system" | "knowledge";
+type ConsoleView = "console" | "alert" | "system" | "knowledge" | "control";
 
 type OriginalConsoleProps = {
   view: ConsoleView;
@@ -132,6 +139,8 @@ const emptyChartPoints: ChartPoint[] = [];
 const emptyTree: FileNode[] = [];
 const emptyFiles: FileItem[] = [];
 
+// OriginalConsole 是控制台总容器
+// 顶层集中管理跨页面共享状态 再把子状态下发给分区组件
 export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [tree, setTree] = useState<FileNode[]>(USE_MOCK ? treeSeed : emptyTree);
   const [files, setFiles] = useState<FileItem[]>(USE_MOCK ? fileSeed : emptyFiles);
@@ -281,6 +290,8 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     dirPathsRef.current = currentSet;
   }, [dirPaths]);
 
+  // refreshDashboard 统一刷新仪表盘主数据
+  // 通过并发保护避免慢请求覆盖新请求的结果
   const refreshDashboard = useCallback(async () => {
     if (USE_MOCK) {
       setBootstrapped(true);
@@ -422,7 +433,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   }, [currentRoot, rootNodes, activePath]);
 
   useEffect(() => {
-    if (view === "alert" || view === "knowledge") return;
+    if (view === "alert" || view === "knowledge" || view === "control") return;
     if (view === "console" && !bootstrapped) return;
     const sectionIds = view === "system" ? SYSTEM_SECTION_IDS : SECTION_IDS;
     const visibleSections = visibleSectionsRef.current;
@@ -481,6 +492,8 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
     setAiError(null);
   }, []);
 
+  // fetchLogLines 负责 tail/search 两种日志读取模式
+  // 使用 requestId 防止“旧请求后返回”覆盖最新查询结果
   const fetchLogLines = useCallback(async (path: string, options: LogFetchOptions = {}) => {
     const requestId = ++logRequestIdRef.current;
     const trimmedQuery = options.query?.trim() ?? "";
@@ -1246,8 +1259,10 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
             <AlertConsole embedded />
           ) : view === "system" ? (
             <SystemConsole embedded enabled={systemResourceEnabled} toggleLoading={systemToggleSaving || saving} onToggleEnabled={handleSystemResourceToggle} />
-          ) : (
+          ) : view === "knowledge" ? (
             <KnowledgeConsole />
+          ) : (
+            <ControlConsole />
           )}
         </div>
       </div>

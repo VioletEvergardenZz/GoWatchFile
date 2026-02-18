@@ -273,12 +273,28 @@ ai_max_lines: 200
   - `GET /api/control/agents/{id}`（详情）
   - `POST /api/control/agents/{id}/heartbeat`（心跳）
   - `POST /api/control/agents/{id}/drain`（摘流）
+- 分发：
+  - `POST /api/control/dispatch/pull`（Agent 拉取任务，MVP 为轮询模式）
+- 审计：
+  - `GET /api/control/audit`（按资源/操作人/动作筛选审计日志）
+  - 查询参数：
+    - `resourceType`（如 `task` / `agent`）
+    - `resourceId`（资源 ID）
+    - `operator`（操作人）
+    - `action`（动作名）
+    - `from`（开始时间，支持 `RFC3339` 或 `YYYY-MM-DDTHH:mm`）
+    - `to`（结束时间，支持 `RFC3339` 或 `YYYY-MM-DDTHH:mm`）
+    - `limit`（默认 200，最大 2000）
 - 任务：
   - `POST /api/control/tasks`（创建任务）
   - `GET /api/control/tasks`（任务列表）
   - `GET /api/control/tasks/{id}`（任务详情）
   - `POST /api/control/tasks/{id}/cancel`（取消）
   - `POST /api/control/tasks/{id}/retry`（重试）
+  - `POST /api/control/tasks/{id}/ack`（ack 并进入 running）
+  - `POST /api/control/tasks/{id}/progress`（进度心跳，刷新 running 的 updatedAt）
+  - `POST /api/control/tasks/{id}/complete`（完成并进入 success/failed）
+  - `GET /api/control/tasks/{id}/events`（任务事件列表）
 - 说明：
   - 当前为 MVP 实现，默认落盘到 `data/control/control.db`，重启后可恢复。
   - 可通过环境变量 `CONTROL_DATA_DIR` 指定存储目录。
@@ -323,6 +339,12 @@ cd go-watch-file
 go run ./cmd/kb-eval mttd -input ../docs/04-知识库/知识库MTTD基线.csv
 ```
 
+知识库复盘汇总：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -SamplesFile ../docs/04-知识库/知识库命中率样本.json -MttdFile ../docs/04-知识库/知识库MTTD基线.csv -OutputFile ../reports/kb-recap-result.json
+```
+
 ## 可靠性演练脚本
 指标巡检：
 ```powershell
@@ -342,6 +364,18 @@ cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt -OutputFile ../reports/ai-replay-result.json
 ```
 可直接维护 `../docs/03-告警与AI/AI回放路径清单.txt`，命令中的 `-PathsFile` 建议改为该路径。
+
+控制面回放：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/control-replay.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -AgentCount 3 -TaskCount 30 -OutputFile ../reports/control-replay-result.json -MetricsFile ../reports/metrics-control-replay.prom
+```
+
+阶段一键复盘（metrics + control + kb）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -OutputFile ../reports/stage-recap-result.json
+```
 
 ## 相关文档
 - 文档导航：`../docs/文档导航.md`

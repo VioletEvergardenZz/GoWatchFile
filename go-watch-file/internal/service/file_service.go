@@ -1,4 +1,8 @@
 // 本文件用于文件监控服务的核心协作流程
+// 文件职责：实现当前模块的核心业务逻辑与数据流转
+// 关键路径：入口参数先校验再执行业务处理 最后返回统一结果
+// 边界与容错：异常场景显式返回错误 由上层决定重试或降级
+
 package service
 
 import (
@@ -68,6 +72,8 @@ const (
 )
 
 // NewFileService 构造并初始化 FileService 的依赖
+// 初始化顺序固定为 状态 -> 存储客户端 -> 告警管理 -> 上传池 -> 监听器
+// 这样任一环节失败都能在启动前暴露 不把半初始化实例暴露给外层
 func NewFileService(config *models.Config, configPath string) (*FileService, error) {
 	runtimeState := state.NewRuntimeState(config)
 	if err := runtimeState.BootstrapExisting(); err != nil {
@@ -272,6 +278,8 @@ func (fs *FileService) persistRuntimeConfig(cfg *models.Config) {
 }
 
 // UpdateConfig 更新运行时配置并重建监听器与上传池
+// UpdateConfig 负责运行态配置热更新
+// 仅允许更新白名单字段 其余静态策略保持重启生效原则
 func (fs *FileService) UpdateConfig(watchDir, fileExt, silence string, uploadWorkers, uploadQueueSize int, uploadRetryDelays string, uploadRetryEnabled *bool, systemResourceEnabled *bool) (*models.Config, error) {
 	// 先加锁读取当前配置与组件引用
 	fs.mu.Lock()
@@ -495,6 +503,8 @@ func validateFileExt(ext string) error {
 }
 
 // Start 启动文件服务
+// Start 启动监听 告警和上传执行链路
+// 启动失败时直接返回错误 避免服务处于“部分可用”状态
 func (fs *FileService) Start() error {
 	logger.Info("启动文件服务...")
 	// 先启动文件监听 再启动告警轮询
@@ -512,6 +522,8 @@ func (fs *FileService) Start() error {
 }
 
 // Stop 停止文件服务
+// Stop 按 watcher -> alert -> upload 的顺序关闭
+// 顺序关闭可以减少“新任务继续入队但消费已停止”的竞态窗口
 func (fs *FileService) Stop() error {
 	logger.Info("停止文件服务...")
 	fs.mu.Lock()
@@ -535,6 +547,8 @@ func (fs *FileService) Stop() error {
 }
 
 // processFile 处理单个文件：上传、触发构建、发送通知
+// processFile 是上传执行主路径
+// 它统一负责上传 重试 通知和运行态更新 避免分散状态更新导致口径不一致
 func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	start := time.Now()
 	manual := fs.consumeManualOnce(filePath)
@@ -571,6 +585,8 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 }
 
 // uploadFileWithRetry 负责上传重试，避免短暂失败导致任务丢失
+// uploadFileWithRetry 把重试策略与上传调用绑定
+// 每次失败都记录可观测指标 便于区分瞬时波动与持续性故障
 func (fs *FileService) uploadFileWithRetry(ctx context.Context, filePath string) (string, error) {
 	if fs.ossClient == nil {
 		return "", fmt.Errorf("OSS客户端未初始化")
@@ -1066,6 +1082,8 @@ func (fs *FileService) EnqueueManualUpload(filePath string) error {
 }
 
 // enqueueFile 将文件加入上传队列并更新状态
+// enqueueFile 统一处理自动与手动入队
+// 入队前会执行队列饱和判断与熔断策略 防止雪崩式堆积
 func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 	norm := normalizeManualPath(filePath)
 	if fs.state != nil {
@@ -1114,6 +1132,8 @@ func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 }
 
 // shouldShedByQueueSaturation 在队列接近满载时触发限流，避免持续堆积。
+// shouldShedByQueueSaturation 在入队前做背压判定
+// 判定逻辑只依赖当前队列快照 保持快速且无阻塞
 func (fs *FileService) shouldShedByQueueSaturation() bool {
 	if fs == nil || fs.uploadPool == nil {
 		return false

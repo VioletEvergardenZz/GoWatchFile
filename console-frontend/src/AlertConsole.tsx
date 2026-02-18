@@ -1,4 +1,10 @@
-﻿/* 本文件用于告警控制台页面 负责告警列表 配置和知识推荐联动 */
+/**
+ * 文件职责：承载当前页面或模块的核心交互与状态管理
+ * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
+ * 边界处理：对空数据 异常数据和超时请求提供兜底展示
+ */
+
+/* 本文件用于告警控制台页面 负责告警列表 配置和知识推荐联动 */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import "./Alert.css";
@@ -83,6 +89,8 @@ const STATUS_LABELS: Record<AlertDecisionStatus, string> = {
   recorded: "仅记录",
 };
 
+// 颜色语义统一集中在这里
+// 样式策略变化时只需调整映射函数 不会散落到渲染层
 const resolveRiskTone = (risk: string) => {
   if (risk.includes("严重")) return "critical";
   if (risk.includes("高")) return "high";
@@ -198,6 +206,8 @@ const createRuleDraft = (seed: Partial<RuleDraft> = {}): RuleDraft => ({
   notifyMode: seed.notifyMode ?? "inherit",
 });
 
+// buildRulesetDraft 把后端结构转换为可编辑草稿
+// 草稿层保证字段完整 可以避免表单组件处理大量空值分支
 const buildRulesetDraft = (ruleset: AlertRuleset | null | undefined): RulesetDraft => {
   const fallback = createDefaultRuleset();
   if (!ruleset) {
@@ -241,6 +251,8 @@ const buildRulesetDraft = (ruleset: AlertRuleset | null | undefined): RulesetDra
   };
 };
 
+// toApiRuleset 把页面草稿收敛回后端协议
+// 这里会统一做 trim 和空值清理 防止把噪声字段写入配置
 const toApiRuleset = (draft: RulesetDraft): AlertRuleset => ({
   version: draft.version,
   defaults: {
@@ -281,6 +293,8 @@ type AlertConsoleProps = {
   embedded?: boolean;
 };
 
+// AlertConsole 统一承载告警大盘 规则配置和 AI 诊断交互
+// 状态较多时坚持“草稿态与已发布态分离” 便于安全修改和回滚
 export function AlertConsole({ embedded = false }: AlertConsoleProps) {
   const [dashboard, setDashboard] = useState<AlertDashboard>(USE_MOCK ? alertDashboard : emptyDashboard);
   const [loading, setLoading] = useState(!USE_MOCK);

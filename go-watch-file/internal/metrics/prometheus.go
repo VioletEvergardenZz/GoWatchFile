@@ -1,5 +1,9 @@
 // 本文件用于 Prometheus 指标聚合与导出 将运行时指标统一收口便于监控接入
 
+// 文件职责：实现当前模块的核心业务逻辑与数据流转
+// 关键路径：入口参数先校验再执行业务处理 最后返回统一结果
+// 边界与容错：异常场景显式返回错误 由上层决定重试或降级
+
 package metrics
 
 import (
@@ -34,12 +38,21 @@ type Collector struct {
 	kbAskTotal         atomic.Uint64
 	kbAskCitationTotal atomic.Uint64
 
+	controlAgentsTotal            atomic.Int64
+	controlAgentsOnline           atomic.Int64
+	controlAgentHeartbeatLagMaxMs atomic.Int64
+
+	controlTaskBacklog      atomic.Int64
+	controlTaskTimeoutTotal atomic.Uint64
+
 	mu                     sync.RWMutex
 	uploadFailuresByReason map[string]uint64
 	aiByOutcome            map[string]uint64
+	controlTaskCounts      map[string]uint64
 	uploadDurationSec      *histogram
 	aiDurationSec          *histogram
 	kbReviewLatencyMs      *histogram
+	controlTaskDurationSec *histogram
 }
 
 type histogram struct {
@@ -63,9 +76,11 @@ func NewCollector() *Collector {
 	return &Collector{
 		uploadFailuresByReason: make(map[string]uint64),
 		aiByOutcome:            make(map[string]uint64),
+		controlTaskCounts:      make(map[string]uint64),
 		uploadDurationSec:      newHistogram([]float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30}),
 		aiDurationSec:          newHistogram([]float64{0.2, 0.5, 1, 2, 3, 5, 8, 13, 20, 30}),
 		kbReviewLatencyMs:      newHistogram([]float64{50, 100, 200, 300, 500, 800, 1200, 2000, 5000}),
+		controlTaskDurationSec: newHistogram([]float64{0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300}),
 	}
 }
 
@@ -250,6 +265,54 @@ func (c *Collector) ObserveKBReviewLatency(latency time.Duration) {
 	c.mu.Unlock()
 }
 
+// SetControlAgentSnapshot 刷新控制面 Agent 的在线统计与最大心跳延迟
+func (c *Collector) SetControlAgentSnapshot(total, online int, heartbeatLagMax time.Duration) {
+	if c == nil {
+		return
+	}
+	c.controlAgentsTotal.Store(int64(total))
+	c.controlAgentsOnline.Store(int64(online))
+	if heartbeatLagMax < 0 {
+		heartbeatLagMax = 0
+	}
+	c.controlAgentHeartbeatLagMaxMs.Store(heartbeatLagMax.Milliseconds())
+}
+
+// SetControlTaskSnapshot 刷新控制面任务的 backlog 与按 status/type 聚合的数量
+// counts 的 key 使用 "status|type" 形式，值为对应数量
+func (c *Collector) SetControlTaskSnapshot(backlog int, counts map[string]uint64) {
+	if c == nil {
+		return
+	}
+	c.controlTaskBacklog.Store(int64(backlog))
+	c.mu.Lock()
+	c.controlTaskCounts = make(map[string]uint64, len(counts))
+	for key, value := range counts {
+		c.controlTaskCounts[key] = value
+	}
+	c.mu.Unlock()
+}
+
+// IncControlTaskTimeout 记录控制面任务超时次数
+func (c *Collector) IncControlTaskTimeout() {
+	if c == nil {
+		return
+	}
+	c.controlTaskTimeoutTotal.Add(1)
+}
+
+// ObserveControlTaskDuration 记录控制面任务从创建到终态的耗时
+func (c *Collector) ObserveControlTaskDuration(taskType, status string, latency time.Duration) {
+	if c == nil {
+		return
+	}
+	_ = taskType
+	_ = status
+	c.mu.Lock()
+	c.controlTaskDurationSec.observe(latency.Seconds())
+	c.mu.Unlock()
+}
+
 // RenderPrometheus 以 text exposition 格式导出指标。
 func (c *Collector) RenderPrometheus() string {
 	if c == nil {
@@ -287,9 +350,11 @@ func (c *Collector) RenderPrometheus() string {
 
 	uploadFailureByReason := make(map[string]uint64)
 	aiByOutcome := make(map[string]uint64)
+	controlTaskCounts := make(map[string]uint64)
 	var uploadDurationCopy histogram
 	var aiDurationCopy histogram
 	var kbReviewCopy histogram
+	var controlTaskDurationCopy histogram
 	c.mu.RLock()
 	for reason, count := range c.uploadFailuresByReason {
 		uploadFailureByReason[reason] = count
@@ -297,9 +362,13 @@ func (c *Collector) RenderPrometheus() string {
 	for outcome, count := range c.aiByOutcome {
 		aiByOutcome[outcome] = count
 	}
+	for key, count := range c.controlTaskCounts {
+		controlTaskCounts[key] = count
+	}
 	uploadDurationCopy = cloneHistogram(c.uploadDurationSec)
 	aiDurationCopy = cloneHistogram(c.aiDurationSec)
 	kbReviewCopy = cloneHistogram(c.kbReviewLatencyMs)
+	controlTaskDurationCopy = cloneHistogram(c.controlTaskDurationSec)
 	c.mu.RUnlock()
 
 	writeMetricHeader(&builder, "gwf_upload_failure_reason_total", "counter", "Upload failures grouped by reason.")
@@ -359,6 +428,55 @@ func (c *Collector) RenderPrometheus() string {
 
 	writeMetricHeader(&builder, "gwf_kb_review_latency_ms", "histogram", "Knowledge base review action latency distribution in milliseconds.")
 	kbReviewCopy.writePrometheus(&builder, "gwf_kb_review_latency_ms", nil)
+
+	controlAgentsTotal := c.controlAgentsTotal.Load()
+	controlAgentsOnline := c.controlAgentsOnline.Load()
+	controlHeartbeatLagMaxMs := c.controlAgentHeartbeatLagMaxMs.Load()
+	controlTaskBacklog := c.controlTaskBacklog.Load()
+	controlTaskTimeoutTotal := c.controlTaskTimeoutTotal.Load()
+
+	writeMetricHeader(&builder, "gwf_control_agents_total", "gauge", "Total control plane agents.")
+	writeGaugeInt(&builder, "gwf_control_agents_total", controlAgentsTotal, nil)
+
+	writeMetricHeader(&builder, "gwf_control_agents_online", "gauge", "Online control plane agents.")
+	writeGaugeInt(&builder, "gwf_control_agents_online", controlAgentsOnline, nil)
+
+	writeMetricHeader(&builder, "gwf_control_agent_heartbeat_lag_seconds", "gauge", "Max agent heartbeat lag in seconds.")
+	writeGaugeFloat(&builder, "gwf_control_agent_heartbeat_lag_seconds", float64(controlHeartbeatLagMaxMs)/1000.0, nil)
+
+	writeMetricHeader(&builder, "gwf_control_task_backlog", "gauge", "Current control plane task backlog (pending tasks).")
+	writeGaugeInt(&builder, "gwf_control_task_backlog", controlTaskBacklog, nil)
+
+	writeMetricHeader(&builder, "gwf_control_tasks_total", "gauge", "Control plane task count grouped by status and type.")
+	if len(controlTaskCounts) == 0 {
+		writeGaugeInt(&builder, "gwf_control_tasks_total", 0, map[string]string{
+			"status": "pending",
+			"type":   "unknown",
+		})
+	} else {
+		keys := sortedStringKeysFromUintMap(controlTaskCounts)
+		for _, key := range keys {
+			parts := strings.SplitN(key, "|", 2)
+			status := "unknown"
+			taskType := "unknown"
+			if len(parts) == 2 {
+				status = normalizeMetricLabel(parts[0])
+				taskType = normalizeMetricLabel(parts[1])
+			} else if len(parts) == 1 {
+				status = normalizeMetricLabel(parts[0])
+			}
+			writeGaugeInt(&builder, "gwf_control_tasks_total", int64(controlTaskCounts[key]), map[string]string{
+				"status": status,
+				"type":   taskType,
+			})
+		}
+	}
+
+	writeMetricHeader(&builder, "gwf_control_task_timeout_total", "counter", "Total control plane task timeouts.")
+	writeCounter(&builder, "gwf_control_task_timeout_total", controlTaskTimeoutTotal, nil)
+
+	writeMetricHeader(&builder, "gwf_control_task_duration_seconds", "histogram", "Control plane task duration distribution in seconds.")
+	controlTaskDurationCopy.writePrometheus(&builder, "gwf_control_task_duration_seconds", nil)
 
 	return builder.String()
 }
@@ -513,13 +631,20 @@ func (c *Collector) ResetForTest() {
 	c.kbSearchHitTotal.Store(0)
 	c.kbAskTotal.Store(0)
 	c.kbAskCitationTotal.Store(0)
+	c.controlAgentsTotal.Store(0)
+	c.controlAgentsOnline.Store(0)
+	c.controlAgentHeartbeatLagMaxMs.Store(0)
+	c.controlTaskBacklog.Store(0)
+	c.controlTaskTimeoutTotal.Store(0)
 
 	c.mu.Lock()
 	c.uploadFailuresByReason = make(map[string]uint64)
 	c.aiByOutcome = make(map[string]uint64)
+	c.controlTaskCounts = make(map[string]uint64)
 	c.uploadDurationSec = newHistogram([]float64{0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10, 30})
 	c.aiDurationSec = newHistogram([]float64{0.2, 0.5, 1, 2, 3, 5, 8, 13, 20, 30})
 	c.kbReviewLatencyMs = newHistogram([]float64{50, 100, 200, 300, 500, 800, 1200, 2000, 5000})
+	c.controlTaskDurationSec = newHistogram([]float64{0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300})
 	c.mu.Unlock()
 }
 

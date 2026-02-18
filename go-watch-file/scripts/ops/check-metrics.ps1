@@ -6,6 +6,7 @@ param(
   [string]$OutputFile = ""
 )
 
+# 先规整 URL 再拼接，避免调用方传入末尾斜杠导致重复 //
 $endpoint = "{0}/metrics" -f $BaseUrl.TrimEnd("/")
 Write-Host "检查指标端点: $endpoint"
 
@@ -16,17 +17,22 @@ try {
   exit 2
 }
 
+# 仅接受 2xx，提前拦截 401/500 等常见发布异常
 if ($resp.StatusCode -lt 200 -or $resp.StatusCode -ge 300) {
   Write-Error "指标端点状态码异常: $($resp.StatusCode)"
   exit 2
 }
 
 $content = [string]$resp.Content
+# 返回空文本通常意味着网关/反向代理链路异常，直接判失败
 if ([string]::IsNullOrWhiteSpace($content)) {
   Write-Error "指标响应为空"
   exit 2
 }
 
+# 关键指标最小集：
+# - 覆盖上传、AI、知识库、控制面四条主链路
+# - 使用正则而非精确文本，兼容标签变化和样本顺序变化
 $required = @(
   @{ Name = "gwf_file_events_total"; Pattern = "(?m)^gwf_file_events_total(\{.*\})?\s+" },
   @{ Name = "gwf_upload_queue_length"; Pattern = "(?m)^gwf_upload_queue_length(\{.*\})?\s+" },
@@ -38,7 +44,14 @@ $required = @(
   @{ Name = "gwf_ai_log_summary_total"; Pattern = "(?m)(^gwf_ai_log_summary_total(\{.*\})?\s+|^# TYPE gwf_ai_log_summary_total counter$)" },
   @{ Name = "gwf_ai_log_summary_retry_total"; Pattern = "(?m)^gwf_ai_log_summary_retry_total(\{.*\})?\s+" },
   @{ Name = "gwf_kb_search_hit_ratio"; Pattern = "(?m)^gwf_kb_search_hit_ratio(\{.*\})?\s+" },
-  @{ Name = "gwf_kb_ask_citation_ratio"; Pattern = "(?m)^gwf_kb_ask_citation_ratio(\{.*\})?\s+" }
+  @{ Name = "gwf_kb_ask_citation_ratio"; Pattern = "(?m)^gwf_kb_ask_citation_ratio(\{.*\})?\s+" },
+  @{ Name = "gwf_control_agents_total"; Pattern = "(?m)^gwf_control_agents_total(\{.*\})?\s+" },
+  @{ Name = "gwf_control_agents_online"; Pattern = "(?m)^gwf_control_agents_online(\{.*\})?\s+" },
+  @{ Name = "gwf_control_agent_heartbeat_lag_seconds"; Pattern = "(?m)^gwf_control_agent_heartbeat_lag_seconds(\{.*\})?\s+" },
+  @{ Name = "gwf_control_task_backlog"; Pattern = "(?m)^gwf_control_task_backlog(\{.*\})?\s+" },
+  @{ Name = "gwf_control_tasks_total"; Pattern = "(?m)^gwf_control_tasks_total(\{.*\})?\s+" },
+  @{ Name = "gwf_control_task_timeout_total"; Pattern = "(?m)^gwf_control_task_timeout_total(\{.*\})?\s+" },
+  @{ Name = "gwf_control_task_duration_seconds"; Pattern = "(?m)^gwf_control_task_duration_seconds_(bucket|sum|count)(\{.*\})?\s+" }
 )
 
 $missing = @()
@@ -48,6 +61,7 @@ foreach ($metric in $required) {
   }
 }
 
+# 可选写出原始快照，便于复盘“为什么缺指标”
 if ($OutputFile -ne "") {
   $dir = Split-Path -Parent $OutputFile
   if ($dir -and -not (Test-Path $dir)) {
@@ -57,6 +71,7 @@ if ($OutputFile -ne "") {
   Write-Host "已保存指标快照: $OutputFile"
 }
 
+# 退出码约定：0=通过，2=端点访问/响应异常，3=缺少关键指标
 if ($missing.Count -gt 0) {
   Write-Error ("缺少关键指标: " + ($missing -join ", "))
   exit 3

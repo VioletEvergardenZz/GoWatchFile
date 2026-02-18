@@ -1,5 +1,9 @@
 // 本文件用于知识库服务实现 将条目生命周期和检索能力集中在服务层管理
 
+// 文件职责：实现当前模块的核心业务逻辑与数据流转
+// 关键路径：入口参数先校验再执行业务处理 最后返回统一结果
+// 边界与容错：异常场景显式返回错误 由上层决定重试或降级
+
 package kb
 
 import (
@@ -33,6 +37,9 @@ type Service struct {
 	reviewDays int
 }
 
+// NewService 统一负责知识库存储初始化
+// 这里把目录创建 打开数据库 设置 WAL 和迁移收敛在一个入口
+// 这样可以确保调用方拿到 Service 时已经处于可读写状态
 func NewService(dataDir string) (*Service, error) {
 	root := strings.TrimSpace(dataDir)
 	if root == "" {
@@ -75,6 +82,9 @@ func (s *Service) DBPath() string {
 	return s.dbPath
 }
 
+// CreateArticle 是知识库写入主路径
+// 文章主表 版本表 标签 参考来源和评审记录必须在同一事务内提交
+// 任一子步骤失败都会触发回滚 避免出现半成功数据
 func (s *Service) CreateArticle(input CreateArticleInput) (*Article, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("kb service not ready")
@@ -147,6 +157,8 @@ func (s *Service) CreateArticle(input CreateArticleInput) (*Article, error) {
 	return s.GetArticle(id)
 }
 
+// UpdateArticle 采用追加版本而不是覆盖旧版本
+// 这样可以保留完整变更历史 也为后续 rollback 提供稳定依据
 func (s *Service) UpdateArticle(id string, input UpdateArticleInput) (*Article, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("kb service not ready")
@@ -402,6 +414,8 @@ func (s *Service) PendingReviews(limit int) ([]Article, error) {
 	return out, nil
 }
 
+// ApplyAction 统一处理 submit approve reject archive 等状态迁移
+// 这里显式限制可执行动作并记录评审轨迹 保证状态机可审计可回溯
 func (s *Service) ApplyAction(id, action, operator, comment string) (*Article, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("kb service not ready")
@@ -459,6 +473,8 @@ func (s *Service) ApplyAction(id, action, operator, comment string) (*Article, e
 	return s.GetArticle(articleID)
 }
 
+// RollbackArticle 通过“生成新版本”完成回滚
+// 不直接改写历史版本内容 这样能同时满足可恢复和可审计
 func (s *Service) RollbackArticle(id string, targetVersion int, operator, comment string) (*Article, error) {
 	if s == nil || s.db == nil {
 		return nil, fmt.Errorf("kb service not ready")
@@ -522,6 +538,8 @@ func (s *Service) RollbackArticle(id string, targetVersion int, operator, commen
 	return s.GetArticle(articleID)
 }
 
+// Search 先走数据库层条件查询 再在结果不足时补充分词兜底
+// 这个设计用于提升真实文本噪声场景下的召回稳定性
 func (s *Service) Search(query string, limit int, includeArchived bool) ([]Article, error) {
 	q := strings.TrimSpace(query)
 	if q == "" {
@@ -553,6 +571,8 @@ func (s *Service) Search(query string, limit int, includeArchived bool) ([]Artic
 	return s.searchByTokens(q, limit, includeArchived)
 }
 
+// Ask 在检索结果基础上组装引用上下文
+// 即使 AI 未参与生成也会返回可追踪的引用条目 保障答案可验证
 func (s *Service) Ask(question string, limit int) (AskResult, error) {
 	trimmed := strings.TrimSpace(question)
 	if trimmed == "" {
@@ -600,6 +620,8 @@ func (s *Service) Recommendations(query string, limit int) ([]Article, error) {
 	return s.Search(query, limit, false)
 }
 
+// searchByTokens 是 Search 的召回兜底
+// 它不依赖全文索引 在分词后按简单打分排序 保证低依赖场景也能工作
 func (s *Service) searchByTokens(query string, limit int, includeArchived bool) ([]Article, error) {
 	if s == nil {
 		return []Article{}, nil
@@ -779,6 +801,8 @@ func scoreArticleByTokens(item Article, tokens []string) int {
 	return score
 }
 
+// ImportDocs 负责把目录中的 Markdown 批量导入知识库
+// 导入策略是路径去重并增量更新 避免重复导入造成版本膨胀
 func (s *Service) ImportDocs(rootPath, operator string) (ImportResult, error) {
 	if s == nil || s.db == nil {
 		return ImportResult{}, fmt.Errorf("kb service not ready")
@@ -888,6 +912,8 @@ func (s *Service) findArticleIDByReference(refType, refPath string) (string, boo
 	return articleID, true, nil
 }
 
+// migrate 只做幂等结构迁移 不掺杂业务写入逻辑
+// 这样迁移失败时影响范围可控 且重试不会破坏已有数据
 func migrate(db *sql.DB) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS kb_articles (

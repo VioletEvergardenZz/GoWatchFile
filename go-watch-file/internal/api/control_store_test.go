@@ -132,3 +132,54 @@ func TestControlLoadSnapshot_ContinueSequence(t *testing.T) {
 		t.Fatalf("unexpected next task id: %s", nextTaskID)
 	}
 }
+
+func TestControlSQLiteStore_AuditLogs(t *testing.T) {
+	store, err := newControlSQLiteStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("create control sqlite store failed: %v", err)
+	}
+	defer func() { _ = store.Close() }()
+
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	if err := store.InsertAuditLog("tester", "task_create", "task", "tsk-000001", map[string]any{
+		"type": "manual_upload",
+	}, now); err != nil {
+		t.Fatalf("insert audit log failed: %v", err)
+	}
+	if err := store.InsertAuditLog("tester", "task_retry", "task", "tsk-000001", map[string]any{
+		"retry": 1,
+	}, now.Add(1*time.Second)); err != nil {
+		t.Fatalf("insert second audit log failed: %v", err)
+	}
+
+	items, err := store.ListAuditLogs(controlAuditLogFilter{
+		ResourceType: "task",
+		ResourceID:   "tsk-000001",
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("list audit logs failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("unexpected audit logs count: %d", len(items))
+	}
+	if items[0].Action != "task_retry" {
+		t.Fatalf("unexpected latest action: %+v", items[0])
+	}
+	if items[0].Detail["retry"] != float64(1) {
+		t.Fatalf("unexpected detail payload: %+v", items[0].Detail)
+	}
+
+	timeFiltered, err := store.ListAuditLogs(controlAuditLogFilter{
+		ResourceType: "task",
+		ResourceID:   "tsk-000001",
+		From:         now.Add(500 * time.Millisecond),
+		Limit:        10,
+	})
+	if err != nil {
+		t.Fatalf("list audit logs with from filter failed: %v", err)
+	}
+	if len(timeFiltered) != 1 || timeFiltered[0].Action != "task_retry" {
+		t.Fatalf("unexpected time filtered audit logs: %+v", timeFiltered)
+	}
+}
