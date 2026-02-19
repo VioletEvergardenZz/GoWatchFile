@@ -45,58 +45,65 @@ export function ConsoleHeader({
     <header className="page-header">
       <div className="brand">
         <div className="title">
-          <p className="eyebrow">Agent Console</p>
-          <h1>File Watch Agent Console</h1>
+          <p className="eyebrow">文件监控控制台</p>
+          <h1>文件监控智能体控制台</h1>
           <div className="title-meta">
-            <span className="badge ghost">Host {agent}</span>
+            <span className="badge ghost">主机 {agent}</span>
           </div>
         </div>
       </div>
       <div className="controls">
-        {loading ? <span className="badge">Refreshing...</span> : null}
+        {loading ? <span className="badge">刷新中...</span> : null}
         {error ? (
           <>
-            <span className="pill danger">API Error</span>
+            <span className="pill danger">接口异常</span>
             <span className="badge ghost">{error}</span>
           </>
         ) : null}
         <div className={`chip ${timeframe === "realtime" ? "active" : ""}`} onClick={() => onTimeframeChange("realtime")}>
-          Realtime
+          实时
         </div>
         <div className="theme-toggle">
-          <span className="muted small">Theme</span>
+          <span className="muted small">主题</span>
           <label className="switch mini">
             <input
               type="checkbox"
-              aria-label="Toggle light and dark themes"
+              aria-label="切换浅色和深色主题"
               checked={theme === "light"}
               onChange={(e) => onThemeChange(e.target.checked ? "light" : "dark")}
             />
             <span className="slider" />
           </label>
-          <span className="badge ghost">{theme === "light" ? "Light" : "Dark"}</span>
+          <span className="badge ghost">{theme === "light" ? "浅色" : "深色"}</span>
         </div>
-        <div className="api-token-panel">
-          <input
-            className="input api-token-input"
-            type="password"
-            autoComplete="off"
-            spellCheck={false}
-            placeholder="API Token"
-            value={apiToken}
-            onChange={(e) => onApiTokenChange(e.target.value)}
-          />
-          <label className="token-remember">
-            <input type="checkbox" checked={tokenRemember} onChange={(e) => onTokenRememberChange(e.target.checked)} />
-            <span>Remember</span>
-          </label>
-          <button className="btn secondary btn-token" type="button" onClick={onSaveApiToken} disabled={tokenSaving}>
-            {tokenSaving ? "Saving..." : tokenApplied ? "Update Token" : "Set Token"}
-          </button>
-          <button className="btn secondary btn-token-clear" type="button" onClick={onClearApiToken}>
-            Clear
-          </button>
-        </div>
+        <details className="api-token-box">
+          <summary className="api-token-summary">
+            <span>API 鉴权 Token（可选）</span>
+            <span className={`pill mini-pill ${tokenApplied ? "success" : ""}`}>{tokenApplied ? "已设置" : "未设置"}</span>
+          </summary>
+          <div className="api-token-hint">仅当后端开启 API Token 鉴权时需要填写，未开启时可以忽略。</div>
+          <div className="api-token-panel">
+            <input
+              className="input api-token-input"
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              placeholder="输入 API Token"
+              value={apiToken}
+              onChange={(e) => onApiTokenChange(e.target.value)}
+            />
+            <label className="token-remember">
+              <input type="checkbox" checked={tokenRemember} onChange={(e) => onTokenRememberChange(e.target.checked)} />
+              <span>记住到浏览器</span>
+            </label>
+            <button className="btn secondary btn-token" type="button" onClick={onSaveApiToken} disabled={tokenSaving}>
+              {tokenSaving ? "保存中..." : tokenApplied ? "更新 Token" : "设置 Token"}
+            </button>
+            <button className="btn secondary btn-token-clear" type="button" onClick={onClearApiToken}>
+              清除
+            </button>
+          </div>
+        </details>
       </div>
     </header>
   );

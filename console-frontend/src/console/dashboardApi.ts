@@ -244,6 +244,9 @@ export type KnowledgeArticlePayload = {
   changeNote?: string;
   createdBy?: string;
   updatedBy?: string;
+  sourceType?: string;
+  sourceRef?: string;
+  refTitle?: string;
 };
 
 export const fetchKBArticles = async (params?: {

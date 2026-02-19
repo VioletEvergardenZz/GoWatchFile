@@ -59,6 +59,25 @@ const statusBadgeClass = (status: string) => {
   return "pill";
 };
 
+const AGENT_STATUS_LABELS: Record<string, string> = {
+  online: "在线",
+  offline: "离线",
+  draining: "维护中",
+};
+
+const TASK_STATUS_LABELS: Record<string, string> = {
+  pending: "待分配",
+  assigned: "已分配",
+  running: "执行中",
+  success: "成功",
+  failed: "失败",
+  timeout: "超时",
+  canceled: "已取消",
+};
+
+const toAgentStatusLabel = (status: string) => (AGENT_STATUS_LABELS[status] ?? status) || "--";
+const toTaskStatusLabel = (status: string) => (TASK_STATUS_LABELS[status] ?? status) || "--";
+
 // ControlConsole 负责控制面核心观测与操作
 // 页面按“任务列表 -> 事件 -> 审计”三层展开 便于排障时逐步定位
 export function ControlConsole() {
@@ -255,8 +274,13 @@ export function ControlConsole() {
     <div className="control-shell">
       <div className="panel">
         <div className="section-title">
-          <h2>控制面</h2>
-          <span>Agent 在线 · 任务队列 · 生命周期回放</span>
+          <h2>控制面控制台</h2>
+          <span>多 Agent 任务调度 · 生命周期追踪 · 审计留痕</span>
+        </div>
+        <div className="control-intro">
+          <span className="badge ghost">用途：查看任务从下发到完成的全过程，并支持取消/重试</span>
+          <span className="badge ghost">适用：多 Agent 协同、回放压测、发布变更追踪</span>
+          <span className="badge ghost">非适用：日常文件浏览与日志查看</span>
         </div>
         <div className="toolbar space-between">
           <div className="toolbar-actions">
@@ -271,17 +295,17 @@ export function ControlConsole() {
       <div className="control-grid">
         <div className="panel">
           <div className="section-title">
-            <h2>Agents</h2>
-            <span>total {agents.length}</span>
+            <h2>Agent 列表</h2>
+            <span>总数 {agents.length}</span>
           </div>
           <div className="control-table-wrap">
             <table className="table">
               <thead>
                 <tr>
-                  <th>AgentKey</th>
+                  <th>Agent 标识</th>
                   <th>状态</th>
                   <th>分组</th>
-                  <th>LastSeen</th>
+                  <th>最近心跳</th>
                   <th>心跳</th>
                 </tr>
               </thead>
@@ -297,7 +321,7 @@ export function ControlConsole() {
                         </div>
                       </td>
                       <td>
-                        <span className={statusBadgeClass(agent.status)}>{agent.status}</span>
+                        <span className={statusBadgeClass(agent.status)}>{toAgentStatusLabel(agent.status)}</span>
                       </td>
                       <td>{agent.groupName || "--"}</td>
                       <td>{formatTime(agent.lastSeenAt)}</td>
@@ -318,9 +342,9 @@ export function ControlConsole() {
 
         <div className="panel">
           <div className="section-title">
-            <h2>Tasks</h2>
+            <h2>任务队列</h2>
             <span>
-              pending {summary.pending ?? 0} · running {summary.running ?? 0} · failed {summary.failed ?? 0} · timeout{" "}
+              待分配 {summary.pending ?? 0} · 执行中 {summary.running ?? 0} · 失败 {summary.failed ?? 0} · 超时{" "}
               {summary.timeout ?? 0}
             </span>
           </div>
@@ -331,19 +355,19 @@ export function ControlConsole() {
               onChange={(event) => setTaskStatus(event.target.value as TaskStatusFilter)}
             >
               <option value="all">全部状态</option>
-              <option value="pending">pending</option>
-              <option value="assigned">assigned</option>
-              <option value="running">running</option>
-              <option value="success">success</option>
-              <option value="failed">failed</option>
-              <option value="timeout">timeout</option>
-              <option value="canceled">canceled</option>
+              <option value="pending">待分配</option>
+              <option value="assigned">已分配</option>
+              <option value="running">执行中</option>
+              <option value="success">成功</option>
+              <option value="failed">失败</option>
+              <option value="timeout">超时</option>
+              <option value="canceled">已取消</option>
             </select>
             <input
               className="search"
               value={taskType}
               onChange={(event) => setTaskType(event.target.value)}
-              placeholder="type 过滤（可选）"
+              placeholder="任务类型过滤（可选）"
             />
           </div>
 
@@ -381,7 +405,7 @@ export function ControlConsole() {
                           <div className="row-sub">{task.target}</div>
                         </td>
                         <td>
-                          <span className={statusBadgeClass(task.status)}>{task.status}</span>
+                          <span className={statusBadgeClass(task.status)}>{toTaskStatusLabel(task.status)}</span>
                         </td>
                         <td className="row-sub">{task.assignedAgentId || "--"}</td>
                         <td className="row-sub">
@@ -440,7 +464,7 @@ export function ControlConsole() {
                       <div className="control-event-meta">
                         <span className="pill">{evt.eventType}</span>
                         <span className="row-sub">{formatTime(evt.eventTime)}</span>
-                        <span className="row-sub">{evt.agentId ? `agent=${evt.agentId}` : ""}</span>
+                        <span className="row-sub">{evt.agentId ? `Agent=${evt.agentId}` : ""}</span>
                       </div>
                       {evt.message ? <div className="row-sub">{evt.message}</div> : null}
                     </div>
@@ -457,7 +481,7 @@ export function ControlConsole() {
           <div className="control-detail">
             <div className="section-title">
               <h2>审计日志</h2>
-              <span>{selectedTask ? `resource=task/${selectedTask.id}` : "最近审计"}</span>
+              <span>{selectedTask ? `资源=task/${selectedTask.id}` : "最近审计"}</span>
             </div>
             <div className="audit-toolbar">
               <input
@@ -470,7 +494,7 @@ export function ControlConsole() {
                     handleApplyAuditFilters();
                   }
                 }}
-                placeholder="operator 过滤（可选）"
+                placeholder="操作人过滤（可选）"
               />
               <input
                 className="search"
@@ -482,7 +506,7 @@ export function ControlConsole() {
                     handleApplyAuditFilters();
                   }
                 }}
-                placeholder="action 过滤（可选）"
+                placeholder="动作过滤（可选）"
               />
               <input
                 className="search audit-time-input"

@@ -145,6 +145,7 @@ type SystemConsoleProps = {
   embedded?: boolean;
   enabled?: boolean;
   toggleLoading?: boolean;
+  toggleError?: string | null;
   onToggleEnabled?: (next: boolean) => void;
 };
 
@@ -165,7 +166,13 @@ const emptyOverview: SystemOverview = {
 
 // SystemConsole 负责系统资源看板与进程操作入口
 // 页面采用“轮询 + 本地筛选”的模式 兼顾实时性和交互流畅度
-export function SystemConsole({ embedded = false, enabled = true, toggleLoading = false, onToggleEnabled }: SystemConsoleProps) {
+export function SystemConsole({
+  embedded = false,
+  enabled = true,
+  toggleLoading = false,
+  toggleError = null,
+  onToggleEnabled,
+}: SystemConsoleProps) {
   const [overview, setOverview] = useState<SystemOverview>(USE_MOCK ? mockSystemOverview : emptyOverview);
   const [gauges, setGauges] = useState<SystemResourceGauge[]>(USE_MOCK ? mockSystemGauges : []);
   const [volumes, setVolumes] = useState<SystemVolume[]>(USE_MOCK ? mockSystemVolumes : []);
@@ -316,7 +323,7 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
     return sortedProcesses.find((proc) => proc.pid === selectedPid) ?? null;
   }, [selectedPid, sortedProcesses]);
 
-  const showTopline = (usingMockData || error) && enabled;
+  const showTopline = (usingMockData || error || toggleError) && enabled;
   const toggleDisabled = !onToggleEnabled || toggleLoading;
 
   const handleTerminate = async () => {
@@ -367,6 +374,7 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
           <div className="system-disabled-card">
             <h2>系统资源控制台未启用</h2>
             <p>启用后可查看 CPU、内存、磁盘与进程占用情况。</p>
+            {toggleError ? <div className="system-toggle-error">启用失败：{toggleError}</div> : null}
             <div className="system-disabled-actions">
               {onToggleEnabled ? (
                 <button className="btn" type="button" onClick={() => onToggleEnabled(true)} disabled={toggleDisabled}>
@@ -379,13 +387,14 @@ export function SystemConsole({ embedded = false, enabled = true, toggleLoading 
       ) : null}
       {showTopline ? (
         <div className="system-topline">
+          {toggleError ? <div className="pill danger">开关更新失败：{toggleError}</div> : null}
           {error ? <div className="badge ghost">{error}</div> : null}
           {usingMockData ? <span className="pill warning">正在显示示例数据</span> : null}
         </div>
       ) : null}
       <section className="system-hero" id="system-overview">
         <div className="system-hero-main">
-          <p className="eyebrow">System Resource Console</p>
+          <p className="eyebrow">系统资源控制台</p>
           <h1>系统资源控制台</h1>
           <p className="subtitle">实时查看 CPU、内存、磁盘与进程占用情况</p>
           <div className="system-toggle">

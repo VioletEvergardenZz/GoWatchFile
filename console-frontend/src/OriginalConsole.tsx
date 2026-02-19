@@ -187,6 +187,7 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
   const [loading, setLoading] = useState(!USE_MOCK);
   const [saving, setSaving] = useState(false);
   const [systemToggleSaving, setSystemToggleSaving] = useState(false);
+  const [systemToggleError, setSystemToggleError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bootstrapped, setBootstrapped] = useState(USE_MOCK);
   const lastSavedConfig = useRef<ConfigSnapshot | null>(null);
@@ -928,17 +929,21 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
 
   const handleSystemResourceToggle = useCallback(async (next: boolean) => {
     setSystemToggleSaving(true);
+    setSystemToggleError(null);
     setError(null);
     try {
       const data = await postSystemResourceEnabled(next);
       const payloadConfig = data.config;
       const enabledValue = payloadConfig?.systemResourceEnabled ?? next;
       setConfigForm((prev) => ({ ...prev, systemResourceEnabled: enabledValue }));
+      setSystemToggleError(null);
       if (lastSavedConfig.current) {
         lastSavedConfig.current = { ...lastSavedConfig.current, systemResourceEnabled: enabledValue };
       }
     } catch (err) {
-      setError((err as Error).message);
+      const message = (err as Error).message;
+      setError(message);
+      setSystemToggleError(message);
     } finally {
       setSystemToggleSaving(false);
     }
@@ -1258,7 +1263,13 @@ export function OriginalConsole({ view, onViewChange }: OriginalConsoleProps) {
           ) : view === "alert" ? (
             <AlertConsole embedded />
           ) : view === "system" ? (
-            <SystemConsole embedded enabled={systemResourceEnabled} toggleLoading={systemToggleSaving || saving} onToggleEnabled={handleSystemResourceToggle} />
+            <SystemConsole
+              embedded
+              enabled={systemResourceEnabled}
+              toggleLoading={systemToggleSaving || saving}
+              toggleError={systemToggleError}
+              onToggleEnabled={handleSystemResourceToggle}
+            />
           ) : view === "knowledge" ? (
             <KnowledgeConsole />
           ) : (

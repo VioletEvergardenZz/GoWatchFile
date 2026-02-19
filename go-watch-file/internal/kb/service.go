@@ -1341,7 +1341,7 @@ func normalizeOperator(raw string) string {
 func normalizeSourceType(raw string) string {
 	val := strings.ToLower(strings.TrimSpace(raw))
 	switch val {
-	case "manual", "import", "ai-generated", "rollback":
+	case "manual", "import", "ai-generated", "rollback", "incident", "alert", "change", "postmortem":
 		return val
 	default:
 		return "manual"

@@ -32,6 +32,13 @@ type ArticleForm = {
   summary: string;
   category: string;
   severity: Severity;
+  sourceType: string;
+  sourceRef: string;
+  refTitle: string;
+  service: string;
+  env: string;
+  confidence: string;
+  applyCondition: string;
   tags: string;
   content: string;
   changeNote: string;
@@ -42,6 +49,13 @@ const emptyForm: ArticleForm = {
   summary: "",
   category: "runbook",
   severity: "medium",
+  sourceType: "manual",
+  sourceRef: "",
+  refTitle: "",
+  service: "",
+  env: "",
+  confidence: "",
+  applyCondition: "",
   tags: "",
   content: "",
   changeNote: "",
@@ -54,6 +68,110 @@ const parseTags = (raw: string) =>
     .filter(Boolean);
 
 const toTagText = (tags: string[] | undefined) => (tags?.length ? tags.join(", ") : "");
+
+type StructuredTagMeta = {
+  service: string;
+  env: string;
+  confidence: string;
+  tags: string[];
+};
+
+const parseStructuredTags = (raw: string[] | undefined): StructuredTagMeta => {
+  if (!raw?.length) {
+    return { service: "", env: "", confidence: "", tags: [] };
+  }
+  let service = "";
+  let env = "";
+  let confidence = "";
+  const tags: string[] = [];
+  for (const tag of raw) {
+    const normalized = tag.trim();
+    if (!normalized) continue;
+    if (normalized.toLowerCase().startsWith("service:")) {
+      service = normalized.slice(8).trim();
+      continue;
+    }
+    if (normalized.toLowerCase().startsWith("env:")) {
+      env = normalized.slice(4).trim();
+      continue;
+    }
+    if (normalized.toLowerCase().startsWith("confidence:")) {
+      confidence = normalized.slice(11).trim();
+      continue;
+    }
+    tags.push(normalized);
+  }
+  return { service, env, confidence, tags };
+};
+
+const normalizeConfidence = (raw: string) => {
+  const trimmed = raw.trim();
+  if (!trimmed) return "";
+  const value = Number.parseFloat(trimmed);
+  if (!Number.isFinite(value)) return "";
+  if (value < 0 || value > 1) return "";
+  return value.toFixed(2);
+};
+
+const buildSummaryWithCondition = (summary: string, applyCondition: string) => {
+  const normalizedSummary = summary.trim();
+  const normalizedCondition = applyCondition.trim();
+  if (!normalizedCondition) return normalizedSummary;
+  if (!normalizedSummary) return `适用条件：${normalizedCondition}`;
+  if (normalizedSummary.includes("适用条件：")) return normalizedSummary;
+  return `${normalizedSummary} ｜ 适用条件：${normalizedCondition}`;
+};
+
+const extractConditionFromSummary = (summary: string) => {
+  const match = summary.match(/适用条件[:：]\s*([^｜|]+)/);
+  return match?.[1]?.trim() ?? "";
+};
+
+const buildStructuredTags = (form: ArticleForm) => {
+  const out = new Set(parseTags(form.tags));
+  const service = form.service.trim();
+  if (service) out.add(`service:${service}`);
+  const env = form.env.trim();
+  if (env) out.add(`env:${env}`);
+  const confidence = normalizeConfidence(form.confidence);
+  if (confidence) out.add(`confidence:${confidence}`);
+  return Array.from(out);
+};
+
+const buildIncidentTemplate = (form: ArticleForm) => {
+  const sourceLabel = form.sourceRef.trim() || "INC-YYYYMMDD-001";
+  const serviceLabel = form.service.trim() || "待补充";
+  const envLabel = form.env.trim() || "prod";
+  const condition = form.applyCondition.trim() || "高并发 / 资源抖动 / 网络波动";
+  return [
+    "## 现象",
+    "- 影响范围：",
+    "- 关键报错：",
+    "- 首次发现时间：",
+    "",
+    "## 适用条件",
+    `- 服务：${serviceLabel}`,
+    `- 环境：${envLabel}`,
+    `- 触发条件：${condition}`,
+    `- 来源事件：${sourceLabel}`,
+    "",
+    "## 根因",
+    "- ",
+    "",
+    "## 处置步骤（Runbook）",
+    "1. ",
+    "2. ",
+    "3. ",
+    "",
+    "## 复发条件与防复发",
+    "- 复发条件：",
+    "- 预防动作：",
+    "",
+    "## 自动化建议",
+    "- 是否可自动化：否",
+    "- 自动化边界：",
+  ].join("\n");
+};
 
 const formatRatio = (value: number | null) => {
   if (value === null) return "--";
@@ -225,6 +343,7 @@ export function KnowledgeConsole() {
     () => buildLineDiff(previousVersionContent, form.content),
     [previousVersionContent, form.content]
   );
+  const latestSource = useMemo(() => selectedDetail?.versions?.[0] ?? null, [selectedDetail]);
   const searchHitRatio = kbMetrics?.searchHitRatio ?? null;
   const askCitationRatio = kbMetrics?.askCitationRatio ?? null;
   const reviewLatencyP95 = kbMetrics?.reviewLatencyP95Ms ?? null;
@@ -265,13 +384,23 @@ export function KnowledgeConsole() {
     try {
       const data = await fetchKBArticle(articleID);
       const article = data.article;
+      const tagMeta = parseStructuredTags(article.tags);
+      const latestVersion = article.versions?.[0];
+      const firstRef = article.references?.[0];
       setSelectedDetail(article);
       setForm({
         title: article.title ?? "",
         summary: article.summary ?? "",
         category: article.category ?? "runbook",
         severity: article.severity ?? "medium",
-        tags: toTagText(article.tags),
+        sourceType: latestVersion?.sourceType ?? "manual",
+        sourceRef: latestVersion?.sourceRef ?? "",
+        refTitle: firstRef?.refTitle ?? "",
+        service: tagMeta.service,
+        env: tagMeta.env,
+        confidence: tagMeta.confidence,
+        applyCondition: extractConditionFromSummary(article.summary ?? ""),
+        tags: toTagText(tagMeta.tags),
         content: article.content ?? "",
         changeNote: "",
       });
@@ -335,19 +464,26 @@ export function KnowledgeConsole() {
       setError("内容不能为空");
       return;
     }
+    if (form.confidence.trim() && !normalizeConfidence(form.confidence)) {
+      setError("可信度必须是 0 到 1 之间的数字");
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
       const data = await postKBArticle({
         title: form.title.trim(),
-        summary: form.summary.trim(),
+        summary: buildSummaryWithCondition(form.summary, form.applyCondition),
         category: form.category.trim() || "runbook",
         severity: form.severity,
         content: form.content,
-        tags: parseTags(form.tags),
+        tags: buildStructuredTags(form),
         changeNote: form.changeNote.trim() || "create from console",
         createdBy: "console",
+        sourceType: form.sourceType.trim() || "manual",
+        sourceRef: form.sourceRef.trim(),
+        refTitle: form.refTitle.trim(),
       });
       setMessage("已创建知识条目");
       setSelectedID(data.article.id);
@@ -365,19 +501,26 @@ export function KnowledgeConsole() {
       setError("请先选择一个条目");
       return;
     }
+    if (form.confidence.trim() && !normalizeConfidence(form.confidence)) {
+      setError("可信度必须是 0 到 1 之间的数字");
+      return;
+    }
     setSaving(true);
     setError(null);
     setMessage(null);
     try {
       await putKBArticle(selectedID, {
         title: form.title.trim(),
-        summary: form.summary.trim(),
-        category: form.category.trim(),
+        summary: buildSummaryWithCondition(form.summary, form.applyCondition),
+        category: form.category.trim() || "runbook",
         severity: form.severity,
         content: form.content,
-        tags: parseTags(form.tags),
+        tags: buildStructuredTags(form),
         changeNote: form.changeNote.trim() || "update from console",
         updatedBy: "console",
+        sourceType: form.sourceType.trim() || "manual",
+        sourceRef: form.sourceRef.trim(),
+        refTitle: form.refTitle.trim(),
       });
       setMessage("已保存并生成新版本");
       await loadArticles();
@@ -498,12 +641,27 @@ export function KnowledgeConsole() {
     }
   };
 
+  const handleInsertIncidentTemplate = () => {
+    const template = buildIncidentTemplate(form);
+    setForm((prev) => ({
+      ...prev,
+      category: prev.category.trim() ? prev.category : "incident",
+      content: prev.content.trim() ? `${prev.content.trim()}\n\n${template}` : template,
+    }));
+    setError(null);
+    setMessage(form.content.trim() ? "已在正文末尾追加事故沉淀模板" : "已填充事故沉淀模板");
+  };
+
   return (
     <div className="knowledge-shell">
       <section className="panel knowledge-header">
         <div className="section-title">
           <h2>运维知识库控制台</h2>
           <span>条目总数 {total}</span>
+        </div>
+        <div className="knowledge-intro">
+          <span className="badge ghost">知识库不是先写文档，而是从真实事故/变更/排障中沉淀可复用记录</span>
+          <span className="badge ghost">建议流程：故障处理完成 → 沉淀条目 → 审核发布 → 告警/问答反哺</span>
         </div>
         <div className="knowledge-toolbar">
           <input
@@ -641,6 +799,8 @@ export function KnowledgeConsole() {
             {selectedDetail ? (
               <span>
                 状态 {selectedDetail.status} · 当前版本 v{selectedDetail.currentVersion}
+                {latestSource?.sourceType ? ` · 来源 ${latestSource.sourceType}` : ""}
+                {latestSource?.sourceRef ? `/${latestSource.sourceRef}` : ""}
                 {selectedDetail.needsReview ? " · 已到期待复审" : ""}
               </span>
             ) : null}
@@ -656,7 +816,17 @@ export function KnowledgeConsole() {
             </div>
             <div className="input">
               <label>分类</label>
-              <input value={form.category} onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))} />
+              <select
+                className="select"
+                value={form.category}
+                onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))}
+              >
+                <option value="runbook">runbook（标准处置）</option>
+                <option value="incident">incident（事故沉淀）</option>
+                <option value="change">change（变更复盘）</option>
+                <option value="postmortem">postmortem（事后复盘）</option>
+                <option value="docs">docs（文档同步）</option>
+              </select>
             </div>
             <div className="input">
               <label>严重级别</label>
@@ -665,10 +835,74 @@ export function KnowledgeConsole() {
                 value={form.severity}
                 onChange={(e) => setForm((prev) => ({ ...prev, severity: e.target.value as Severity }))}
               >
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
+                <option value="low">low（低）</option>
+                <option value="medium">medium（中）</option>
+                <option value="high">high（高）</option>
               </select>
+            </div>
+            <div className="input">
+              <label>来源类型</label>
+              <select
+                className="select"
+                value={form.sourceType}
+                onChange={(e) => setForm((prev) => ({ ...prev, sourceType: e.target.value }))}
+              >
+                <option value="manual">manual（人工录入）</option>
+                <option value="incident">incident（生产事故）</option>
+                <option value="alert">alert（告警触发）</option>
+                <option value="change">change（变更事件）</option>
+                <option value="postmortem">postmortem（复盘）</option>
+                <option value="import">import（文档导入）</option>
+                <option value="ai-generated">ai-generated（AI草稿）</option>
+              </select>
+            </div>
+            <div className="input">
+              <label>来源编号 / 链接</label>
+              <input
+                value={form.sourceRef}
+                onChange={(e) => setForm((prev) => ({ ...prev, sourceRef: e.target.value }))}
+                placeholder="如 INC-20260213-001 / 告警ID / 变更单链接"
+              />
+            </div>
+            <div className="input">
+              <label>来源标题</label>
+              <input
+                value={form.refTitle}
+                onChange={(e) => setForm((prev) => ({ ...prev, refTitle: e.target.value }))}
+                placeholder="可选，用于引用展示"
+              />
+            </div>
+            <div className="input">
+              <label>服务</label>
+              <input
+                value={form.service}
+                onChange={(e) => setForm((prev) => ({ ...prev, service: e.target.value }))}
+                placeholder="如 task-crm-server"
+              />
+            </div>
+            <div className="input">
+              <label>环境</label>
+              <input
+                value={form.env}
+                onChange={(e) => setForm((prev) => ({ ...prev, env: e.target.value }))}
+                placeholder="如 prod / staging"
+              />
+            </div>
+            <div className="input">
+              <label>可信度（0~1，可选）</label>
+              <input
+                value={form.confidence}
+                onChange={(e) => setForm((prev) => ({ ...prev, confidence: e.target.value }))}
+                placeholder="例如 0.90"
+              />
+            </div>
+            <div className="input">
+              <label>适用条件（可选）</label>
+              <input
+                value={form.applyCondition}
+                onChange={(e) => setForm((prev) => ({ ...prev, applyCondition: e.target.value }))}
+                placeholder="如 高并发、网络抖动、固定版本范围"
+              />
             </div>
             <div className="input">
               <label>标签（逗号分隔）</label>
@@ -703,7 +937,10 @@ export function KnowledgeConsole() {
                   onClick={() => setEditorMode("diff")}
                   disabled={!selectedID}
                 >
-                  Diff
+                  差异
+                </button>
+                <button className="chip" type="button" onClick={handleInsertIncidentTemplate}>
+                  事故模板
                 </button>
               </div>
               <label>正文（Markdown）</label>

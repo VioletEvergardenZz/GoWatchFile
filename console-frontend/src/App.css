@@ -302,6 +302,39 @@
   background: var(--panel);
 }
 
+.api-token-box {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 12px;
+  padding: 6px 8px;
+  min-width: 240px;
+}
+
+.api-token-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.api-token-summary::marker,
+.api-token-summary::-webkit-details-marker {
+  display: none;
+}
+
+.api-token-hint {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .api-token-panel {
   display: inline-flex;
   align-items: center;
@@ -310,6 +343,13 @@
   border-radius: 12px;
   border: 1px solid var(--border);
   background: var(--panel);
+}
+
+.api-token-box .api-token-panel {
+  margin-top: 8px;
+  border: none;
+  padding: 0;
+  background: transparent;
 }
 
 .api-token-input {
