@@ -493,3 +493,21 @@ export type ControlAuditLogsResponse = {
   total: number;
 };
 
+export type ControlTaskFailureReason = {
+  reason: string;
+  count: number;
+  statuses?: Record<string, number>;
+  sampleTaskIds?: string[];
+};
+
+export type ControlTaskFailureReasonsResponse = {
+  ok: boolean;
+  items: ControlTaskFailureReason[];
+  total: number;
+  filters?: {
+    status?: string[];
+    type?: string;
+    limit?: number;
+  };
+};
+

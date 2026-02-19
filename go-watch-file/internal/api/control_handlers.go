@@ -36,6 +36,7 @@ type controlTaskState struct {
 	Payload         map[string]any
 	Priority        string
 	Status          string
+	FailureReason   string
 	AssignedAgentID string
 	RetryCount      int
 	MaxRetries      int
@@ -66,6 +67,7 @@ type controlTaskDTO struct {
 	Payload         map[string]any `json:"payload,omitempty"`
 	Priority        string         `json:"priority"`
 	Status          string         `json:"status"`
+	FailureReason   string         `json:"failureReason,omitempty"`
 	AssignedAgentID string         `json:"assignedAgentId,omitempty"`
 	RetryCount      int            `json:"retryCount"`
 	MaxRetries      int            `json:"maxRetries"`
@@ -168,6 +170,10 @@ func (h *handler) controlTaskByIDHandler(w http.ResponseWriter, r *http.Request)
 	parts := splitPathSegments("/api/control/tasks/", r.URL.Path)
 	if len(parts) == 0 {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "route not found"})
+		return
+	}
+	if len(parts) == 1 && r.Method == http.MethodGet && parts[0] == "failure-reasons" {
+		h.controlTaskFailureReasonsHandler(w, r)
 		return
 	}
 	taskID := parts[0]
@@ -397,16 +403,17 @@ func (h *handler) controlCreateTask(w http.ResponseWriter, r *http.Request) {
 
 	taskID := h.nextControlTaskIDLocked()
 	state := controlTaskState{
-		ID:         taskID,
-		Type:       req.Type,
-		Target:     req.Target,
-		Payload:    cloneMap(req.Payload),
-		Priority:   normalizeControlPriority(req.Priority),
-		Status:     "pending",
-		CreatedBy:  normalizeCreatedBy(req.CreatedBy),
-		MaxRetries: req.MaxRetries,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:            taskID,
+		Type:          req.Type,
+		Target:        req.Target,
+		Payload:       cloneMap(req.Payload),
+		Priority:      normalizeControlPriority(req.Priority),
+		Status:        "pending",
+		FailureReason: "",
+		CreatedBy:     normalizeCreatedBy(req.CreatedBy),
+		MaxRetries:    req.MaxRetries,
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	if err := h.persistControlTaskLocked(state); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
@@ -495,6 +502,7 @@ func (h *handler) controlCancelTask(w http.ResponseWriter, taskID string) {
 		return
 	}
 	state.Status = controlTaskStatusCanceled
+	state.FailureReason = "manual_cancel"
 	state.UpdatedAt = now
 	state.FinishedAt = &now
 	if err := h.persistControlTaskLocked(state); err != nil {
@@ -657,6 +665,7 @@ func toControlTaskDTO(state controlTaskState) controlTaskDTO {
 		Payload:         cloneMap(state.Payload),
 		Priority:        state.Priority,
 		Status:          state.Status,
+		FailureReason:   strings.TrimSpace(state.FailureReason),
 		AssignedAgentID: state.AssignedAgentID,
 		RetryCount:      state.RetryCount,
 		MaxRetries:      state.MaxRetries,

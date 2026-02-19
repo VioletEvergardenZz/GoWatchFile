@@ -109,6 +109,7 @@ flowchart LR
 - `POST /api/control/tasks/{id}/progress`
 - `POST /api/control/tasks/{id}/complete`
 - `GET /api/control/tasks/{id}/events`
+- `GET /api/control/tasks/failure-reasons`（失败原因分布，支持 `status/type/limit`）
 - `GET /api/control/audit`（支持 `resourceType/resourceId/operator/action/from/to/limit` 组合过滤）
   - `from/to` 支持 `RFC3339` 与 `YYYY-MM-DDTHH:mm`（便于控制台 `datetime-local` 直接透传）
 

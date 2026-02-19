@@ -224,6 +224,7 @@ func (h *handler) controlApplyTimeoutsLocked(now time.Time) error {
 			}
 			next := state
 			next.Status = controlTaskStatusTimeout
+			next.FailureReason = "run_timeout"
 			next.UpdatedAt = now
 			next.FinishedAt = &now
 			if err := h.persistControlTaskLocked(next); err != nil {
@@ -454,6 +455,16 @@ func (h *handler) controlCompleteTask(w http.ResponseWriter, r *http.Request, ta
 
 	next := state
 	next.Status = status
+	message := strings.TrimSpace(req.Message)
+	if message == "" && strings.TrimSpace(req.Error) != "" {
+		message = "error=" + strings.TrimSpace(req.Error)
+	}
+	next.FailureReason = ""
+	eventType := "succeeded"
+	if status == controlTaskStatusFailed {
+		next.FailureReason = pickControlTaskFailureReason(req.Error, message)
+		eventType = "failed"
+	}
 	next.UpdatedAt = now
 	next.FinishedAt = &now
 	if err := h.persistControlTaskLocked(next); err != nil {
@@ -462,18 +473,11 @@ func (h *handler) controlCompleteTask(w http.ResponseWriter, r *http.Request, ta
 	}
 	h.controlTasks[taskID] = next
 
-	message := strings.TrimSpace(req.Message)
-	if message == "" && strings.TrimSpace(req.Error) != "" {
-		message = "error=" + strings.TrimSpace(req.Error)
-	}
-	eventType := "succeeded"
-	if status == controlTaskStatusFailed {
-		eventType = "failed"
-	}
 	h.controlAppendTaskEventLocked(taskID, req.AgentID, eventType, message, now)
 	h.controlAppendAuditLogLocked(req.AgentID, "task_complete", "task", taskID, map[string]any{
-		"status":  status,
-		"message": message,
+		"status":        status,
+		"message":       message,
+		"failureReason": next.FailureReason,
 	}, now)
 
 	metrics.Global().ObserveControlTaskDuration(state.Type, status, now.Sub(state.CreatedAt))

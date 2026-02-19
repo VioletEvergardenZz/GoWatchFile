@@ -76,6 +76,55 @@
   flex-wrap: wrap;
 }
 
+.control-failure-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: rgba(15, 23, 42, 0.24);
+}
+
+.failure-reason-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.failure-reason-row {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: var(--surface-2);
+}
+
+.failure-reason-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.failure-reason-bar-track {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.3);
+  margin-top: 6px;
+}
+
+.failure-reason-bar {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ef4444, #f59e0b);
+}
+
+.failure-reason-statuses {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .audit-toolbar {
   display: flex;
   gap: 8px;

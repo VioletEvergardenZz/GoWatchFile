@@ -26,17 +26,19 @@ func TestControlSQLiteStore_PersistAndLoad(t *testing.T) {
 		HeartbeatCount: 2,
 	}
 	task := controlTaskState{
-		ID:         "tsk-000031",
-		Type:       "manual_upload",
-		Target:     "D:/logs/gwf/backend-error.log",
-		Payload:    map[string]any{"path": "D:/logs/gwf/backend-error.log"},
-		Priority:   "high",
-		Status:     "pending",
-		RetryCount: 0,
-		MaxRetries: 3,
-		CreatedBy:  "tester",
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:            "tsk-000031",
+		Type:          "manual_upload",
+		Target:        "D:/logs/gwf/backend-error.log",
+		Payload:       map[string]any{"path": "D:/logs/gwf/backend-error.log"},
+		Priority:      "high",
+		Status:        "failed",
+		FailureReason: "oss timeout",
+		RetryCount:    0,
+		MaxRetries:    3,
+		CreatedBy:     "tester",
+		CreatedAt:     now,
+		UpdatedAt:     now,
+		FinishedAt:    &now,
 	}
 	if err := store.UpsertAgent(agent); err != nil {
 		t.Fatalf("upsert agent failed: %v", err)
@@ -74,6 +76,9 @@ func TestControlSQLiteStore_PersistAndLoad(t *testing.T) {
 		t.Fatalf("unexpected tasks count: %d", len(tasks))
 	}
 	if tasks[0].ID != task.ID || tasks[0].Priority != task.Priority || tasks[0].Status != task.Status {
+		t.Fatalf("unexpected task loaded: %+v", tasks[0])
+	}
+	if tasks[0].FailureReason != task.FailureReason {
 		t.Fatalf("unexpected task loaded: %+v", tasks[0])
 	}
 }

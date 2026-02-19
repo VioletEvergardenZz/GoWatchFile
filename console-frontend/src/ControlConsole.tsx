@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 文件职责：承载当前页面或模块的核心交互与状态管理
  * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
  * 边界处理：对空数据 异常数据和超时请求提供兜底展示
@@ -8,10 +8,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./ControlConsole.css";
-import type { ControlAgent, ControlAuditLog, ControlTask, ControlTaskEvent } from "./types";
+import type { ControlAgent, ControlAuditLog, ControlTask, ControlTaskEvent, ControlTaskFailureReason } from "./types";
 import {
   fetchControlAgents,
   fetchControlAuditLogs,
+  fetchControlTaskFailureReasons,
   fetchControlTaskEvents,
   fetchControlTasks,
   postControlTaskCancel,
@@ -91,6 +92,7 @@ export function ControlConsole() {
   const [selectedTaskId, setSelectedTaskId] = useState<string>("");
   const [events, setEvents] = useState<ControlTaskEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
+  const [failureReasons, setFailureReasons] = useState<ControlTaskFailureReason[]>([]);
   const [audits, setAudits] = useState<ControlAuditLog[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditFiltersDraft, setAuditFiltersDraft] = useState<AuditFilters>(() => createEmptyAuditFilters());
@@ -101,16 +103,22 @@ export function ControlConsole() {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [agentResp, taskResp] = await Promise.all([
+      const [agentResp, taskResp, failureResp] = await Promise.all([
         fetchControlAgents(),
         fetchControlTasks({
           status: taskStatus === "all" ? "" : taskStatus,
           type: taskType.trim() ? taskType.trim() : "",
           limit: 200,
         }),
+        fetchControlTaskFailureReasons({
+          status: "failed,timeout",
+          type: taskType.trim() ? taskType.trim() : "",
+          limit: 10,
+        }),
       ]);
       setAgents(agentResp.items ?? []);
       setTasks(taskResp.items ?? []);
+      setFailureReasons(failureResp.items ?? []);
       setError(null);
     } catch (err) {
       setError((err as Error).message);
@@ -186,6 +194,17 @@ export function ControlConsole() {
     }
     return counts;
   }, [tasks]);
+
+  const failureReasonMax = useMemo(() => {
+    let max = 0;
+    for (const item of failureReasons) {
+      const count = Number(item.count ?? 0);
+      if (Number.isFinite(count) && count > max) {
+        max = count;
+      }
+    }
+    return max;
+  }, [failureReasons]);
 
   const handleCancel = useCallback(
     async (taskId: string) => {
@@ -347,6 +366,44 @@ export function ControlConsole() {
               待分配 {summary.pending ?? 0} · 执行中 {summary.running ?? 0} · 失败 {summary.failed ?? 0} · 超时{" "}
               {summary.timeout ?? 0}
             </span>
+          </div>
+          <div className="control-failure-card">
+            <div className="section-title">
+              <h2>失败原因分布（失败+超时）</h2>
+              <span>Top {failureReasons.length}</span>
+            </div>
+            {failureReasons.length ? (
+              <div className="failure-reason-list">
+                {failureReasons.map((item) => {
+                  const count = Number(item.count ?? 0);
+                  const ratio = failureReasonMax > 0 ? Math.max(8, Math.round((count / failureReasonMax) * 100)) : 0;
+                  return (
+                    <div className="failure-reason-row" key={`${item.reason}-${count}`}>
+                      <div className="failure-reason-head">
+                        <div className="row-title">{item.reason || "unknown"}</div>
+                        <div className="row-sub">次数 {count}</div>
+                      </div>
+                      <div className="failure-reason-bar-track">
+                        <div className="failure-reason-bar" style={{ width: `${ratio}%` }} />
+                      </div>
+                      {item.statuses ? (
+                        <div className="failure-reason-statuses">
+                          {Object.entries(item.statuses)
+                            .sort((a, b) => a[0].localeCompare(b[0]))
+                            .map(([status, statusCount]) => (
+                              <span className="pill" key={`${item.reason}-${status}`}>
+                                {status}:{statusCount}
+                              </span>
+                            ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="row-sub">暂无失败样本</div>
+            )}
           </div>
           <div className="toolbar">
             <select
@@ -563,3 +620,4 @@ export function ControlConsole() {
     </div>
   );
 }
+

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 文件职责：承载当前页面或模块的核心交互与状态管理
  * 关键交互：先更新本地状态 再调用接口同步 失败时给出可见反馈
  * 边界处理：对空数据 异常数据和超时请求提供兜底展示
@@ -10,6 +10,7 @@ import type {
   AiLogSummaryResponse,
   ControlAuditLogsResponse,
   ControlAgentsResponse,
+  ControlTaskFailureReasonsResponse,
   ControlTaskEventsResponse,
   ControlTaskResponse,
   ControlTasksResponse,
@@ -486,6 +487,22 @@ export const fetchControlTaskEvents = async (taskId: string, limit = 200): Promi
   return (await res.json()) as ControlTaskEventsResponse;
 };
 
+export const fetchControlTaskFailureReasons = async (params?: {
+  status?: string;
+  type?: string;
+  limit?: number;
+}): Promise<ControlTaskFailureReasonsResponse> => {
+  const query = new URLSearchParams();
+  if (params?.status) query.set("status", params.status);
+  if (params?.type) query.set("type", params.type);
+  if (params?.limit) query.set("limit", String(params.limit));
+  const suffix = query.toString();
+  const res = await fetch(`${API_BASE}/api/control/tasks/failure-reasons${suffix ? `?${suffix}` : ""}`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "控制面任务失败原因分布加载");
+  return (await res.json()) as ControlTaskFailureReasonsResponse;
+};
 export const postControlTaskCancel = async (taskId: string): Promise<ControlTaskResponse> => {
   const id = encodeURIComponent(taskId);
   const res = await fetch(`${API_BASE}/api/control/tasks/${id}/cancel`, {
@@ -532,4 +549,5 @@ export const fetchControlAuditLogs = async (params?: {
   await ensureOk(res, "控制面审计日志加载");
   return (await res.json()) as ControlAuditLogsResponse;
 };
+
 

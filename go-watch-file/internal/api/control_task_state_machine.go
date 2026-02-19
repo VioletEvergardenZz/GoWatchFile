@@ -18,6 +18,7 @@ func buildControlTaskRetriedState(state controlTaskState, now time.Time) control
 	next := state
 	next.RetryCount++
 	next.Status = controlTaskStatusPending
+	next.FailureReason = ""
 	next.AssignedAgentID = ""
 	next.UpdatedAt = now
 	next.FinishedAt = nil

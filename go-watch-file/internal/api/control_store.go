@@ -174,7 +174,7 @@ func (s *controlSQLiteStore) LoadTasks() ([]controlTaskState, error) {
 
 	rows, err := s.db.Query(`
 		SELECT
-			id, type, target, payload_json, priority, status, assigned_agent_id,
+			id, type, target, payload_json, priority, status, failure_reason, assigned_agent_id,
 			retry_count, max_retries, created_by, created_at, updated_at, finished_at
 		FROM control_tasks
 		ORDER BY updated_at DESC
@@ -198,6 +198,7 @@ func (s *controlSQLiteStore) LoadTasks() ([]controlTaskState, error) {
 			&payloadJSON,
 			&item.Priority,
 			&item.Status,
+			&item.FailureReason,
 			&item.AssignedAgentID,
 			&item.RetryCount,
 			&item.MaxRetries,
@@ -242,15 +243,16 @@ func (s *controlSQLiteStore) UpsertTask(state controlTaskState) error {
 	// 任务全量 upsert，避免状态迁移过程中出现多处局部更新导致的数据不一致
 	_, err = s.db.Exec(`
 		INSERT INTO control_tasks (
-			id, type, target, payload_json, priority, status, assigned_agent_id,
+			id, type, target, payload_json, priority, status, failure_reason, assigned_agent_id,
 			retry_count, max_retries, created_by, created_at, updated_at, finished_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(id) DO UPDATE SET
 			type = excluded.type,
 			target = excluded.target,
 			payload_json = excluded.payload_json,
 			priority = excluded.priority,
 			status = excluded.status,
+			failure_reason = excluded.failure_reason,
 			assigned_agent_id = excluded.assigned_agent_id,
 			retry_count = excluded.retry_count,
 			max_retries = excluded.max_retries,
@@ -265,6 +267,7 @@ func (s *controlSQLiteStore) UpsertTask(state controlTaskState) error {
 		string(payloadJSON),
 		state.Priority,
 		state.Status,
+		strings.TrimSpace(state.FailureReason),
 		state.AssignedAgentID,
 		state.RetryCount,
 		state.MaxRetries,
@@ -499,6 +502,7 @@ func migrateControlStore(db *sql.DB) error {
 			payload_json TEXT NOT NULL DEFAULT '{}',
 			priority TEXT NOT NULL DEFAULT 'normal',
 			status TEXT NOT NULL,
+			failure_reason TEXT NOT NULL DEFAULT '',
 			assigned_agent_id TEXT NOT NULL DEFAULT '',
 			retry_count INTEGER NOT NULL DEFAULT 0,
 			max_retries INTEGER NOT NULL DEFAULT 3,
@@ -536,6 +540,12 @@ func migrateControlStore(db *sql.DB) error {
 	for _, stmt := range stmts {
 		if _, err := db.Exec(stmt); err != nil {
 			return fmt.Errorf("migrate control sqlite failed: %w", err)
+		}
+	}
+	if _, err := db.Exec(`ALTER TABLE control_tasks ADD COLUMN failure_reason TEXT NOT NULL DEFAULT ''`); err != nil {
+		msg := strings.ToLower(err.Error())
+		if !strings.Contains(msg, "duplicate column name") {
+			return fmt.Errorf("migrate control sqlite add failure_reason failed: %w", err)
 		}
 	}
 	return nil
