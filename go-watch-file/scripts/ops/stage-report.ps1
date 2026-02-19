@@ -273,10 +273,24 @@ if ($null -ne $recap.gateTargets -and $null -ne $recap.gateTargets.aiDegradedRat
   $aiTargetRatio = [double]$recap.gateTargets.aiDegradedRatio
 }
 $aiTargetPct = $aiTargetRatio * 100
+$aiStructureTargetRatio = 1.0
+if ($null -ne $recap.gateTargets -and $null -ne $recap.gateTargets.aiStructurePassRatio) {
+  $aiStructureTargetRatio = [double]$recap.gateTargets.aiStructurePassRatio
+}
+$aiStructureTargetPct = $aiStructureTargetRatio * 100
+$aiErrorClassCoverageTargetRatio = 1.0
+if ($null -ne $recap.gateTargets -and $null -ne $recap.gateTargets.aiErrorClassCoverage) {
+  $aiErrorClassCoverageTargetRatio = [double]$recap.gateTargets.aiErrorClassCoverage
+}
+$aiErrorClassCoverageTargetPct = $aiErrorClassCoverageTargetRatio * 100
 $aiDegradedRatioPct = $null
 if ($null -ne $aiTotal -and $aiTotal -gt 0 -and $null -ne $aiDegraded) {
   $aiDegradedRatioPct = ([double]$aiDegraded / [double]$aiTotal) * 100
 }
+$aiStructurePassRatioPct = $null
+$aiErrorClassCoveragePct = $null
+$aiStructureChecked = $null
+$aiStructureFailed = $null
 
 if ($null -ne $recap.aiReplay) {
   if ($null -ne $recap.aiReplay.total) {
@@ -290,6 +304,20 @@ if ($null -ne $recap.aiReplay) {
   }
   if ($null -ne $recap.aiReplay.degradedRatio) {
     $aiDegradedRatioPct = [double]$recap.aiReplay.degradedRatio * 100
+  }
+  if ($null -ne $recap.aiReplay.structure) {
+    if ($null -ne $recap.aiReplay.structure.passRatio) {
+      $aiStructurePassRatioPct = [double]$recap.aiReplay.structure.passRatio * 100
+    }
+    if ($null -ne $recap.aiReplay.structure.checked) {
+      $aiStructureChecked = [double]$recap.aiReplay.structure.checked
+    }
+    if ($null -ne $recap.aiReplay.structure.failed) {
+      $aiStructureFailed = [double]$recap.aiReplay.structure.failed
+    }
+  }
+  if ($null -ne $recap.aiReplay.errorClassCoverage) {
+    $aiErrorClassCoveragePct = [double]$recap.aiReplay.errorClassCoverage * 100
   }
 }
 
@@ -336,6 +364,14 @@ $aiPass = $null
 if ($null -ne $aiDegradedRatioPct) {
   $aiPass = ([double]$aiDegradedRatioPct -le $aiTargetPct)
 }
+$aiStructurePass = $null
+if ($null -ne $aiStructurePassRatioPct) {
+  $aiStructurePass = ([double]$aiStructurePassRatioPct -ge $aiStructureTargetPct)
+}
+$aiErrorClassCoveragePass = $null
+if ($null -ne $aiErrorClassCoveragePct) {
+  $aiErrorClassCoveragePass = ([double]$aiErrorClassCoveragePct -ge $aiErrorClassCoverageTargetPct)
+}
 $kbHitratePass = $null
 if ($null -ne $kbHitratePct) {
   $kbHitratePass = ([double]$kbHitratePct -ge 80)
@@ -358,6 +394,8 @@ if ($null -ne $controlTimeoutTotal) {
 }
 
 $aiTargetText = ("<= {0}%" -f (Format-Decimal -Value ([double]$aiTargetPct) -Digits 2))
+$aiStructureTargetText = (">= {0}%" -f (Format-Decimal -Value ([double]$aiStructureTargetPct) -Digits 2))
+$aiErrorClassCoverageTargetText = (">= {0}%" -f (Format-Decimal -Value ([double]$aiErrorClassCoverageTargetPct) -Digits 2))
 
 $primeStage = Get-Stage -Recap $recap -Name "stage-prime"
 $metricsStage = Get-Stage -Recap $recap -Name "metrics-check"
@@ -377,7 +415,10 @@ $metricsStagePF = if ($null -eq $metricsStage) { "-" } else { To-PF -Pass $metri
 $metricsStageRemark = if ($null -eq $metricsStage) { "未执行" } else { "exitCode=$($metricsStage.exitCode), elapsedMs=$($metricsStage.elapsedMs)" }
 $aiStagePF = if ($null -eq $aiStage) { "-" } else { To-PF -Pass $aiStage.ok }
 $aiStageRemark = if ($null -ne $recap.aiReplay) {
-  "total=$($recap.aiReplay.total), success=$($recap.aiReplay.success), degraded=$($recap.aiReplay.degraded), ratio=$([Math]::Round([double]$recap.aiReplay.degradedRatio * 100, 2))%"
+  $degradedRatioText = if ($null -ne $recap.aiReplay.degradedRatio) { [Math]::Round([double]$recap.aiReplay.degradedRatio * 100, 2) } else { "N/A" }
+  $structureRatioText = if ($null -ne $recap.aiReplay.structure -and $null -ne $recap.aiReplay.structure.passRatio) { [Math]::Round([double]$recap.aiReplay.structure.passRatio * 100, 2) } else { "N/A" }
+  $errorCoverageText = if ($null -ne $recap.aiReplay.errorClassCoverage) { [Math]::Round([double]$recap.aiReplay.errorClassCoverage * 100, 2) } else { "N/A" }
+  "total=$($recap.aiReplay.total), success=$($recap.aiReplay.success), degraded=$($recap.aiReplay.degraded), degradedRatio=$degradedRatioText%, structureRatio=$structureRatioText%, errorClassCoverage=$errorCoverageText%"
 } elseif ($null -eq $aiStage) {
   "未执行"
 } else {
@@ -413,6 +454,8 @@ $metricRows = @()
 $metricRows += "| gwf_upload_queue_full_total 增量 | 越低越好 | $(Format-NullableNumber -Value $uploadQueueFullTotal -Digits 0) | $(To-PF -Pass $uploadQueuePass) |"
 $metricRows += "| 上传失败率（10m） | < 5% | $(Format-NullableNumber -Value $uploadFailureRatePct -Digits 2 -Suffix '%') | $(To-PF -Pass $uploadFailurePass) |"
 $metricRows += "| AI 降级率 | $aiTargetText | $(Format-NullableNumber -Value $aiDegradedRatioPct -Digits 2 -Suffix '%') | $(To-PF -Pass $aiPass) |"
+$metricRows += "| AI 结构一致性通过率 | $aiStructureTargetText | $(Format-NullableNumber -Value $aiStructurePassRatioPct -Digits 2 -Suffix '%') | $(To-PF -Pass $aiStructurePass) |"
+$metricRows += "| AI 错误分类覆盖率 | $aiErrorClassCoverageTargetText | $(Format-NullableNumber -Value $aiErrorClassCoveragePct -Digits 2 -Suffix '%') | $(To-PF -Pass $aiErrorClassCoveragePass) |"
 $metricRows += "| 知识检索命中率 | >= 80% | $(Format-NullableNumber -Value $kbHitratePct -Digits 2 -Suffix '%') | $(To-PF -Pass $kbHitratePass) |"
 $metricRows += "| 问答引用率 | = 100% | $(Format-NullableNumber -Value $kbCitationPct -Digits 2 -Suffix '%') | $(To-PF -Pass $kbCitationPass) |"
 $metricRows += "| 控制面在线 Agent 数 | >= 1 | $(Format-NullableNumber -Value $controlOnline -Digits 0) | $(To-PF -Pass $controlOnlinePass) |"
@@ -501,6 +544,7 @@ $markdown += $metricRows
 $markdown += ""
 $markdown += "补充："
 $markdown += "- AI 总请求：$(Format-NullableNumber -Value $aiTotal -Digits 0)，成功：$(Format-NullableNumber -Value $aiSuccess -Digits 0)，降级：$(Format-NullableNumber -Value $aiDegraded -Digits 0)"
+$markdown += "- AI 结构校验：checked=$(Format-NullableNumber -Value $aiStructureChecked -Digits 0)，failed=$(Format-NullableNumber -Value $aiStructureFailed -Digits 0)"
 $markdown += "- MTTD 下降比例：$(Format-NullableNumber -Value $mttdDropPct -Digits 2 -Suffix '%')"
 $markdown += ""
 $markdown += "## 4. 失败样例与根因"

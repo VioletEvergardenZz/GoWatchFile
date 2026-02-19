@@ -9,6 +9,8 @@ param(
   [string]$AIPathsFile = "../docs/03-告警与AI/AI回放路径清单.txt",
   [int]$AILimit = 200,
   [double]$AIDegradedRatioTarget = 0.2,
+  [double]$AIStructurePassRatioTarget = 1.0,
+  [double]$AIErrorClassCoverageTarget = 1.0,
   [string]$SamplesFile = "../docs/04-知识库/知识库命中率样本.json",
   [string]$MttdFile = "../docs/04-知识库/知识库MTTD基线.csv",
   [double]$CitationTarget = 1.0,
@@ -121,6 +123,27 @@ function Invoke-Stage {
   }
 }
 
+function Mark-AIStageFailed {
+  param(
+    [array]$Stages,
+    [string]$Message
+  )
+  foreach ($stage in $Stages) {
+    if ([string]$stage.name -ne "ai-replay") {
+      continue
+    }
+    $stage.ok = $false
+    $stage.exitCode = 3
+    $stage.error = $Message
+    if ([string]::IsNullOrWhiteSpace([string]$stage.output)) {
+      $stage.output = $Message
+    } else {
+      $stage.output = ([string]$stage.output + [Environment]::NewLine + $Message).Trim()
+    }
+    break
+  }
+}
+
 $opsDir = $PSScriptRoot
 $base = $BaseUrl.TrimEnd("/")
 $tokenArgs = @()
@@ -194,6 +217,9 @@ if (-not $SkipAIReplay) {
     "-BaseUrl", $base,
     "-PathsFile", $AIPathsFile,
     "-Limit", ([string]$AILimit),
+    "-DegradedRatioTarget", ([string]$AIDegradedRatioTarget),
+    "-StructurePassRatioTarget", ([string]$AIStructurePassRatioTarget),
+    "-ErrorClassCoverageTarget", ([string]$AIErrorClassCoverageTarget),
     "-OutputFile", $aiOutput
   )
   if ($tokenArgs.Count -gt 0) {
@@ -251,25 +277,47 @@ if (Test-Path $aiOutput) {
   }
 }
 
-if ($null -ne $aiResult -and $null -ne $aiResult.degradedRatio) {
-  $actualRatio = [double]$aiResult.degradedRatio
-  if ($actualRatio -gt $AIDegradedRatioTarget) {
-    $actualPct = [Math]::Round($actualRatio * 100, 2)
-    $targetPct = [Math]::Round($AIDegradedRatioTarget * 100, 2)
-    $gateMessage = "degraded ratio ${actualPct}% exceeds target ${targetPct}%"
-    foreach ($stage in $stages) {
-      if ([string]$stage.name -eq "ai-replay") {
-        $stage.ok = $false
-        $stage.exitCode = 3
-        $stage.error = $gateMessage
-        if ([string]::IsNullOrWhiteSpace([string]$stage.output)) {
-          $stage.output = $gateMessage
-        } else {
-          $stage.output = ([string]$stage.output + [Environment]::NewLine + $gateMessage).Trim()
-        }
-        break
-      }
+if ($null -ne $aiResult) {
+  $aiGateErrors = @()
+
+  if ($null -eq $aiResult.degradedRatio) {
+    $aiGateErrors += "ai degraded ratio missing in replay result"
+  } else {
+    $actualRatio = [double]$aiResult.degradedRatio
+    if ($actualRatio -gt $AIDegradedRatioTarget) {
+      $actualPct = [Math]::Round($actualRatio * 100, 2)
+      $targetPct = [Math]::Round($AIDegradedRatioTarget * 100, 2)
+      $aiGateErrors += "degraded ratio ${actualPct}% exceeds target ${targetPct}%"
     }
+  }
+
+  $structurePassRatio = $null
+  if ($null -ne $aiResult.structure -and $null -ne $aiResult.structure.passRatio) {
+    $structurePassRatio = [double]$aiResult.structure.passRatio
+  }
+  if ($null -eq $structurePassRatio) {
+    $aiGateErrors += "ai structure pass ratio missing in replay result"
+  } elseif ($structurePassRatio -lt $AIStructurePassRatioTarget) {
+    $actualPct = [Math]::Round($structurePassRatio * 100, 2)
+    $targetPct = [Math]::Round($AIStructurePassRatioTarget * 100, 2)
+    $aiGateErrors += "structure pass ratio ${actualPct}% below target ${targetPct}%"
+  }
+
+  $errorClassCoverage = $null
+  if ($null -ne $aiResult.errorClassCoverage) {
+    $errorClassCoverage = [double]$aiResult.errorClassCoverage
+  }
+  if ($null -eq $errorClassCoverage) {
+    $aiGateErrors += "ai errorClass coverage missing in replay result"
+  } elseif ($errorClassCoverage -lt $AIErrorClassCoverageTarget) {
+    $actualPct = [Math]::Round($errorClassCoverage * 100, 2)
+    $targetPct = [Math]::Round($AIErrorClassCoverageTarget * 100, 2)
+    $aiGateErrors += "errorClass coverage ${actualPct}% below target ${targetPct}%"
+  }
+
+  if ($aiGateErrors.Count -gt 0) {
+    $gateMessage = [string]::Join("; ", $aiGateErrors)
+    Mark-AIStageFailed -Stages $stages -Message $gateMessage
   }
 }
 
@@ -304,6 +352,8 @@ $report = [pscustomobject]@{
   baseUrl     = $base
   gateTargets = [pscustomobject]@{
     aiDegradedRatio = $AIDegradedRatioTarget
+    aiStructurePassRatio = $AIStructurePassRatioTarget
+    aiErrorClassCoverage = $AIErrorClassCoverageTarget
   }
   allPassed   = $allPassed
   stages      = $stages
