@@ -66,6 +66,13 @@ upload_retry_max_attempts: 4
 # 上传完成后校验 OSS 返回的 ETag（静态配置，需重启生效）
 # 开启后会对比本地内容 MD5 与 ETag，一致才视为成功
 upload_etag_verify_enabled: false
+# 断点续传（静态配置，需重启生效）
+# 开启后当文件大小达到阈值会走 multipart + checkpoint 上传
+upload_resumable_enabled: false
+upload_resumable_part_size: 10485760
+upload_resumable_routines: 1
+upload_resumable_threshold: 10485760
+upload_resumable_checkpoint_dir: "logs/upload-checkpoints"
 
 # API 服务配置
 # API 监听地址 控制台通过此地址访问接口

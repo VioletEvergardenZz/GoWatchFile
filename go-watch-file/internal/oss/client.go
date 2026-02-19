@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 
 	sdk "github.com/aliyun/aliyun-oss-go-sdk/oss"
@@ -89,6 +90,16 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 	if c.bucket == nil {
 		return "", fmt.Errorf("OSS Bucket未初始化")
 	}
+	if isResumableUploadEnabled(c.config, contentLength) {
+		if err := c.uploadFileResumable(filePath, objectKey, contentLength); err != nil {
+			return "", err
+		}
+		logger.Info("OSS上传成功")
+		logger.Info("文件同步完成: %s", objectKey)
+		downloadURL := c.buildDownloadURL(objectKey)
+		logger.Info("下载链接: %s", downloadURL)
+		return downloadURL, nil
+	}
 	verifyETag := isUploadETagVerifyEnabled(c.config)
 	body := io.NewSectionReader(file, 0, contentLength)
 	uploadReader := io.Reader(body)
@@ -146,6 +157,42 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 	return downloadURL, nil
 }
 
+func (c *Client) uploadFileResumable(filePath, objectKey string, contentLength int64) error {
+	if c == nil || c.bucket == nil {
+		return fmt.Errorf("OSS Bucket未初始化")
+	}
+	partSize := resolveUploadResumablePartSize(c.config)
+	routines := resolveUploadResumableRoutines(c.config)
+	checkpointDir := resolveUploadResumableCheckpointDir(c.config)
+	if strings.TrimSpace(checkpointDir) != "" {
+		if err := os.MkdirAll(checkpointDir, 0o755); err != nil {
+			return fmt.Errorf("创建断点续传目录失败: %w", err)
+		}
+	}
+
+	options := []sdk.Option{
+		sdk.Routines(routines),
+	}
+	if strings.TrimSpace(checkpointDir) != "" {
+		options = append(options, sdk.CheckpointDir(true, checkpointDir))
+	}
+	if isUploadETagVerifyEnabled(c.config) {
+		logger.Warn("检测到 upload_etag_verify_enabled=true；当前走断点续传链路，ETag 将不做 MD5 比对")
+	}
+	if err := c.bucket.UploadFile(objectKey, filePath, partSize, options...); err != nil {
+		return fmt.Errorf("OSS断点续传上传失败: %w", err)
+	}
+	logger.Info(
+		"OSS断点续传上传完成: object=%s, size=%d, partSize=%d, routines=%d, checkpointDir=%s",
+		objectKey,
+		contentLength,
+		partSize,
+		routines,
+		checkpointDir,
+	)
+	return nil
+}
+
 func isUploadETagVerifyEnabled(cfg *models.Config) bool {
 	if cfg == nil {
 		return false
@@ -181,6 +228,55 @@ func isETagMatch(localMD5Hex, remoteETag string) bool {
 		return false
 	}
 	return local == remote
+}
+
+func isResumableUploadEnabled(cfg *models.Config, fileSize int64) bool {
+	if cfg == nil || !cfg.UploadResumableEnabled {
+		return false
+	}
+	threshold := resolveUploadResumableThreshold(cfg)
+	return fileSize >= threshold
+}
+
+func resolveUploadResumablePartSize(cfg *models.Config) int64 {
+	if cfg == nil || cfg.UploadResumablePartSize <= 0 {
+		return 10 * 1024 * 1024
+	}
+	if cfg.UploadResumablePartSize < sdk.MinPartSize {
+		return sdk.MinPartSize
+	}
+	if cfg.UploadResumablePartSize > sdk.MaxPartSize {
+		return sdk.MaxPartSize
+	}
+	return cfg.UploadResumablePartSize
+}
+
+func resolveUploadResumableRoutines(cfg *models.Config) int {
+	if cfg == nil || cfg.UploadResumableRoutines <= 0 {
+		return 1
+	}
+	if cfg.UploadResumableRoutines > 100 {
+		return 100
+	}
+	return cfg.UploadResumableRoutines
+}
+
+func resolveUploadResumableThreshold(cfg *models.Config) int64 {
+	if cfg == nil || cfg.UploadResumableThreshold <= 0 {
+		return 10 * 1024 * 1024
+	}
+	return cfg.UploadResumableThreshold
+}
+
+func resolveUploadResumableCheckpointDir(cfg *models.Config) string {
+	if cfg == nil {
+		return ""
+	}
+	trimmed := strings.TrimSpace(cfg.UploadResumableCheckpointDir)
+	if trimmed == "" {
+		return ""
+	}
+	return filepath.Clean(trimmed)
 }
 
 // buildObjectKey 用于构建后续流程所需的数据

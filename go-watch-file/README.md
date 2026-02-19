@@ -71,7 +71,12 @@
 - `upload_retry_enabled`：是否启用上传失败重试（默认 true）。
 - `upload_retry_delays`：重试间隔列表（逗号/空白/分号分隔），默认 `1s,2s,5s`，非法项会忽略。
 - `upload_retry_max_attempts`：上传最大尝试次数（含首次，默认 `4`）。
-- `upload_etag_verify_enabled`：是否在上传成功后校验 OSS ETag（默认 false，开启后会比对本地 MD5 与 ETag）。
+- `upload_etag_verify_enabled`：是否在上传成功后校验 OSS ETag（默认 false，仅普通上传链路会比对本地 MD5 与 ETag）。
+- `upload_resumable_enabled`：是否开启断点续传（默认 false，静态配置，需重启生效）。
+- `upload_resumable_part_size`：断点续传分片大小（字节，默认 `10485760`，最小 `102400`）。
+- `upload_resumable_routines`：断点续传并发分片协程数（默认 `1`，最大 `100`）。
+- `upload_resumable_threshold`：启用断点续传的文件大小阈值（字节，默认 `10485760`，达到阈值后切换为断点续传链路）。
+- `upload_resumable_checkpoint_dir`：断点续传 checkpoint 目录（默认 `logs/upload-checkpoints`）。
 - `upload_queue_saturation_threshold`：队列饱和阈值（`0~1`，默认 `0.9`）。
 - `upload_queue_circuit_breaker_enabled`：队列熔断限流开关（默认 `true`）。
 - `system_resource_enabled`：系统资源面板开关（默认 false，开启后 `/api/system` 可用）。
@@ -134,6 +139,11 @@ upload_retry_enabled: true
 upload_retry_delays: "1s,2s,5s"
 upload_retry_max_attempts: 4
 upload_etag_verify_enabled: false
+upload_resumable_enabled: false
+upload_resumable_part_size: 10485760
+upload_resumable_routines: 1
+upload_resumable_threshold: 10485760
+upload_resumable_checkpoint_dir: "logs/upload-checkpoints"
 api_bind: ":8080"
 system_resource_enabled: false
 
@@ -313,7 +323,7 @@ ai_max_lines: 200
   - 若存储初始化失败，会降级为内存模式继续提供接口能力。
 
 ## 运行时配置更新说明
-`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*` / `upload_queue_saturation_threshold` / `upload_queue_circuit_breaker_enabled` / `upload_retry_max_attempts` / `upload_etag_verify_enabled`（静态项需重启）。
+`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*` / `upload_queue_saturation_threshold` / `upload_queue_circuit_breaker_enabled` / `upload_retry_max_attempts` / `upload_etag_verify_enabled` / `upload_resumable_*`（静态项需重启）。
 运行时更新会尽力持久化到 `config.runtime.yaml`。
 
 `/api/alert-config` 仅更新告警配置与轮询状态，不写回 `config.yaml`。
@@ -328,7 +338,8 @@ ai_max_lines: 200
 ## 已知限制
 - 支持多监控目录（逗号或分号分隔）
 - 默认上传队列为内存队列，重启会清空；开启 `upload_queue_persist_enabled` 后会从持久化文件恢复未完成任务。
-- 不支持断点续传。
+- 已支持断点续传（`upload_resumable_enabled=true` 时，对达到阈值的大文件使用 OSS multipart + checkpoint）。
+- 断点续传链路下不会执行本地 MD5 与 OSS ETag 的严格比对（multipart ETag 不是纯文件 MD5）。
 - 已实现钉钉通知与邮件通知，企业微信未接入。
 - 目录过大时可能触发系统句柄限制，可通过 `watch_exclude` 跳过大目录或提升系统 `ulimit`。
 

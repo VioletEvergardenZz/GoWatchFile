@@ -40,6 +40,11 @@ const (
 	defaultAIMaxLines                       = 200
 	defaultAITimeout                        = "20s"
 	defaultUploadRetryMaxAttempts           = 4
+	defaultUploadResumablePartSize          = 10 * 1024 * 1024
+	defaultUploadResumableRoutines          = 1
+	defaultUploadResumableThreshold         = 10 * 1024 * 1024
+	defaultUploadResumableCheckpointDir     = "logs/upload-checkpoints"
+	uploadResumableMinPartSize              = 100 * 1024
 )
 
 var allowedLogLevels = map[string]struct{}{
@@ -147,6 +152,7 @@ func applyEnvOverrides(cfg *models.Config) error {
 	cfg.APIAuthToken = sanitizeConfigString(cfg.APIAuthToken)
 	cfg.APICORSOrigins = sanitizeConfigString(cfg.APICORSOrigins)
 	cfg.UploadQueuePersistFile = sanitizeConfigString(cfg.UploadQueuePersistFile)
+	cfg.UploadResumableCheckpointDir = sanitizeConfigString(cfg.UploadResumableCheckpointDir)
 	if cfg.UploadQueueSaturationThreshold < 0 {
 		cfg.UploadQueueSaturationThreshold = 0
 	}
@@ -254,6 +260,35 @@ func applyEnvOverrides(cfg *models.Config) error {
 	if ok {
 		cfg.UploadETagVerifyEnabled = etagVerifyEnabled
 	}
+	resumableEnabled, ok, err := boolFromEnv("UPLOAD_RESUMABLE_ENABLED")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadResumableEnabled = resumableEnabled
+	}
+	resumablePartSize, ok, err := intFromEnv("UPLOAD_RESUMABLE_PART_SIZE")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadResumablePartSize = int64(resumablePartSize)
+	}
+	resumableRoutines, ok, err := intFromEnv("UPLOAD_RESUMABLE_ROUTINES")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadResumableRoutines = resumableRoutines
+	}
+	resumableThreshold, ok, err := intFromEnv("UPLOAD_RESUMABLE_THRESHOLD")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadResumableThreshold = int64(resumableThreshold)
+	}
+	cfg.UploadResumableCheckpointDir = stringFromEnv("UPLOAD_RESUMABLE_CHECKPOINT_DIR", cfg.UploadResumableCheckpointDir)
 	return nil
 }
 
@@ -279,6 +314,21 @@ func applyDefaults(cfg *models.Config) {
 	}
 	if cfg.UploadRetryMaxAttempts <= 0 {
 		cfg.UploadRetryMaxAttempts = defaultUploadRetryMaxAttempts
+	}
+	if cfg.UploadResumablePartSize <= 0 {
+		cfg.UploadResumablePartSize = defaultUploadResumablePartSize
+	}
+	if cfg.UploadResumablePartSize < uploadResumableMinPartSize {
+		cfg.UploadResumablePartSize = uploadResumableMinPartSize
+	}
+	if cfg.UploadResumableRoutines <= 0 {
+		cfg.UploadResumableRoutines = defaultUploadResumableRoutines
+	}
+	if cfg.UploadResumableThreshold <= 0 {
+		cfg.UploadResumableThreshold = defaultUploadResumableThreshold
+	}
+	if strings.TrimSpace(cfg.UploadResumableCheckpointDir) == "" {
+		cfg.UploadResumableCheckpointDir = defaultUploadResumableCheckpointDir
 	}
 	if strings.TrimSpace(cfg.Silence) == "" {
 		cfg.Silence = defaultSilence
@@ -529,6 +579,18 @@ func validateUploadQueueStrategy(config *models.Config) error {
 	}
 	if config.UploadRetryMaxAttempts < 0 {
 		return fmt.Errorf("upload_retry_max_attempts 必须大于零")
+	}
+	if config.UploadResumablePartSize < 0 {
+		return fmt.Errorf("upload_resumable_part_size 必须大于零")
+	}
+	if config.UploadResumablePartSize > 0 && config.UploadResumablePartSize < uploadResumableMinPartSize {
+		return fmt.Errorf("upload_resumable_part_size 不能小于 100KB")
+	}
+	if config.UploadResumableRoutines < 0 {
+		return fmt.Errorf("upload_resumable_routines 必须大于零")
+	}
+	if config.UploadResumableThreshold < 0 {
+		return fmt.Errorf("upload_resumable_threshold 必须大于零")
 	}
 	return nil
 }

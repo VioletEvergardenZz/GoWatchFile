@@ -48,6 +48,11 @@ type Config struct {
 	UploadRetryEnabled               *bool         `yaml:"upload_retry_enabled"`
 	UploadRetryMaxAttempts           int           `yaml:"upload_retry_max_attempts"`
 	UploadETagVerifyEnabled          bool          `yaml:"upload_etag_verify_enabled"`
+	UploadResumableEnabled           bool          `yaml:"upload_resumable_enabled"`
+	UploadResumablePartSize          int64         `yaml:"upload_resumable_part_size"`
+	UploadResumableRoutines          int           `yaml:"upload_resumable_routines"`
+	UploadResumableThreshold         int64         `yaml:"upload_resumable_threshold"`
+	UploadResumableCheckpointDir     string        `yaml:"upload_resumable_checkpoint_dir"`
 	APIBind                          string        `yaml:"api_bind"` // API 服务监听地址
 	SystemResourceEnabled            bool          `yaml:"system_resource_enabled"`
 	AlertEnabled                     bool          `yaml:"alert_enabled"`

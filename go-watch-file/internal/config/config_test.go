@@ -612,6 +612,11 @@ func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
 	t.Setenv("UPLOAD_QUEUE_PERSIST_ENABLED", "true")
 	t.Setenv("UPLOAD_QUEUE_PERSIST_FILE", "logs/persist-queue.json")
 	t.Setenv("UPLOAD_ETAG_VERIFY_ENABLED", "true")
+	t.Setenv("UPLOAD_RESUMABLE_ENABLED", "true")
+	t.Setenv("UPLOAD_RESUMABLE_PART_SIZE", "2097152")
+	t.Setenv("UPLOAD_RESUMABLE_ROUTINES", "3")
+	t.Setenv("UPLOAD_RESUMABLE_THRESHOLD", "1048576")
+	t.Setenv("UPLOAD_RESUMABLE_CHECKPOINT_DIR", "logs/upload-cp")
 	cfg := &models.Config{
 		Bucket:                    "file-bucket",
 		Endpoint:                  "https://file-endpoint.com",
@@ -624,6 +629,10 @@ func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
 		UploadQueuePersistEnabled: false,
 		UploadQueuePersistFile:    "",
 		UploadETagVerifyEnabled:   false,
+		UploadResumableEnabled:    false,
+		UploadResumablePartSize:   0,
+		UploadResumableRoutines:   0,
+		UploadResumableThreshold:  0,
 	}
 	if err := applyEnvOverrides(cfg); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -657,6 +666,21 @@ func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
 	}
 	if !cfg.UploadETagVerifyEnabled {
 		t.Fatalf("UploadETagVerifyEnabled should be overridden by env, got %v", cfg.UploadETagVerifyEnabled)
+	}
+	if !cfg.UploadResumableEnabled {
+		t.Fatalf("UploadResumableEnabled should be overridden by env, got %v", cfg.UploadResumableEnabled)
+	}
+	if cfg.UploadResumablePartSize != 2097152 {
+		t.Fatalf("UploadResumablePartSize should be overridden by env, got %d", cfg.UploadResumablePartSize)
+	}
+	if cfg.UploadResumableRoutines != 3 {
+		t.Fatalf("UploadResumableRoutines should be overridden by env, got %d", cfg.UploadResumableRoutines)
+	}
+	if cfg.UploadResumableThreshold != 1048576 {
+		t.Fatalf("UploadResumableThreshold should be overridden by env, got %d", cfg.UploadResumableThreshold)
+	}
+	if cfg.UploadResumableCheckpointDir != "logs/upload-cp" {
+		t.Fatalf("UploadResumableCheckpointDir should be overridden by env, got %s", cfg.UploadResumableCheckpointDir)
 	}
 }
 
