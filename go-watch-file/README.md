@@ -179,7 +179,9 @@ ai_max_lines: 200
 如需关闭 API 鉴权，可保持 `API_AUTH_TOKEN` 为空，或显式设置 `API_AUTH_DISABLED=true`。
 
 ### 告警规则文件示例
-参考 `alert-rules.example.yaml`，按需调整关键词、级别与抑制窗口。
+- 双层模板（默认规则 + 场景规则）：`deploy/alert/gwf-alert-rules-layered-template.json`
+- 组合脚本（生成运行时规则并可选发布）：`scripts/ops/alert-rules-compose.ps1`
+- 规则结构与操作说明：`../docs/03-告警与AI/告警规则双层模板手册.md`
 
 ## HTTP API（控制台使用）
 
@@ -415,6 +417,13 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/check-metrics.ps1 -BaseUrl 
 - `-FailOnWarning` 可将 Warning 也作为失败退出（便于 CI 门禁）。
 - 退出码：`4=Critical 阈值触发`，`5=Warning 阈值触发且启用 -FailOnWarning`。
 
+告警规则模板收敛（默认规则 + 场景规则）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/alert-rules-compose.ps1 -TemplateFile ./deploy/alert/gwf-alert-rules-layered-template.json -Scenarios "database,upload,ai,control" -OutputFile ../reports/alert-rules-composed.json
+```
+直接发布到后端可增加 `-Apply -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN`。
+
 上传压测文件生成：
 ```powershell
 cd go-watch-file
@@ -487,7 +496,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl ht
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/stage-report.ps1 -RecapFile ../reports/stage-recap-result.json -OutputFile ../docs/05-指标与评估/阶段回归报告-$(Get-Date -Format yyyy-MM-dd).md -Operator "your-name" -Environment "dev-like (local)"
 ```
-若后端未启用鉴权，`ai-replay.ps1` / `ai-baseline.ps1` / `stage-prime.ps1` / `control-replay.ps1` / `control-agent-check.ps1` / `stage-recap.ps1` 均可省略 `-Token` 参数。
+若后端未启用鉴权，`ai-replay.ps1` / `ai-baseline.ps1` / `stage-prime.ps1` / `control-replay.ps1` / `control-agent-check.ps1` / `alert-rules-compose.ps1` / `stage-recap.ps1` 均可省略 `-Token` 参数。
 
 ## 相关文档
 - 文档导航：`../docs/文档导航.md`

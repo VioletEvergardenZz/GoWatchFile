@@ -1,0 +1,167 @@
+{
+  "version": 1,
+  "defaults": {
+    "suppress_window": "5m",
+    "match_case": false
+  },
+  "escalation": {
+    "enabled": true,
+    "level": "fatal",
+    "window": "5m",
+    "threshold": 20,
+    "suppress_window": "5m",
+    "rule_id": "system_spike",
+    "title": "系统异常激增",
+    "message": "系统异常在5分钟内达到20次"
+  },
+  "defaultRules": [
+    {
+      "id": "ignore_debug_trace",
+      "title": "调试日志忽略",
+      "level": "ignore",
+      "keywords": [
+        "debug",
+        "trace"
+      ],
+      "notify": false
+    },
+    {
+      "id": "fatal_panic",
+      "title": "服务 panic",
+      "level": "fatal",
+      "keywords": [
+        "panic",
+        "fatal error"
+      ],
+      "notify": true
+    },
+    {
+      "id": "system_timeout",
+      "title": "关键链路超时",
+      "level": "system",
+      "keywords": [
+        "timeout",
+        "deadline exceeded"
+      ],
+      "notify": true
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "database",
+      "title": "数据库与连接池",
+      "description": "数据库连接不可用、池耗尽、连接重置。",
+      "rules": [
+        {
+          "id": "system_db_pool_exhausted",
+          "title": "数据库连接池耗尽",
+          "level": "system",
+          "keywords": [
+            "Connection is not available",
+            "连接池耗尽",
+            "too many connections"
+          ],
+          "notify": true
+        },
+        {
+          "id": "system_db_conn_reset",
+          "title": "数据库连接重置",
+          "level": "system",
+          "keywords": [
+            "connection reset",
+            "broken pipe",
+            "driver: bad connection"
+          ],
+          "notify": true
+        }
+      ]
+    },
+    {
+      "id": "upload",
+      "title": "上传与存储链路",
+      "description": "上传失败、OSS 访问异常、签名失败。",
+      "rules": [
+        {
+          "id": "system_upload_failed",
+          "title": "上传执行失败",
+          "level": "system",
+          "keywords": [
+            "upload failed",
+            "上传失败",
+            "upload error"
+          ],
+          "notify": true
+        },
+        {
+          "id": "system_oss_request_failed",
+          "title": "OSS 请求失败",
+          "level": "system",
+          "keywords": [
+            "oss error",
+            "signature does not match",
+            "AccessDenied"
+          ],
+          "notify": true
+        }
+      ]
+    },
+    {
+      "id": "ai",
+      "title": "AI 分析链路",
+      "description": "AI 端点异常、降级频繁、请求失败。",
+      "rules": [
+        {
+          "id": "system_ai_request_error",
+          "title": "AI 请求错误",
+          "level": "system",
+          "keywords": [
+            "AI请求失败",
+            "AI响应异常",
+            "AI服务不可用"
+          ],
+          "notify": true
+        },
+        {
+          "id": "business_ai_degraded",
+          "title": "AI 降级返回",
+          "level": "business",
+          "keywords": [
+            "degraded=true",
+            "fallbackReason",
+            "规则摘要"
+          ],
+          "notify": false
+        }
+      ]
+    },
+    {
+      "id": "control",
+      "title": "控制面任务执行",
+      "description": "任务超时、Agent 离线、调度失败。",
+      "rules": [
+        {
+          "id": "system_control_timeout",
+          "title": "控制面任务超时",
+          "level": "system",
+          "keywords": [
+            "run_timeout",
+            "task timeout",
+            "任务超时"
+          ],
+          "notify": true
+        },
+        {
+          "id": "system_agent_offline",
+          "title": "Agent 离线",
+          "level": "system",
+          "keywords": [
+            "offline_stale",
+            "离线 Agent",
+            "heartbeat lag"
+          ],
+          "notify": true
+        }
+      ]
+    }
+  ]
+}
