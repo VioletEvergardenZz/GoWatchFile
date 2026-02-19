@@ -377,6 +377,16 @@ cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/upload-stress.ps1 -WatchDir D:\tmp\gwf-stress -Count 1000 -IntervalMs 20
 ```
 
+上传链路压测与故障注入复盘（输出 JSON + Markdown）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/upload-recap.ps1 -BaseUrl http://localhost:8082 -WatchDir D:\tmp\gwf-stress -FaultMode manual -SaturationCount 1200 -FaultCount 400 -RecoveryCount 300 -OutputFile ../reports/upload-recap-result.json -ReportFile ../docs/05-指标与评估/上传链路压测与故障注入报告-$(Get-Date -Format yyyy-MM-dd).md
+```
+`FaultMode` 支持：
+- `none`：仅队列压测
+- `manual`：手工执行故障注入/恢复
+- `command`：通过 `-FaultStartCommand/-FaultRecoverCommand` 自动执行注入/恢复
+
 AI 回放：
 ```powershell
 cd go-watch-file
