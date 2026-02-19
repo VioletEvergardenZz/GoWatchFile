@@ -1,8 +1,8 @@
 ﻿# AI 回放与降级验收运行手册
 
 - 更新时间：2026-02-19
-- 目标：验证 AI 日志分析在真实样本下的降级率、结构一致性、错误分类覆盖率
-- 关联脚本：`go-watch-file/scripts/ops/ai-replay.ps1`
+- 目标：验证 AI 日志分析在真实样本下的降级率、结构一致性、错误分类覆盖率，以及基线结构稳定性（summary/severity/suggestions）
+- 关联脚本：`go-watch-file/scripts/ops/ai-replay.ps1`、`go-watch-file/scripts/ops/ai-baseline.ps1`
 
 ## 1. 输入准备
 
@@ -48,6 +48,37 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 `
 - `2`：输入参数错误（如路径文件缺失/为空）
 - `3`：启用 `-FailOnGate` 且门禁未通过
 
+## 2.1 基线验证执行（summary/severity/suggestions）
+
+在线模式（自动回放并执行基线门禁）：
+
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 `
+  -BaseUrl http://localhost:8082 `
+  -Token $env:API_AUTH_TOKEN `
+  -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt `
+  -SummaryPassRatioTarget 1.00 `
+  -SeverityPassRatioTarget 1.00 `
+  -SuggestionsPassRatioTarget 1.00 `
+  -OutputFile ../reports/ai-baseline-result.json `
+  -ReportFile ../docs/05-指标与评估/AI基线验证报告-$(Get-Date -Format yyyy-MM-dd).md
+```
+
+离线模式（不访问服务，直接消费既有回放结果）：
+
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 `
+  -FromResultFile ../reports/ai-replay-result.json `
+  -OutputFile ../reports/ai-baseline-result.json
+```
+
+`ai-baseline.ps1` 退出码约定：
+- `0`：门禁通过
+- `2`：输入参数错误（如结果文件不存在）
+- `3`：门禁失败（包括结构证据不足）
+
 ## 3. 参数说明
 
 - `-DegradedRatioTarget`：降级率门禁，默认 `0.2`
@@ -75,6 +106,13 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 `
 - `path/ok/degraded/errorClass/elapsedMs`
 - `structureChecked/structureOK/structureIssues`
 - `severity/suggestionsCount/causesCount/keyErrorsCount/confidence`
+
+基线结果主字段（`reports/ai-baseline-result.json`）：
+- `replay.total/success/degraded/degradedRatio`
+- `analysis.structureEvidenceReady/structureChecked`
+- `analysis.summaryPassRatio/severityPassRatio/suggestionsPassRatio`
+- `gates.replay.*`、`gates.baseline.*`、`gates.allPassed`
+- `notes[]`（缺少 `structure.*` 或 `results[].structureIssues` 时会标记结构证据不足）
 
 ## 5. 验收口径
 

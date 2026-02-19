@@ -7,8 +7,12 @@ package oss
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
+	"hash"
 	"io"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -85,17 +89,31 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 	if c.bucket == nil {
 		return "", fmt.Errorf("OSS Bucket未初始化")
 	}
+	verifyETag := isUploadETagVerifyEnabled(c.config)
 	body := io.NewSectionReader(file, 0, contentLength)
+	uploadReader := io.Reader(body)
+	var hasher hash.Hash
+	if verifyETag {
+		hasher = md5.New()
+		uploadReader = io.TeeReader(body, hasher)
+	}
 	reader := &contextReader{
 		ctx:    ctx,
-		reader: body,
+		reader: uploadReader,
+	}
+	var responseHeader http.Header
+	putOptions := []sdk.Option{
+		sdk.ContentLength(contentLength),
+		sdk.ContentType("application/octet-stream"),
+	}
+	if verifyETag {
+		putOptions = append(putOptions, sdk.GetResponseHeader(&responseHeader))
 	}
 
 	err = c.bucket.PutObject(
 		objectKey,
 		reader,
-		sdk.ContentLength(contentLength),
-		sdk.ContentType("application/octet-stream"),
+		putOptions...,
 	)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -103,12 +121,66 @@ func (c *Client) UploadFile(ctx context.Context, filePath string) (string, error
 		}
 		return "", fmt.Errorf("OSS上传失败: %w", err)
 	}
+	if verifyETag {
+		if hasher == nil {
+			return "", fmt.Errorf("ETag校验器未初始化")
+		}
+		localMD5 := hex.EncodeToString(hasher.Sum(nil))
+		remoteETag := normalizeETag(responseHeader.Get("ETag"))
+		if remoteETag == "" {
+			return "", fmt.Errorf("OSS上传成功但未返回ETag，无法完成校验: %s", objectKey)
+		}
+		if !isValidMD5Hex(remoteETag) {
+			return "", fmt.Errorf("OSS返回的ETag格式无效，无法与本地MD5比对: etag=%s", remoteETag)
+		}
+		if !isETagMatch(localMD5, remoteETag) {
+			return "", fmt.Errorf("OSS ETag校验失败: local=%s remote=%s", localMD5, remoteETag)
+		}
+		logger.Info("OSS ETag校验通过: object=%s etag=%s", objectKey, remoteETag)
+	}
 	logger.Info("OSS上传成功")
 	logger.Info("文件同步完成: %s", objectKey)
 
 	downloadURL := c.buildDownloadURL(objectKey)
 	logger.Info("下载链接: %s", downloadURL)
 	return downloadURL, nil
+}
+
+func isUploadETagVerifyEnabled(cfg *models.Config) bool {
+	if cfg == nil {
+		return false
+	}
+	return cfg.UploadETagVerifyEnabled
+}
+
+func normalizeETag(value string) string {
+	trimmed := strings.TrimSpace(value)
+	trimmed = strings.Trim(trimmed, "\"")
+	return strings.ToLower(trimmed)
+}
+
+func isValidMD5Hex(value string) bool {
+	if len(value) != 32 {
+		return false
+	}
+	for _, ch := range value {
+		switch {
+		case ch >= '0' && ch <= '9':
+		case ch >= 'a' && ch <= 'f':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func isETagMatch(localMD5Hex, remoteETag string) bool {
+	local := normalizeETag(localMD5Hex)
+	remote := normalizeETag(remoteETag)
+	if !isValidMD5Hex(local) || !isValidMD5Hex(remote) {
+		return false
+	}
+	return local == remote
 }
 
 // buildObjectKey 用于构建后续流程所需的数据

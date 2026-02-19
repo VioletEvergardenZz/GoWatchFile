@@ -63,6 +63,9 @@ upload_queue_circuit_breaker_enabled: true
 # 上传重试策略（静态配置，需重启生效）
 # 最大尝试次数包含首次上传；重试越多成功率越高，但会拉长尾延迟
 upload_retry_max_attempts: 4
+# 上传完成后校验 OSS 返回的 ETag（静态配置，需重启生效）
+# 开启后会对比本地内容 MD5 与 ETag，一致才视为成功
+upload_etag_verify_enabled: false
 
 # API 服务配置
 # API 监听地址 控制台通过此地址访问接口

@@ -28,6 +28,7 @@
    # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
    # 可选调整背压保护：UPLOAD_QUEUE_SATURATION_THRESHOLD/UPLOAD_QUEUE_CIRCUIT_BREAKER_ENABLED
    # 可选调整上传重试上限：UPLOAD_RETRY_MAX_ATTEMPTS
+   # 可选开启上传 ETag 校验：UPLOAD_ETAG_VERIFY_ENABLED
    # 如需覆盖 OSS 参数，可设置 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL
    # 可选 AI 分析：AI_ENABLED/AI_BASE_URL/AI_API_KEY/AI_MODEL/AI_TIMEOUT/AI_MAX_LINES
    ```
@@ -40,7 +41,7 @@
 5) 停止：`Ctrl + C`，服务会优雅退出并等待队列 drain。
 
 配置优先级：config.yaml -> config.runtime.yaml -> 环境变量覆盖 -> 默认值。
-环境变量仅覆盖 OSS / 通知 / API 安全 / AI / 队列持久化相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
+环境变量仅覆盖 OSS / 通知 / API 安全 / AI / 上传静态策略相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
 当 `API_AUTH_TOKEN` 留空（或未配置）时，管理接口默认不校验 token；
 如需强制关闭可设置 `API_AUTH_DISABLED=true`，如需开启则设置 `API_AUTH_TOKEN`。
 `/api/health` 始终允许匿名访问。
@@ -70,6 +71,7 @@
 - `upload_retry_enabled`：是否启用上传失败重试（默认 true）。
 - `upload_retry_delays`：重试间隔列表（逗号/空白/分号分隔），默认 `1s,2s,5s`，非法项会忽略。
 - `upload_retry_max_attempts`：上传最大尝试次数（含首次，默认 `4`）。
+- `upload_etag_verify_enabled`：是否在上传成功后校验 OSS ETag（默认 false，开启后会比对本地 MD5 与 ETag）。
 - `upload_queue_saturation_threshold`：队列饱和阈值（`0~1`，默认 `0.9`）。
 - `upload_queue_circuit_breaker_enabled`：队列熔断限流开关（默认 `true`）。
 - `system_resource_enabled`：系统资源面板开关（默认 false，开启后 `/api/system` 可用）。
@@ -131,6 +133,7 @@ upload_queue_circuit_breaker_enabled: true
 upload_retry_enabled: true
 upload_retry_delays: "1s,2s,5s"
 upload_retry_max_attempts: 4
+upload_etag_verify_enabled: false
 api_bind: ":8080"
 system_resource_enabled: false
 
@@ -310,7 +313,7 @@ ai_max_lines: 200
   - 若存储初始化失败，会降级为内存模式继续提供接口能力。
 
 ## 运行时配置更新说明
-`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*` / `upload_queue_saturation_threshold` / `upload_queue_circuit_breaker_enabled` / `upload_retry_max_attempts`（静态项需重启）。
+`/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*` / `upload_queue_saturation_threshold` / `upload_queue_circuit_breaker_enabled` / `upload_retry_max_attempts` / `upload_etag_verify_enabled`（静态项需重启）。
 运行时更新会尽力持久化到 `config.runtime.yaml`。
 
 `/api/alert-config` 仅更新告警配置与轮询状态，不写回 `config.yaml`。
@@ -361,6 +364,14 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -FromResultFil
 ```
 
 ## 可靠性演练脚本
+基础验证（go test + 单机上传 + 通知观测）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/basic-e2e.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -WaitTimeoutSec 90 -RequireNotification -OutputFile ../reports/basic-e2e-result.json -ReportFile ../docs/05-指标与评估/基础验证报告-$(Get-Date -Format yyyy-MM-dd).md
+```
+- 可选 `-WatchDir` 指定验证目录；不传时默认从仪表盘读取 `heroCopy.watchDirs[0]`。
+- 若当前环境未配置通知渠道，可去掉 `-RequireNotification`，脚本将把“未观测到通知增量”视为非阻断。
+
 指标巡检：
 ```powershell
 cd go-watch-file
@@ -399,6 +410,18 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 -BaseUrl http
 ```
 可直接维护 `../docs/03-告警与AI/AI回放路径清单.txt`，样例场景矩阵参考 `../docs/03-告警与AI/AI回放样例集清单.md`。
 
+AI 基线验证（固定样例回放，聚焦 `summary/severity/suggestions` 结构稳定性）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt -SummaryPassRatioTarget 1.00 -SeverityPassRatioTarget 1.00 -SuggestionsPassRatioTarget 1.00 -OutputFile ../reports/ai-baseline-result.json -ReportFile ../docs/05-指标与评估/AI基线验证报告-$(Get-Date -Format yyyy-MM-dd).md
+```
+离线复核模式（不访问服务，直接消费既有回放结果）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 -FromResultFile ../reports/ai-replay-result.json -OutputFile ../reports/ai-baseline-result.json
+```
+若回放结果缺少 `structure.*` 或 `results[].structureIssues`，脚本会判定“结构证据不足”并返回失败，避免旧口径结果误通过。
+
 阶段预备（自动导入并发布知识库文档 + 生成 AI 回放样本并登记告警日志路径）：
 ```powershell
 cd go-watch-file
@@ -428,7 +451,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl ht
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/stage-report.ps1 -RecapFile ../reports/stage-recap-result.json -OutputFile ../docs/05-指标与评估/阶段回归报告-$(Get-Date -Format yyyy-MM-dd).md -Operator "your-name" -Environment "dev-like (local)"
 ```
-若后端未启用鉴权，`ai-replay.ps1` / `stage-prime.ps1` / `control-replay.ps1` / `stage-recap.ps1` 均可省略 `-Token` 参数。
+若后端未启用鉴权，`ai-replay.ps1` / `ai-baseline.ps1` / `stage-prime.ps1` / `control-replay.ps1` / `stage-recap.ps1` 均可省略 `-Token` 参数。
 
 ## 相关文档
 - 文档导航：`../docs/文档导航.md`

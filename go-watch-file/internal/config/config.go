@@ -247,6 +247,13 @@ func applyEnvOverrides(cfg *models.Config) error {
 	if ok {
 		cfg.UploadRetryMaxAttempts = retryMaxAttempts
 	}
+	etagVerifyEnabled, ok, err := boolFromEnv("UPLOAD_ETAG_VERIFY_ENABLED")
+	if err != nil {
+		return err
+	}
+	if ok {
+		cfg.UploadETagVerifyEnabled = etagVerifyEnabled
+	}
 	return nil
 }
 

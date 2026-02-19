@@ -611,6 +611,7 @@ func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
 	t.Setenv("EMAIL_PASS", "env-pass")
 	t.Setenv("UPLOAD_QUEUE_PERSIST_ENABLED", "true")
 	t.Setenv("UPLOAD_QUEUE_PERSIST_FILE", "logs/persist-queue.json")
+	t.Setenv("UPLOAD_ETAG_VERIFY_ENABLED", "true")
 	cfg := &models.Config{
 		Bucket:                    "file-bucket",
 		Endpoint:                  "https://file-endpoint.com",
@@ -622,6 +623,7 @@ func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
 		EmailPass:                 "file-pass",
 		UploadQueuePersistEnabled: false,
 		UploadQueuePersistFile:    "",
+		UploadETagVerifyEnabled:   false,
 	}
 	if err := applyEnvOverrides(cfg); err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -652,6 +654,9 @@ func TestApplyEnvOverrides_EnvOverrides(t *testing.T) {
 	}
 	if cfg.UploadQueuePersistFile != "logs/persist-queue.json" {
 		t.Fatalf("UploadQueuePersistFile should be overridden by env, got %s", cfg.UploadQueuePersistFile)
+	}
+	if !cfg.UploadETagVerifyEnabled {
+		t.Fatalf("UploadETagVerifyEnabled should be overridden by env, got %v", cfg.UploadETagVerifyEnabled)
 	}
 }
 

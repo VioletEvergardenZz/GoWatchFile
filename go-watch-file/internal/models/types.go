@@ -47,6 +47,7 @@ type Config struct {
 	UploadRetryDelays                string        `yaml:"upload_retry_delays"`
 	UploadRetryEnabled               *bool         `yaml:"upload_retry_enabled"`
 	UploadRetryMaxAttempts           int           `yaml:"upload_retry_max_attempts"`
+	UploadETagVerifyEnabled          bool          `yaml:"upload_etag_verify_enabled"`
 	APIBind                          string        `yaml:"api_bind"` // API 服务监听地址
 	SystemResourceEnabled            bool          `yaml:"system_resource_enabled"`
 	AlertEnabled                     bool          `yaml:"alert_enabled"`
