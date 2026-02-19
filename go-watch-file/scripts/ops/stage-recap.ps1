@@ -14,6 +14,8 @@ param(
   [string]$SamplesFile = "../docs/04-知识库/知识库命中率样本.json",
   [string]$MttdFile = "../docs/04-知识库/知识库MTTD基线.csv",
   [double]$CitationTarget = 1.0,
+  [double]$KBHitrateTarget = 0.8,
+  [double]$KBMttdDropTarget = 0.2,
   [string]$ReportsDir = "../reports",
   [switch]$AutoPrime,
   [string]$PrimeDocsPath = "../docs",
@@ -250,6 +252,8 @@ if (-not $SkipKBRecap) {
     "-SamplesFile", $SamplesFile,
     "-MttdFile", $MttdFile,
     "-CitationTarget", ([string]$CitationTarget),
+    "-HitrateTarget", ([string]$KBHitrateTarget),
+    "-MttdDropTarget", ([string]$KBMttdDropTarget),
     "-OutputFile", $kbOutput
   )
   if ($tokenArgs.Count -gt 0) {
@@ -354,6 +358,9 @@ $report = [pscustomobject]@{
     aiDegradedRatio = $AIDegradedRatioTarget
     aiStructurePassRatio = $AIStructurePassRatioTarget
     aiErrorClassCoverage = $AIErrorClassCoverageTarget
+    kbHitrate = $KBHitrateTarget
+    kbCitation = $CitationTarget
+    kbMttdDrop = $KBMttdDropTarget
   }
   allPassed   = $allPassed
   stages      = $stages

@@ -325,6 +325,20 @@ $kbSearchHitRatio = Read-MetricValue -MetricsText $metricsText -MetricName "gwf_
 $kbAskCitationRatio = Read-MetricValue -MetricsText $metricsText -MetricName "gwf_kb_ask_citation_ratio"
 $kbHitratePct = if ($null -ne $kbSearchHitRatio) { [double]$kbSearchHitRatio * 100 } else { $null }
 $kbCitationPct = if ($null -ne $kbAskCitationRatio) { [double]$kbAskCitationRatio * 100 } else { $null }
+$kbHitrateTargetPct = 80.0
+$kbCitationTargetPct = 100.0
+$kbMttdDropTargetPct = 20.0
+if ($null -ne $recap.gateTargets) {
+  if ($null -ne $recap.gateTargets.kbHitrate) {
+    $kbHitrateTargetPct = [double]$recap.gateTargets.kbHitrate * 100
+  }
+  if ($null -ne $recap.gateTargets.kbCitation) {
+    $kbCitationTargetPct = [double]$recap.gateTargets.kbCitation * 100
+  }
+  if ($null -ne $recap.gateTargets.kbMttdDrop) {
+    $kbMttdDropTargetPct = [double]$recap.gateTargets.kbMttdDrop * 100
+  }
+}
 
 $controlOnline = Read-MetricValue -MetricsText $metricsText -MetricName "gwf_control_agents_online"
 $controlBacklog = Read-MetricValue -MetricsText $metricsText -MetricName "gwf_control_task_backlog"
@@ -374,11 +388,15 @@ if ($null -ne $aiErrorClassCoveragePct) {
 }
 $kbHitratePass = $null
 if ($null -ne $kbHitratePct) {
-  $kbHitratePass = ([double]$kbHitratePct -ge 80)
+  $kbHitratePass = ([double]$kbHitratePct -ge $kbHitrateTargetPct)
 }
 $kbCitationPass = $null
 if ($null -ne $kbCitationPct) {
-  $kbCitationPass = ([double]$kbCitationPct -ge 99.99)
+  $kbCitationPass = ([double]$kbCitationPct -ge $kbCitationTargetPct)
+}
+$mttdDropPass = $null
+if ($null -ne $mttdDropPct) {
+  $mttdDropPass = ([double]$mttdDropPct -ge $kbMttdDropTargetPct)
 }
 $controlOnlinePass = $null
 if ($null -ne $controlOnline) {
@@ -396,6 +414,9 @@ if ($null -ne $controlTimeoutTotal) {
 $aiTargetText = ("<= {0}%" -f (Format-Decimal -Value ([double]$aiTargetPct) -Digits 2))
 $aiStructureTargetText = (">= {0}%" -f (Format-Decimal -Value ([double]$aiStructureTargetPct) -Digits 2))
 $aiErrorClassCoverageTargetText = (">= {0}%" -f (Format-Decimal -Value ([double]$aiErrorClassCoverageTargetPct) -Digits 2))
+$kbHitrateTargetText = (">= {0}%" -f (Format-Decimal -Value ([double]$kbHitrateTargetPct) -Digits 2))
+$kbCitationTargetText = (">= {0}%" -f (Format-Decimal -Value ([double]$kbCitationTargetPct) -Digits 2))
+$kbMttdDropTargetText = (">= {0}%" -f (Format-Decimal -Value ([double]$kbMttdDropTargetPct) -Digits 2))
 
 $primeStage = Get-Stage -Recap $recap -Name "stage-prime"
 $metricsStage = Get-Stage -Recap $recap -Name "metrics-check"
@@ -456,8 +477,9 @@ $metricRows += "| 上传失败率（10m） | < 5% | $(Format-NullableNumber -Val
 $metricRows += "| AI 降级率 | $aiTargetText | $(Format-NullableNumber -Value $aiDegradedRatioPct -Digits 2 -Suffix '%') | $(To-PF -Pass $aiPass) |"
 $metricRows += "| AI 结构一致性通过率 | $aiStructureTargetText | $(Format-NullableNumber -Value $aiStructurePassRatioPct -Digits 2 -Suffix '%') | $(To-PF -Pass $aiStructurePass) |"
 $metricRows += "| AI 错误分类覆盖率 | $aiErrorClassCoverageTargetText | $(Format-NullableNumber -Value $aiErrorClassCoveragePct -Digits 2 -Suffix '%') | $(To-PF -Pass $aiErrorClassCoveragePass) |"
-$metricRows += "| 知识检索命中率 | >= 80% | $(Format-NullableNumber -Value $kbHitratePct -Digits 2 -Suffix '%') | $(To-PF -Pass $kbHitratePass) |"
-$metricRows += "| 问答引用率 | = 100% | $(Format-NullableNumber -Value $kbCitationPct -Digits 2 -Suffix '%') | $(To-PF -Pass $kbCitationPass) |"
+$metricRows += "| 知识检索命中率 | $kbHitrateTargetText | $(Format-NullableNumber -Value $kbHitratePct -Digits 2 -Suffix '%') | $(To-PF -Pass $kbHitratePass) |"
+$metricRows += "| 问答引用率 | $kbCitationTargetText | $(Format-NullableNumber -Value $kbCitationPct -Digits 2 -Suffix '%') | $(To-PF -Pass $kbCitationPass) |"
+$metricRows += "| MTTD 下降比例 | $kbMttdDropTargetText | $(Format-NullableNumber -Value $mttdDropPct -Digits 2 -Suffix '%') | $(To-PF -Pass $mttdDropPass) |"
 $metricRows += "| 控制面在线 Agent 数 | >= 1 | $(Format-NullableNumber -Value $controlOnline -Digits 0) | $(To-PF -Pass $controlOnlinePass) |"
 $metricRows += "| 控制面 backlog | <= 50（参考阈值） | $(Format-NullableNumber -Value $controlBacklog -Digits 0) | $(To-PF -Pass $controlBacklogPass) |"
 $metricRows += "| 控制面任务超时增量（10m） | = 0 | $(Format-NullableNumber -Value $controlTimeoutTotal -Digits 0) | $(To-PF -Pass $controlTimeoutPass) |"

@@ -351,9 +351,14 @@ go run ./cmd/kb-eval mttd -input ../docs/04-知识库/知识库MTTD基线.csv
 知识库复盘汇总：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -SamplesFile ../docs/04-知识库/知识库命中率样本.json -MttdFile ../docs/04-知识库/知识库MTTD基线.csv -OutputFile ../reports/kb-recap-result.json
+powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -SamplesFile ../docs/04-知识库/知识库命中率样本.json -MttdFile ../docs/04-知识库/知识库MTTD基线.csv -CitationTarget 1.0 -HitrateTarget 0.8 -MttdDropTarget 0.2 -OutputFile ../reports/kb-recap-result.json -ReportFile ../docs/05-指标与评估/知识库命中率与引用率阶段复盘改进清单-$(Get-Date -Format yyyy-MM-dd).md
 ```
-若后端未启用鉴权，上述命令可省略 `-Token` 参数；`kb-eval` 的 `-token` 参数同样可省略。
+若后端未启用鉴权，上述命令可省略 `-Token` 参数；`kb-eval` 的 `-token` 参数同样可省略。  
+离线复盘可直接消费既有结果文件并重建改进清单：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -FromResultFile ../reports/kb-recap-result.json -OutputFile ../reports/kb-recap-result.json -ReportFile ../docs/05-指标与评估/知识库命中率与引用率阶段复盘改进清单-$(Get-Date -Format yyyy-MM-dd).md
+```
 
 ## 可靠性演练脚本
 指标巡检：
@@ -409,7 +414,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/control-replay.ps1 -BaseUrl
 阶段一键复盘（metrics + ai + control + kb，默认全量）：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -AIPathsFile ../docs/03-告警与AI/AI回放路径清单.txt -AILimit 200 -AIDegradedRatioTarget 0.20 -AIStructurePassRatioTarget 1.00 -AIErrorClassCoverageTarget 1.00 -OutputFile ../reports/stage-recap-result.json
+powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -AIPathsFile ../docs/03-告警与AI/AI回放路径清单.txt -AILimit 200 -AIDegradedRatioTarget 0.20 -AIStructurePassRatioTarget 1.00 -AIErrorClassCoverageTarget 1.00 -KBHitrateTarget 0.8 -CitationTarget 1.0 -KBMttdDropTarget 0.2 -OutputFile ../reports/stage-recap-result.json
 ```
 按需跳过阶段可增加 `-SkipAIReplay` / `-SkipControlReplay` / `-SkipKBRecap`。
 本地演练环境建议增加 `-AutoPrime`，自动补齐知识库与 AI 回放前置条件：
