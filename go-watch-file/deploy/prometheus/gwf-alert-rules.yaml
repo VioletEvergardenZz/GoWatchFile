@@ -1,0 +1,80 @@
+groups:
+  - name: gwf-upload-and-ai
+    interval: 30s
+    rules:
+      - alert: GWFUploadQueueHighWarning
+        expr: max_over_time(gwf_upload_queue_length[5m]) > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: gwf
+          domain: upload
+        annotations:
+          summary: GWF 上传队列持续高位
+          description: "gwf_upload_queue_length 在最近 5 分钟最大值超过 80，建议排查下游上传吞吐并评估扩容。"
+
+      - alert: GWFUploadQueueHighCritical
+        expr: max_over_time(gwf_upload_queue_length[5m]) > 95
+        for: 3m
+        labels:
+          severity: critical
+          service: gwf
+          domain: upload
+        annotations:
+          summary: GWF 上传队列接近打满
+          description: "gwf_upload_queue_length 在最近 5 分钟最大值超过 95，建议立即扩容 worker 或限制写入速率。"
+
+      - alert: GWFUploadQueueFull
+        expr: increase(gwf_upload_queue_full_total[5m]) >= 1
+        for: 0m
+        labels:
+          severity: critical
+          service: gwf
+          domain: upload
+        annotations:
+          summary: GWF 上传队列出现打满事件
+          description: "5 分钟内出现 gwf_upload_queue_full_total 增长，存在明显丢任务风险。"
+
+      - alert: GWFUploadFailureRateWarning
+        expr: increase(gwf_upload_failure_total[10m]) / clamp_min(increase(gwf_upload_success_total[10m]) + increase(gwf_upload_failure_total[10m]), 1) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+          service: gwf
+          domain: upload
+        annotations:
+          summary: GWF 上传失败率偏高
+          description: "10 分钟窗口上传失败率超过 5%，建议结合 gwf_upload_failure_reason_total 定位主因。"
+
+      - alert: GWFUploadFailureRateCritical
+        expr: increase(gwf_upload_failure_total[10m]) / clamp_min(increase(gwf_upload_success_total[10m]) + increase(gwf_upload_failure_total[10m]), 1) > 0.15
+        for: 5m
+        labels:
+          severity: critical
+          service: gwf
+          domain: upload
+        annotations:
+          summary: GWF 上传失败率严重超标
+          description: "10 分钟窗口上传失败率超过 15%，建议触发值班升级并评估临时降载。"
+
+      - alert: GWFAIDegradedRatioWarning
+        expr: sum(increase(gwf_ai_log_summary_total{outcome="degraded"}[15m])) / clamp_min(sum(increase(gwf_ai_log_summary_total[15m])), 1) > 0.20
+        for: 15m
+        labels:
+          severity: warning
+          service: gwf
+          domain: ai
+        annotations:
+          summary: GWF AI 降级率偏高
+          description: "15 分钟窗口 AI 降级率超过 20%，建议排查 AI 服务超时/限流并验证降级可用性。"
+
+      - alert: GWFAIDegradedRatioCritical
+        expr: sum(increase(gwf_ai_log_summary_total{outcome="degraded"}[15m])) / clamp_min(sum(increase(gwf_ai_log_summary_total[15m])), 1) > 0.40
+        for: 10m
+        labels:
+          severity: critical
+          service: gwf
+          domain: ai
+        annotations:
+          summary: GWF AI 降级率严重超标
+          description: "15 分钟窗口 AI 降级率超过 40%，建议切换备用模型或临时关闭 AI 入口。"

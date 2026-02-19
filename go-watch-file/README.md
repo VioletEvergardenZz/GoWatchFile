@@ -232,6 +232,7 @@ ai_max_lines: 200
 - `GET /metrics`
 - 说明：返回 Prometheus 文本暴露格式，可直接被采集器抓取。
 - 关键指标：上传队列、上传耗时、失败原因、AI 请求结果、知识库检索/问答命中率与评审延迟。
+- 告警规则模板：`deploy/prometheus/gwf-alert-rules.yaml`（覆盖队列高位、上传失败率、AI 降级率）。
 
 ### 8) 告警决策面板
 - `GET /api/alerts`
@@ -360,6 +361,15 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -BaseUrl http:
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/check-metrics.ps1 -BaseUrl http://localhost:8082 -OutputFile ../reports/metrics.prom
 ```
+阈值巡检（队列长度/上传失败率/AI 降级率）：
+```powershell
+cd go-watch-file
+powershell -ExecutionPolicy Bypass -File scripts/ops/check-metrics.ps1 -BaseUrl http://localhost:8082 -CheckThresholds -OutputFile ../reports/metrics.prom
+```
+说明：
+- `-CheckThresholds` 开启阈值计算。
+- `-FailOnWarning` 可将 Warning 也作为失败退出（便于 CI 门禁）。
+- 退出码：`4=Critical 阈值触发`，`5=Warning 阈值触发且启用 -FailOnWarning`。
 
 上传压测文件生成：
 ```powershell
