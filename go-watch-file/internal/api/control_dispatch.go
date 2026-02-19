@@ -204,6 +204,24 @@ func (h *handler) controlApplyTimeoutsLocked(now time.Time) error {
 			if now.Sub(state.UpdatedAt) <= defaultControlRunTimeout {
 				continue
 			}
+			metrics.Global().IncControlTaskTimeout()
+			if hasControlTaskRetryBudget(state) {
+				next := buildControlTaskRetriedState(state, now)
+				if err := h.persistControlTaskLocked(next); err != nil {
+					return err
+				}
+				h.controlTasks[id] = next
+				h.controlAppendTaskEventLocked(id, state.AssignedAgentID, "timeout", "任务运行超时，已自动重试并重新排队", now)
+				h.controlAppendTaskEventLocked(id, "", "retried", "任务因运行超时触发自动重试", now)
+				h.controlAppendAuditLogLocked("system", "task_timeout", "task", id, map[string]any{
+					"agentId":     state.AssignedAgentID,
+					"type":        state.Type,
+					"autoRetried": true,
+					"retryCount":  next.RetryCount,
+					"maxRetries":  next.MaxRetries,
+				}, now)
+				continue
+			}
 			next := state
 			next.Status = controlTaskStatusTimeout
 			next.UpdatedAt = now
@@ -214,10 +232,12 @@ func (h *handler) controlApplyTimeoutsLocked(now time.Time) error {
 			h.controlTasks[id] = next
 			h.controlAppendTaskEventLocked(id, state.AssignedAgentID, "timeout", "任务运行超时，已标记为 timeout", now)
 			h.controlAppendAuditLogLocked("system", "task_timeout", "task", id, map[string]any{
-				"agentId": state.AssignedAgentID,
-				"type":    state.Type,
+				"agentId":     state.AssignedAgentID,
+				"type":        state.Type,
+				"autoRetried": false,
+				"retryCount":  state.RetryCount,
+				"maxRetries":  state.MaxRetries,
 			}, now)
-			metrics.Global().IncControlTaskTimeout()
 			metrics.Global().ObserveControlTaskDuration(state.Type, controlTaskStatusTimeout, now.Sub(state.CreatedAt))
 			continue
 		default:

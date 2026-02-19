@@ -332,6 +332,8 @@ ai_max_lines: 200
   - 当前为 MVP 实现，默认落盘到 `data/control/control.db`，重启后可恢复。
   - 可通过环境变量 `CONTROL_DATA_DIR` 指定存储目录。
   - 若存储初始化失败，会降级为内存模式继续提供接口能力。
+  - `running` 任务超过 `run_timeout` 后会触发超时收口：有重试预算时自动回到 `pending`，无预算时进入 `timeout` 终态。
+  - `retry` 仅支持 `failed/timeout/canceled` 状态，且必须满足 `retry_count < max_retries`；`cancel` 仅支持 `pending/assigned/running`。
 
 ## 运行时配置更新说明
 `/api/config` 会在内部重新创建 watcher / upload pool / runtime state，并迁移历史指标；若新配置启动失败会回滚到旧配置。支持更新 upload_retry_enabled/upload_retry_delays，该接口不会写回 `config.yaml`，也不支持在线切换 `upload_queue_persist_*` / `upload_queue_saturation_threshold` / `upload_queue_circuit_breaker_enabled` / `upload_retry_max_attempts` / `upload_etag_verify_enabled` / `upload_resumable_*`（静态项需重启）。

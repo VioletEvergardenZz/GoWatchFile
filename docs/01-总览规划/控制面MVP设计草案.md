@@ -121,12 +121,14 @@ flowchart LR
 
 任务状态流转：
 - `pending -> assigned -> running -> success|failed|timeout|canceled`
-- `failed -> pending`（当触发 retry 且 `retry_count < max_retries`）
+- `failed|timeout|canceled -> pending`（当触发 retry 且 `retry_count < max_retries`）
 
 超时与重试：
 - `assigned` 超过 `assign_timeout` 未 ack，回退 `pending`。
-- `running` 超过 `run_timeout` 标记 `timeout`，按策略重试或终态。
-- 默认重试：指数退避（`1s, 2s, 5s`），最多 3 次。
+- `running` 超过 `run_timeout`：
+  - 若 `retry_count < max_retries`，自动重试并回到 `pending`
+  - 否则标记 `timeout` 终态
+- 默认重试：按 `max_retries` 控制最多重试次数（MVP 暂不引入任务级退避调度）。
 
 ## 7. 指标与告警（MVP）
 

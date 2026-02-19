@@ -490,7 +490,11 @@ func (h *handler) controlCancelTask(w http.ResponseWriter, taskID string) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "task already finished"})
 		return
 	}
-	state.Status = "canceled"
+	if !isControlTaskCancelableStatus(state.Status) {
+		writeJSON(w, http.StatusConflict, map[string]string{"error": "task status does not support cancel"})
+		return
+	}
+	state.Status = controlTaskStatusCanceled
 	state.UpdatedAt = now
 	state.FinishedAt = &now
 	if err := h.persistControlTaskLocked(state); err != nil {
@@ -522,20 +526,16 @@ func (h *handler) controlRetryTask(w http.ResponseWriter, taskID string) {
 		return
 	}
 	// 仅允许终态任务进入重试，避免运行中任务被重复投递
-	if state.Status != "failed" && state.Status != "timeout" && state.Status != "canceled" {
+	if !isControlTaskRetryableStatus(state.Status) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "task status does not support retry"})
 		return
 	}
 	// 达到最大重试次数后强制拒绝，防止异常任务无限循环
-	if state.RetryCount >= state.MaxRetries {
+	if !hasControlTaskRetryBudget(state) {
 		writeJSON(w, http.StatusConflict, map[string]string{"error": "max retries reached"})
 		return
 	}
-	state.RetryCount++
-	state.Status = "pending"
-	state.AssignedAgentID = ""
-	state.UpdatedAt = now
-	state.FinishedAt = nil
+	state = buildControlTaskRetriedState(state, now)
 	if err := h.persistControlTaskLocked(state); err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
