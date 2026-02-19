@@ -12,7 +12,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -851,6 +853,9 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 			allowedOrigins[normalized] = struct{}{}
 		}
 	}
+	// 未配置白名单时启用本地开发兜底策略：
+	// 允许 localhost/127.0.0.1/::1 以及“与 API 相同主机名”的来源
+	useDefaultOrigins := !allowAll && len(allowedOrigins) == 0
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestOrigin := strings.TrimSpace(r.Header.Get("Origin"))
@@ -859,6 +864,8 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 			if allowAll {
 				originAllowed = true
 			} else if _, ok := allowedOrigins[requestOrigin]; ok {
+				originAllowed = true
+			} else if useDefaultOrigins && isDefaultCORSOriginAllowed(requestOrigin, r.Host) {
 				originAllowed = true
 			}
 		}
@@ -883,6 +890,60 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isDefaultCORSOriginAllowed 在未配置白名单时兜底允许本机来源
+// 仅放开 loopback 与“同主机”来源，避免默认放开任意跨域
+func isDefaultCORSOriginAllowed(requestOrigin, requestHost string) bool {
+	originURL, err := url.Parse(strings.TrimSpace(requestOrigin))
+	if err != nil {
+		return false
+	}
+	originHost := normalizeHost(originURL.Host)
+	if originHost == "" {
+		return false
+	}
+	if isLoopbackHost(originHost) {
+		return true
+	}
+	apiHost := normalizeHost(requestHost)
+	if apiHost == "" {
+		return false
+	}
+	return originHost == apiHost
+}
+
+func isLoopbackHost(host string) bool {
+	switch strings.ToLower(strings.TrimSpace(host)) {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeHost(raw string) string {
+	trimmed := strings.TrimSpace(strings.ToLower(raw))
+	if trimmed == "" {
+		return ""
+	}
+	// 兼容传入完整 origin 场景
+	if strings.Contains(trimmed, "://") {
+		parsed, err := url.Parse(trimmed)
+		if err != nil {
+			return ""
+		}
+		trimmed = strings.ToLower(strings.TrimSpace(parsed.Host))
+	}
+	if host, _, err := net.SplitHostPort(trimmed); err == nil {
+		return strings.Trim(strings.ToLower(host), "[]")
+	}
+	// 主机:端口（非 IPv6）场景兜底
+	if strings.Count(trimmed, ":") == 1 && !strings.Contains(trimmed, "]") {
+		parts := strings.SplitN(trimmed, ":", 2)
+		return strings.Trim(strings.ToLower(strings.TrimSpace(parts[0])), "[]")
+	}
+	return strings.Trim(trimmed, "[]")
 }
 
 // withAPIAuth 用于统一校验接口访问令牌

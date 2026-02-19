@@ -69,3 +69,73 @@ func TestWithAPIAuth_EnabledToken_RequiresHeader(t *testing.T) {
 	}
 }
 
+func TestWithCORS_EmptyConfig_AllowsLoopbackOrigin(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	h := withCORS(&models.Config{APICORSOrigins: ""}, next)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "http://localhost:5173")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected %d, got %d", http.StatusNoContent, rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://localhost:5173" {
+		t.Fatalf("expected allow origin header set, got %q", got)
+	}
+}
+
+func TestWithCORS_EmptyConfig_DeniesUnknownOrigin(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	h := withCORS(&models.Config{APICORSOrigins: ""}, next)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "http://evil.example.com")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected %d, got %d", http.StatusForbidden, rec.Code)
+	}
+}
+
+func TestWithCORS_EmptyConfig_AllowsSameHostOrigin(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	h := withCORS(&models.Config{APICORSOrigins: ""}, next)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
+	req.Host = "10.10.1.8:8080"
+	req.Header.Set("Origin", "http://10.10.1.8:5173")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected %d, got %d", http.StatusNoContent, rec.Code)
+	}
+}
+
+func TestWithCORS_ExplicitAllowList_StillEnforced(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	h := withCORS(&models.Config{APICORSOrigins: "http://localhost:5173"}, next)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "http://localhost:5174")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected %d, got %d", http.StatusForbidden, rec.Code)
+	}
+}
