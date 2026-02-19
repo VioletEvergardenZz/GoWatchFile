@@ -1,9 +1,20 @@
-﻿# 文件监控服务（go-watch-file）
+﻿# 平台执行平面服务（go-watch-file）
+`go-watch-file` 是 GWF 平台后端执行平面，统一承载以下能力：
 
-一个通用的文件监控与处理服务：递归监听目录、过滤/匹配文件、写入完成后并行上传到阿里云 OSS，支持上传失败重试、钉钉机器人通知与邮件通知，并提供 AI 日志分析。AI 能力是平台主线能力，运行时可按环境开关控制。内置控制台 API 用于目录树/文件列表/上传记录/日志 Tail/检索、系统资源面板与运行时配置。
+- 控制面（Agent/Task/Dispatch/Audit）
+- 告警监控与决策
+- 系统资源采集
+- 运维知识库服务
+- 文件监控上传适配器（辅助能力）
+- 统一 API、鉴权、指标与运行时配置
+
+## 在平台中的定位
+
+- 这是平台核心后端，不是单一“文件上传工具”。
+- 文件监控上传能力仍保留，但定位为输入适配器而非平台主线。
+- 平台主线能力由控制面、告警、资源采集、知识库和控制台共同构成。
 
 ## 配置说明（控制台优先）
-
 - 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, upload_retry_enabled, upload_retry_delays, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
 - `config.yaml` 保留静态配置（OSS 连接参数/日志/API bind/队列持久化开关），也可被环境变量覆盖。
 - 环境变量主要用于密钥、安全与 AI 配置（OSS_AK/OSS_SK, DINGTALK_*, EMAIL_*, API_*, AI_*），并支持可选覆盖 OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL/UPLOAD_QUEUE_PERSIST_*/UPLOAD_QUEUE_SATURATION_THRESHOLD/UPLOAD_QUEUE_CIRCUIT_BREAKER_ENABLED/UPLOAD_RETRY_MAX_ATTEMPTS。
@@ -336,11 +347,13 @@ ai_max_lines: 200
 - 图表点为累计成功/失败 + 当前队列深度（非单次区间计数）。
 
 ## 已知限制
+- 控制面与知识库默认使用本地 SQLite，当前为单实例部署模型。
 - 支持多监控目录（逗号或分号分隔）
 - 默认上传队列为内存队列，重启会清空；开启 `upload_queue_persist_enabled` 后会从持久化文件恢复未完成任务。
 - 已支持断点续传（`upload_resumable_enabled=true` 时，对达到阈值的大文件使用 OSS multipart + checkpoint）。
 - 断点续传链路下不会执行本地 MD5 与 OSS ETag 的严格比对（multipart ETag 不是纯文件 MD5）。
 - 已实现钉钉通知与邮件通知，企业微信未接入。
+- API 权限控制当前以 Token 为主，尚未引入 RBAC。
 - 目录过大时可能触发系统句柄限制，可通过 `watch_exclude` 跳过大目录或提升系统 `ulimit`。
 
 ## 运维评估命令
@@ -466,15 +479,18 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/stage-report.ps1 -RecapFile
 
 ## 相关文档
 - 文档导航：`../docs/文档导航.md`
-- 平台总览与计划：`../docs/01-总览规划/`
-- 开发与运维：`../docs/02-开发运维/`
-- 告警与 AI：`../docs/03-告警与AI/`
-- 知识库：`../docs/04-知识库/`
-- 指标与评估：`../docs/05-指标与评估/`
+- 文档中心：`../docs/README.md`
+- 平台定位：`../docs/01-平台定位/项目定位与主线能力.md`
+- 总体架构：`../docs/02-架构设计/总体架构说明.md`
+- 模块说明：`../docs/03-能力模块/功能模块说明.md`
+- Roadmap 与 TODO：`../docs/04-路线图与计划/`
+- 开发与运维专题：`../docs/02-开发运维/`
+- 告警与 AI 专题：`../docs/03-告警与AI/`
+- 知识库专题：`../docs/04-知识库/`
+- 指标与评估专题：`../docs/05-指标与评估/`
 - 架构附录：`../docs/99-架构附录/`
 
 ## 开发与测试
 - 运行测试：`go test ./...`
 - 代码格式：`gofmt`，遵循 Go 官方规范。
-
 
