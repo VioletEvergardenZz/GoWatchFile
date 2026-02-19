@@ -56,7 +56,8 @@
 - `api_bind`：API 监听地址（默认 `:8080`）。
 - `api_auth_token`：管理接口鉴权令牌（可选，建议从 `API_AUTH_TOKEN` 注入；留空则关闭鉴权）。
 - `api_cors_origins`：允许跨域来源列表（逗号分隔，可填 `*`）。
-  - 为空时会启用本地开发兜底策略：默认允许 `localhost/127.0.0.1/::1` 与同主机来源。
+  - 当 API 鉴权关闭（`API_AUTH_TOKEN` 为空或 `API_AUTH_DISABLED=true`）且该字段为空时，默认允许所有来源。
+  - 当 API 鉴权开启且该字段为空时，会启用本地开发兜底策略：允许 `localhost/127.0.0.1/::1` 与同主机来源。
 
 ### 可选字段
 - `watch_exclude`：排除目录（逗号/分号分隔），支持目录名或绝对路径，如 `.git,node_modules,/opt/homebrew`。

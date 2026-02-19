@@ -837,7 +837,9 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 	allowAll := false
 	allowedOrigins := make(map[string]struct{})
+	authDisabled := true
 	if cfg != nil {
+		authDisabled = isAPIAuthDisabled(strings.TrimSpace(cfg.APIAuthToken))
 		for _, origin := range strings.FieldsFunc(strings.TrimSpace(cfg.APICORSOrigins), func(r rune) bool {
 			return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
 		}) {
@@ -852,6 +854,10 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 			}
 			allowedOrigins[normalized] = struct{}{}
 		}
+	}
+	// 当 API 鉴权关闭且未配置 CORS 来源时，默认放开跨域，降低本地/内网使用门槛
+	if authDisabled && !allowAll && len(allowedOrigins) == 0 {
+		allowAll = true
 	}
 	// 未配置白名单时启用本地开发兜底策略：
 	// 允许 localhost/127.0.0.1/::1 以及“与 API 相同主机名”的来源

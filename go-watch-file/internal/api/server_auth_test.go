@@ -73,7 +73,7 @@ func TestWithCORS_EmptyConfig_AllowsLoopbackOrigin(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	h := withCORS(&models.Config{APICORSOrigins: ""}, next)
+	h := withCORS(&models.Config{APICORSOrigins: "", APIAuthToken: "enabled-token"}, next)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
 	req.Host = "127.0.0.1:8080"
@@ -93,7 +93,7 @@ func TestWithCORS_EmptyConfig_DeniesUnknownOrigin(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	h := withCORS(&models.Config{APICORSOrigins: ""}, next)
+	h := withCORS(&models.Config{APICORSOrigins: "", APIAuthToken: "enabled-token"}, next)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
 	req.Host = "127.0.0.1:8080"
@@ -110,7 +110,7 @@ func TestWithCORS_EmptyConfig_AllowsSameHostOrigin(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})
-	h := withCORS(&models.Config{APICORSOrigins: ""}, next)
+	h := withCORS(&models.Config{APICORSOrigins: "", APIAuthToken: "enabled-token"}, next)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
 	req.Host = "10.10.1.8:8080"
@@ -137,5 +137,25 @@ func TestWithCORS_ExplicitAllowList_StillEnforced(t *testing.T) {
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected %d, got %d", http.StatusForbidden, rec.Code)
+	}
+}
+
+func TestWithCORS_AuthDisabledAndEmptyOrigins_AllowsUnknownOrigin(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	h := withCORS(&models.Config{APICORSOrigins: "", APIAuthToken: ""}, next)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/config", nil)
+	req.Host = "127.0.0.1:8080"
+	req.Header.Set("Origin", "http://master:8081")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected %d, got %d", http.StatusNoContent, rec.Code)
+	}
+	if got := rec.Header().Get("Access-Control-Allow-Origin"); got != "http://master:8081" {
+		t.Fatalf("expected allow origin header set, got %q", got)
 	}
 }
