@@ -1,5 +1,7 @@
 ﻿# AI 回放与降级验收运行手册
 
+> 文档状态：兼容保留
+
 - 更新时间：2026-02-19
 - 目标：验证 AI 日志分析在真实样本下的降级率、结构一致性、错误分类覆盖率，以及基线结构稳定性（summary/severity/suggestions）
 - 关联脚本：`go-watch-file/scripts/ops/ai-replay.ps1`、`go-watch-file/scripts/ops/ai-baseline.ps1`

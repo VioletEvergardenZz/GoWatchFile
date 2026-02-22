@@ -1,4 +1,8 @@
 ﻿# 平台执行平面服务（go-watch-file）
+
+> 文档状态：组件文档（后端）  
+> 校准日期：2026-02-22
+> 口径说明：运行行为与接口口径需与 docs/ 主线文档一致。
 `go-watch-file` 是 GWF 平台后端执行平面，统一承载以下能力：
 
 - 控制面（Agent/Task/Dispatch/Audit）
