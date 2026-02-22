@@ -3,7 +3,6 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = "",
   [Parameter(Mandatory = $true)]
   [string]$WatchDir,
   [int]$SaturationCount = 1200,
@@ -342,9 +341,6 @@ if ($FaultMode -eq "command" -and [string]::IsNullOrWhiteSpace($FaultStartComman
 
 $base = $BaseUrl.TrimEnd("/")
 $headers = @{}
-if (-not [string]::IsNullOrWhiteSpace($Token)) {
-  $headers["X-API-Token"] = $Token.Trim()
-}
 
 $scriptDir = (Resolve-Path $PSScriptRoot).Path
 $stressScript = Join-Path $scriptDir "upload-stress.ps1"

@@ -26,57 +26,6 @@ import type {
 
 export const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? "";
 export const USE_MOCK = ((import.meta.env.VITE_USE_MOCK as string | undefined) ?? "").toLowerCase() === "true";
-const API_TOKEN_STORAGE_KEY = "gwf-api-token";
-let runtimeApiToken = "";
-
-// token 读取优先级为 session -> local
-// 这样默认“仅当前会话有效”，显式勾选记住后才落到 localStorage
-const readTokenFromStorage = () => {
-  if (typeof window === "undefined") return "";
-  const fromSession = window.sessionStorage.getItem(API_TOKEN_STORAGE_KEY);
-  if (fromSession) return fromSession.trim();
-  const fromLocal = window.localStorage.getItem(API_TOKEN_STORAGE_KEY);
-  if (fromLocal) return fromLocal.trim();
-  return "";
-};
-
-export const getApiToken = () => {
-  if (runtimeApiToken) return runtimeApiToken;
-  runtimeApiToken = readTokenFromStorage();
-  return runtimeApiToken;
-};
-
-export const isApiTokenRemembered = () => {
-  if (typeof window === "undefined") return false;
-  return !!window.localStorage.getItem(API_TOKEN_STORAGE_KEY);
-};
-
-export const setApiToken = (token: string, remember = false) => {
-  const normalized = token.trim();
-  runtimeApiToken = normalized;
-  if (typeof window === "undefined") return;
-
-  if (!normalized) {
-    window.sessionStorage.removeItem(API_TOKEN_STORAGE_KEY);
-    window.localStorage.removeItem(API_TOKEN_STORAGE_KEY);
-    return;
-  }
-
-  if (remember) {
-    window.localStorage.setItem(API_TOKEN_STORAGE_KEY, normalized);
-    window.sessionStorage.removeItem(API_TOKEN_STORAGE_KEY);
-    return;
-  }
-  window.sessionStorage.setItem(API_TOKEN_STORAGE_KEY, normalized);
-  window.localStorage.removeItem(API_TOKEN_STORAGE_KEY);
-};
-
-export const clearApiToken = () => {
-  runtimeApiToken = "";
-  if (typeof window === "undefined") return;
-  window.sessionStorage.removeItem(API_TOKEN_STORAGE_KEY);
-  window.localStorage.removeItem(API_TOKEN_STORAGE_KEY);
-};
 
 export type LogMode = "tail" | "search";
 
@@ -105,10 +54,6 @@ export const buildApiHeaders = (contentType = false): HeadersInit => {
   const headers: Record<string, string> = {};
   if (contentType) {
     headers["Content-Type"] = "application/json";
-  }
-  const token = getApiToken();
-  if (token) {
-    headers["X-API-Token"] = token;
   }
   return headers;
 };
@@ -549,5 +494,4 @@ export const fetchControlAuditLogs = async (params?: {
   await ensureOk(res, "控制面审计日志加载");
   return (await res.json()) as ControlAuditLogsResponse;
 };
-
 

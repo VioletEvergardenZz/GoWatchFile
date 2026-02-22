@@ -32,10 +32,10 @@ npm run dev
 默认通过 Vite 将 `/api` 代理到 `http://localhost:8080`。  
 若后端地址不同，可设置 `VITE_API_BASE`。
 
-## 鉴权
+## 接口访问
 
-- 若后端启用 `API_AUTH_TOKEN`，可在控制台顶部输入 Token。
-- 若后端关闭鉴权（`API_AUTH_TOKEN` 为空或 `API_AUTH_DISABLED=true`），可直接访问。
+- 当前版本不需要在前端配置 API Token。
+- 控制台请求默认直连后端接口；如需跨域限制，请在后端配置 `API_CORS_ORIGINS`。
 
 ## 目录结构
 

@@ -14,14 +14,6 @@ type ConsoleHeaderProps = {
   onTimeframeChange: (value: "realtime" | "24h") => void;
   theme: "dark" | "light";
   onThemeChange: (value: "dark" | "light") => void;
-  apiToken: string;
-  tokenRemember: boolean;
-  tokenApplied: boolean;
-  tokenSaving: boolean;
-  onApiTokenChange: (value: string) => void;
-  onTokenRememberChange: (value: boolean) => void;
-  onSaveApiToken: () => void;
-  onClearApiToken: () => void;
 };
 
 export function ConsoleHeader({
@@ -32,14 +24,6 @@ export function ConsoleHeader({
   onTimeframeChange,
   theme,
   onThemeChange,
-  apiToken,
-  tokenRemember,
-  tokenApplied,
-  tokenSaving,
-  onApiTokenChange,
-  onTokenRememberChange,
-  onSaveApiToken,
-  onClearApiToken,
 }: ConsoleHeaderProps) {
   return (
     <header className="page-header">
@@ -76,36 +60,7 @@ export function ConsoleHeader({
           </label>
           <span className="badge ghost">{theme === "light" ? "浅色" : "深色"}</span>
         </div>
-        <details className="api-token-box">
-          <summary className="api-token-summary">
-            <span>API 鉴权 Token（可选）</span>
-            <span className={`pill mini-pill ${tokenApplied ? "success" : ""}`}>{tokenApplied ? "已设置" : "未设置"}</span>
-          </summary>
-          <div className="api-token-hint">仅当后端开启 API Token 鉴权时需要填写，未开启时可以忽略。</div>
-          <div className="api-token-panel">
-            <input
-              className="input api-token-input"
-              type="password"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="输入 API Token"
-              value={apiToken}
-              onChange={(e) => onApiTokenChange(e.target.value)}
-            />
-            <label className="token-remember">
-              <input type="checkbox" checked={tokenRemember} onChange={(e) => onTokenRememberChange(e.target.checked)} />
-              <span>记住到浏览器</span>
-            </label>
-            <button className="btn secondary btn-token" type="button" onClick={onSaveApiToken} disabled={tokenSaving}>
-              {tokenSaving ? "保存中..." : tokenApplied ? "更新 Token" : "设置 Token"}
-            </button>
-            <button className="btn secondary btn-token-clear" type="button" onClick={onClearApiToken}>
-              清除
-            </button>
-          </div>
-        </details>
       </div>
     </header>
   );
 }
-

@@ -77,9 +77,6 @@ upload_resumable_checkpoint_dir: "logs/upload-checkpoints"
 # API 服务配置
 # API 监听地址 控制台通过此地址访问接口
 api_bind: ":8080"
-# 管理接口鉴权令牌（建议从环境变量读取）
-# 为空或占位符时将关闭 API 鉴权；如需显式关闭可设置 API_AUTH_DISABLED=true
-api_auth_token: "${API_AUTH_TOKEN}"
 # 允许跨域来源列表（逗号分隔）可填写 * 表示放开
 api_cors_origins: "${API_CORS_ORIGINS}"
 # 系统资源面板开关 默认关闭
@@ -101,7 +98,7 @@ alert_poll_interval: "2s"
 alert_start_from_end: true
 
 # AI 分析配置（默认关闭）
-ai_enabled: false
+ai_enabled: true
 ai_base_url: "${AI_BASE_URL}"
 ai_api_key: "${AI_API_KEY}"
 ai_model: "${AI_MODEL}"

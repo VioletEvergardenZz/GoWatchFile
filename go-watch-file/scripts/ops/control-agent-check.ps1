@@ -3,7 +3,6 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = "",
   [int]$OfflineAfterSec = 45,
   [int]$MaxOfflineAgents = 0,
   [switch]$FailOnOffline = $false,
@@ -170,9 +169,6 @@ function Write-MarkdownReport {
 
 $base = $BaseUrl.TrimEnd("/")
 $headers = @{}
-if (-not [string]::IsNullOrWhiteSpace($Token)) {
-  $headers["X-API-Token"] = $Token.Trim()
-}
 
 $agentsEndpoint = "{0}/api/control/agents" -f $base
 $metricsEndpoint = "{0}/metrics" -f $base
@@ -320,5 +316,4 @@ if ($FailOnOffline -and $offlineTotal -gt $MaxOfflineAgents) {
 }
 
 exit 0
-
 

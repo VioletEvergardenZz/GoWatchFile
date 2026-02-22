@@ -6,7 +6,7 @@
 - 系统资源采集
 - 运维知识库服务
 - 文件监控上传适配器（辅助能力）
-- 统一 API、鉴权、指标与运行时配置
+- 统一 API、CORS、指标与运行时配置
 
 ## 在平台中的定位
 
@@ -33,8 +33,6 @@
    ```bash
    cp .env.example .env
    # 填写密钥（OSS_AK/OSS_SK, DINGTALK_*, EMAIL_*）
-   # API 鉴权可选：可设置 API_AUTH_TOKEN 开启鉴权
-   # 如需显式关闭可设置 API_AUTH_DISABLED=true
    # 跨域来源建议设置 API_CORS_ORIGINS
    # 可选开启队列落盘：UPLOAD_QUEUE_PERSIST_ENABLED/UPLOAD_QUEUE_PERSIST_FILE
    # 可选调整背压保护：UPLOAD_QUEUE_SATURATION_THRESHOLD/UPLOAD_QUEUE_CIRCUIT_BREAKER_ENABLED
@@ -52,9 +50,8 @@
 5) 停止：`Ctrl + C`，服务会优雅退出并等待队列 drain。
 
 配置优先级：config.yaml -> config.runtime.yaml -> 环境变量覆盖 -> 默认值。
-环境变量仅覆盖 OSS / 通知 / API 安全 / AI / 上传静态策略相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
-当 `API_AUTH_TOKEN` 留空（或未配置）时，管理接口默认不校验 token；
-如需强制关闭可设置 `API_AUTH_DISABLED=true`，如需开启则设置 `API_AUTH_TOKEN`。
+环境变量仅覆盖 OSS / 通知 / CORS / AI / 上传静态策略相关字段，`watch_dir`/`file_ext`/`watch_exclude`/`log_level`/`alert_*` 不会被环境变量覆盖。
+当前管理接口默认不做额外鉴权校验。
 `/api/health` 始终允许匿名访问。
 
 `.env` 读取策略：会尝试加载当前目录的 `.env`，以及配置文件同目录的 `.env`；仅在系统环境未设置时生效。
@@ -66,10 +63,8 @@
 - `bucket` / `ak` / `sk` / `endpoint` / `region`：OSS 访问配置。
 - `log_level`：`debug|info|warn|error`。
 - `api_bind`：API 监听地址（默认 `:8080`）。
-- `api_auth_token`：管理接口鉴权令牌（可选，建议从 `API_AUTH_TOKEN` 注入；留空则关闭鉴权）。
 - `api_cors_origins`：允许跨域来源列表（逗号分隔，可填 `*`）。
-  - 当 API 鉴权关闭（`API_AUTH_TOKEN` 为空或 `API_AUTH_DISABLED=true`）且该字段为空时，默认允许所有来源。
-  - 当 API 鉴权开启且该字段为空时，会启用本地开发兜底策略：允许 `localhost/127.0.0.1/::1` 与同主机来源。
+  - 当该字段为空时，默认允许所有来源。
 
 ### 可选字段
 - `watch_exclude`：排除目录（逗号/分号分隔），支持目录名或绝对路径，如 `.git,node_modules,/opt/homebrew`。
@@ -176,7 +171,6 @@ ai_max_lines: 200
 
 ### 环境变量模板（.env.example）
 `.env.example` 已提供模板，可按需补充 `OSS_BUCKET/OSS_ENDPOINT/OSS_REGION/OSS_FORCE_PATH_STYLE/OSS_DISABLE_SSL` 与 AI 相关变量。
-如需关闭 API 鉴权，可保持 `API_AUTH_TOKEN` 为空，或显式设置 `API_AUTH_DISABLED=true`。
 
 ### 告警规则文件示例
 - 双层模板（默认规则 + 场景规则）：`deploy/alert/gwf-alert-rules-layered-template.json`
@@ -359,20 +353,20 @@ ai_max_lines: 200
 - 已支持断点续传（`upload_resumable_enabled=true` 时，对达到阈值的大文件使用 OSS multipart + checkpoint）。
 - 断点续传链路下不会执行本地 MD5 与 OSS ETag 的严格比对（multipart ETag 不是纯文件 MD5）。
 - 已实现钉钉通知与邮件通知，企业微信未接入。
-- API 权限控制当前以 Token 为主，尚未引入 RBAC。
+- API 权限控制当前未引入 RBAC。
 - 目录过大时可能触发系统句柄限制，可通过 `watch_exclude` 跳过大目录或提升系统 `ulimit`。
 
 ## 运维评估命令
 命中率评估：
 ```bash
 cd go-watch-file
-go run ./cmd/kb-eval hitrate -base http://localhost:8082 -token "$API_AUTH_TOKEN" -samples ../docs/04-知识库/知识库命中率样本.json
+go run ./cmd/kb-eval hitrate -base http://localhost:8082 -samples ../docs/04-知识库/知识库命中率样本.json
 ```
 
 问答引用率评估：
 ```bash
 cd go-watch-file
-go run ./cmd/kb-eval citation -base http://localhost:8082 -token "$API_AUTH_TOKEN" -samples ../docs/04-知识库/知识库命中率样本.json -limit 3 -target 1.0
+go run ./cmd/kb-eval citation -base http://localhost:8082 -samples ../docs/04-知识库/知识库命中率样本.json -limit 3 -target 1.0
 ```
 
 MTTD 对比评估：
@@ -384,9 +378,8 @@ go run ./cmd/kb-eval mttd -input ../docs/04-知识库/知识库MTTD基线.csv
 知识库复盘汇总：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -SamplesFile ../docs/04-知识库/知识库命中率样本.json -MttdFile ../docs/04-知识库/知识库MTTD基线.csv -CitationTarget 1.0 -HitrateTarget 0.8 -MttdDropTarget 0.2 -OutputFile ../reports/kb-recap-result.json -ReportFile ../docs/05-指标与评估/知识库命中率与引用率阶段复盘改进清单-$(Get-Date -Format yyyy-MM-dd).md
+powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -BaseUrl http://localhost:8082 -SamplesFile ../docs/04-知识库/知识库命中率样本.json -MttdFile ../docs/04-知识库/知识库MTTD基线.csv -CitationTarget 1.0 -HitrateTarget 0.8 -MttdDropTarget 0.2 -OutputFile ../reports/kb-recap-result.json -ReportFile ../docs/05-指标与评估/知识库命中率与引用率阶段复盘改进清单-$(Get-Date -Format yyyy-MM-dd).md
 ```
-若后端未启用鉴权，上述命令可省略 `-Token` 参数；`kb-eval` 的 `-token` 参数同样可省略。  
 离线复盘可直接消费既有结果文件并重建改进清单：
 ```powershell
 cd go-watch-file
@@ -397,7 +390,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/kb-recap.ps1 -FromResultFil
 基础验证（go test + 单机上传 + 通知观测）：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/basic-e2e.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -WaitTimeoutSec 90 -RequireNotification -OutputFile ../reports/basic-e2e-result.json -ReportFile ../docs/05-指标与评估/基础验证报告-$(Get-Date -Format yyyy-MM-dd).md
+powershell -ExecutionPolicy Bypass -File scripts/ops/basic-e2e.ps1 -BaseUrl http://localhost:8082 -WaitTimeoutSec 90 -RequireNotification -OutputFile ../reports/basic-e2e-result.json -ReportFile ../docs/05-指标与评估/基础验证报告-$(Get-Date -Format yyyy-MM-dd).md
 ```
 - 可选 `-WatchDir` 指定验证目录；不传时默认从仪表盘读取 `heroCopy.watchDirs[0]`。
 - 若当前环境未配置通知渠道，可去掉 `-RequireNotification`，脚本将把“未观测到通知增量”视为非阻断。
@@ -422,7 +415,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/check-metrics.ps1 -BaseUrl 
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/alert-rules-compose.ps1 -TemplateFile ./deploy/alert/gwf-alert-rules-layered-template.json -Scenarios "database,upload,ai,control" -OutputFile ../reports/alert-rules-composed.json
 ```
-直接发布到后端可增加 `-Apply -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN`。
+直接发布到后端可增加 `-Apply -BaseUrl http://localhost:8082`。
 
 上传压测文件生成：
 ```powershell
@@ -443,14 +436,14 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/upload-recap.ps1 -BaseUrl h
 AI 回放：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt -DegradedRatioTarget 0.20 -StructurePassRatioTarget 1.00 -ErrorClassCoverageTarget 1.00 -FailOnGate -OutputFile ../reports/ai-replay-result.json
+powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 -BaseUrl http://localhost:8082 -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt -DegradedRatioTarget 0.20 -StructurePassRatioTarget 1.00 -ErrorClassCoverageTarget 1.00 -FailOnGate -OutputFile ../reports/ai-replay-result.json
 ```
 可直接维护 `../docs/03-告警与AI/AI回放路径清单.txt`，样例场景矩阵参考 `../docs/03-告警与AI/AI回放样例集清单.md`。
 
 AI 基线验证（固定样例回放，聚焦 `summary/severity/suggestions` 结构稳定性）：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt -SummaryPassRatioTarget 1.00 -SeverityPassRatioTarget 1.00 -SuggestionsPassRatioTarget 1.00 -OutputFile ../reports/ai-baseline-result.json -ReportFile ../docs/05-指标与评估/AI基线验证报告-$(Get-Date -Format yyyy-MM-dd).md
+powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 -BaseUrl http://localhost:8082 -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt -SummaryPassRatioTarget 1.00 -SeverityPassRatioTarget 1.00 -SuggestionsPassRatioTarget 1.00 -OutputFile ../reports/ai-baseline-result.json -ReportFile ../docs/05-指标与评估/AI基线验证报告-$(Get-Date -Format yyyy-MM-dd).md
 ```
 离线复核模式（不访问服务，直接消费既有回放结果）：
 ```powershell
@@ -462,33 +455,32 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 -FromResult
 阶段预备（自动导入并发布知识库文档 + 生成 AI 回放样本并登记告警日志路径）：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/stage-prime.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -DocsPath ../docs -Operator stage-recap -AIPathsFile ../reports/ai-replay-paths-prime.txt -OutputFile ../reports/stage-prime-result.json
+powershell -ExecutionPolicy Bypass -File scripts/ops/stage-prime.ps1 -BaseUrl http://localhost:8082 -DocsPath ../docs -Operator stage-recap -AIPathsFile ../reports/ai-replay-paths-prime.txt -OutputFile ../reports/stage-prime-result.json
 ```
 
 控制面回放：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/control-replay.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -AgentCount 3 -TaskCount 30 -OutputFile ../reports/control-replay-result.json -MetricsFile ../reports/metrics-control-replay.prom
+powershell -ExecutionPolicy Bypass -File scripts/ops/control-replay.ps1 -BaseUrl http://localhost:8082 -AgentCount 3 -TaskCount 30 -OutputFile ../reports/control-replay-result.json -MetricsFile ../reports/metrics-control-replay.prom
 ```
 
 控制面 Agent 在线巡检（在线判定 + `/metrics` 对账）：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/control-agent-check.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -OfflineAfterSec 45 -FailOnOffline -MaxOfflineAgents 0 -OutputFile ../reports/control-agent-check-result.json -ReportFile ../docs/05-指标与评估/控制面Agent在线巡检报告-$(Get-Date -Format yyyy-MM-dd).md
+powershell -ExecutionPolicy Bypass -File scripts/ops/control-agent-check.ps1 -BaseUrl http://localhost:8082 -OfflineAfterSec 45 -FailOnOffline -MaxOfflineAgents 0 -OutputFile ../reports/control-agent-check-result.json -ReportFile ../docs/05-指标与评估/控制面Agent在线巡检报告-$(Get-Date -Format yyyy-MM-dd).md
 ```
 - 口径说明与排障流程见：`../docs/02-开发运维/控制面Agent在线状态判定与巡检手册.md`。
-- 若后端未启用鉴权，可省略 `-Token`。
 
 阶段一键复盘（metrics + ai + control + kb，默认全量）：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -AIPathsFile ../docs/03-告警与AI/AI回放路径清单.txt -AILimit 200 -AIDegradedRatioTarget 0.20 -AIStructurePassRatioTarget 1.00 -AIErrorClassCoverageTarget 1.00 -KBHitrateTarget 0.8 -CitationTarget 1.0 -KBMttdDropTarget 0.2 -OutputFile ../reports/stage-recap-result.json
+powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -AIPathsFile ../docs/03-告警与AI/AI回放路径清单.txt -AILimit 200 -AIDegradedRatioTarget 0.20 -AIStructurePassRatioTarget 1.00 -AIErrorClassCoverageTarget 1.00 -KBHitrateTarget 0.8 -CitationTarget 1.0 -KBMttdDropTarget 0.2 -OutputFile ../reports/stage-recap-result.json
 ```
 按需跳过阶段可增加 `-SkipAIReplay` / `-SkipControlReplay` / `-SkipKBRecap`。
 本地演练环境建议增加 `-AutoPrime`，自动补齐知识库与 AI 回放前置条件：
 ```powershell
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -Token $env:API_AUTH_TOKEN -AutoPrime -AIPathsFile ../reports/ai-replay-paths-prime.txt -OutputFile ../reports/stage-recap-result.json
+powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -AutoPrime -AIPathsFile ../reports/ai-replay-paths-prime.txt -OutputFile ../reports/stage-recap-result.json
 ```
 
 阶段报告自动生成（根据 stage-recap 结果渲染 Markdown）：
@@ -496,8 +488,6 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl ht
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/stage-report.ps1 -RecapFile ../reports/stage-recap-result.json -OutputFile ../docs/05-指标与评估/阶段回归报告-$(Get-Date -Format yyyy-MM-dd).md -Operator "your-name" -Environment "dev-like (local)"
 ```
-若后端未启用鉴权，`ai-replay.ps1` / `ai-baseline.ps1` / `stage-prime.ps1` / `control-replay.ps1` / `control-agent-check.ps1` / `alert-rules-compose.ps1` / `stage-recap.ps1` 均可省略 `-Token` 参数。
-
 ## 相关文档
 - 文档导航：`../docs/文档导航.md`
 - 文档中心：`../docs/README.md`
@@ -514,4 +504,3 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/stage-report.ps1 -RecapFile
 ## 开发与测试
 - 运行测试：`go test ./...`
 - 代码格式：`gofmt`，遵循 Go 官方规范。
-

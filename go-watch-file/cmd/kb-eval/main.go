@@ -75,15 +75,14 @@ func main() {
 
 func usage() {
 	fmt.Println("Usage:")
-	fmt.Println("  kb-eval hitrate -base http://localhost:8082 [-token <token>] -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 5]")
-	fmt.Println("  kb-eval citation -base http://localhost:8082 [-token <token>] -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 3] [-target 1.0]")
+	fmt.Println("  kb-eval hitrate -base http://localhost:8082 -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 5]")
+	fmt.Println("  kb-eval citation -base http://localhost:8082 -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 3] [-target 1.0]")
 	fmt.Println("  kb-eval mttd -input ../../docs/04-知识库/知识库MTTD基线.csv")
 }
 
 func runHitrate(args []string) error {
 	fs := flag.NewFlagSet("hitrate", flag.ContinueOnError)
 	baseURL := fs.String("base", "http://localhost:8082", "api base url")
-	token := fs.String("token", "", "api token")
 	samplesPath := fs.String("samples", filepath.FromSlash("../../docs/04-知识库/知识库命中率样本.json"), "samples json path")
 	limit := fs.Int("limit", 5, "search result limit")
 	timeoutSec := fs.Int("timeout", 8, "request timeout seconds")
@@ -105,7 +104,7 @@ func runHitrate(args []string) error {
 	client := &http.Client{Timeout: time.Duration(*timeoutSec) * time.Second}
 	hit := 0
 	for i, sample := range samples {
-		ok, titles, err := evaluateSample(client, *baseURL, *token, sample, *limit)
+		ok, titles, err := evaluateSample(client, *baseURL, sample, *limit)
 		if err != nil {
 			return fmt.Errorf("sample %d failed: %w", i+1, err)
 		}
@@ -122,7 +121,7 @@ func runHitrate(args []string) error {
 	return nil
 }
 
-func evaluateSample(client *http.Client, baseURL, token string, sample hitrateSample, limit int) (bool, []string, error) {
+func evaluateSample(client *http.Client, baseURL string, sample hitrateSample, limit int) (bool, []string, error) {
 	payload := map[string]any{
 		"query": sample.Question,
 		"limit": limit,
@@ -136,9 +135,6 @@ func evaluateSample(client *http.Client, baseURL, token string, sample hitrateSa
 		return false, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if clean := strings.TrimSpace(token); clean != "" {
-		req.Header.Set("X-API-Token", clean)
-	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, nil, err
@@ -193,7 +189,6 @@ func boolLabel(v bool) string {
 func runCitation(args []string) error {
 	fs := flag.NewFlagSet("citation", flag.ContinueOnError)
 	baseURL := fs.String("base", "http://localhost:8082", "api base url")
-	token := fs.String("token", "", "api token")
 	samplesPath := fs.String("samples", filepath.FromSlash("../../docs/04-知识库/知识库命中率样本.json"), "samples json path")
 	limit := fs.Int("limit", 3, "ask result limit")
 	target := fs.Float64("target", 1.0, "required citation ratio 0~1")
@@ -220,7 +215,7 @@ func runCitation(args []string) error {
 	total := 0
 	withCitation := 0
 	for i, sample := range samples {
-		ok, citationTitles, err := evaluateCitationSample(client, *baseURL, *token, sample.Question, *limit)
+		ok, citationTitles, err := evaluateCitationSample(client, *baseURL, sample.Question, *limit)
 		total++
 		if err != nil {
 			fmt.Printf("[%02d] %s => error: %v\n", i+1, sample.Question, err)
@@ -246,7 +241,7 @@ func runCitation(args []string) error {
 	return nil
 }
 
-func evaluateCitationSample(client *http.Client, baseURL, token, question string, limit int) (bool, []string, error) {
+func evaluateCitationSample(client *http.Client, baseURL, question string, limit int) (bool, []string, error) {
 	payload := map[string]any{
 		"question": question,
 		"limit":    limit,
@@ -260,9 +255,6 @@ func evaluateCitationSample(client *http.Client, baseURL, token, question string
 		return false, nil, err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if clean := strings.TrimSpace(token); clean != "" {
-		req.Header.Set("X-API-Token", clean)
-	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, nil, err

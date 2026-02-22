@@ -3,7 +3,6 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = "",
   [string]$SamplesFile = "../docs/04-知识库/知识库命中率样本.json",
   [string]$MttdFile = "../docs/04-知识库/知识库MTTD基线.csv",
   [double]$CitationTarget = 1.0,
@@ -148,7 +147,7 @@ function Build-KBAnalysis {
   $improvements = New-Object System.Collections.Generic.List[object]
 
   if (-not [bool]$HitrateResult.ok) {
-    $improvements.Add((New-ImprovementItem -Priority "P0" -Title "检索命中率评估失败" -Action "检查 /api/kb/search 可用性、样本文件路径与鉴权配置后重跑 hitrate" -Owner "知识库平台" -Eta "T+0" -Evidence (Get-FirstLine -Text ([string]$HitrateResult.output))))
+    $improvements.Add((New-ImprovementItem -Priority "P0" -Title "检索命中率评估失败" -Action "检查 /api/kb/search 可用性与样本文件路径后重跑 hitrate" -Owner "知识库平台" -Eta "T+0" -Evidence (Get-FirstLine -Text ([string]$HitrateResult.output))))
   } elseif ($null -eq $hitrateRatio) {
     $improvements.Add((New-ImprovementItem -Priority "P1" -Title "检索命中率结果不可解析" -Action "统一 kb-eval hitrate 输出格式，确保能提取命中率百分比并落档" -Owner "知识库平台" -Eta "T+1" -Evidence "未匹配到 Hitrate 百分比字段"))
   } elseif ($hitrateRatio -lt $HitrateTarget) {
@@ -351,21 +350,15 @@ if (-not [string]::IsNullOrWhiteSpace($FromResultFile)) {
   $samplesForOutput = $samplesPath
   $mttdForOutput = $mttdPath
 
-  $tokenArgs = @()
-  if (-not [string]::IsNullOrWhiteSpace($Token)) {
-    $tokenArgs = @("-token", $Token.Trim())
-  }
   $hitrateArgs = @(
     "run", "./cmd/kb-eval", "hitrate",
-    "-base", $base
-  ) + $tokenArgs + @(
+    "-base", $base,
     "-samples", $samplesPath,
     "-limit", "5"
   )
   $citationArgs = @(
     "run", "./cmd/kb-eval", "citation",
-    "-base", $base
-  ) + $tokenArgs + @(
+    "-base", $base,
     "-samples", $samplesPath,
     "-limit", "3",
     "-target", ([string]$CitationTarget)

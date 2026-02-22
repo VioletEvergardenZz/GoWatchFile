@@ -36,7 +36,6 @@ type Config struct {
 	LogFile                          string        `yaml:"log_file"`
 	LogToStd                         *bool         `yaml:"log_to_std"`
 	LogShowCaller                    bool          `yaml:"log_show_caller"`
-	APIAuthToken                     string        `yaml:"api_auth_token"`
 	APICORSOrigins                   string        `yaml:"api_cors_origins"`
 	UploadWorkers                    int           `yaml:"upload_workers"`    // 上传工作池大小
 	UploadQueueSize                  int           `yaml:"upload_queue_size"` // 上传队列大小

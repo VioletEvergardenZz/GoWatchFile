@@ -31,7 +31,6 @@ D:\logs\app\service-b.log
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 `
   -BaseUrl http://localhost:8082 `
-  -Token $env:API_AUTH_TOKEN `
   -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt `
   -Limit 200 `
   -DegradedRatioTarget 0.20 `
@@ -40,8 +39,6 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 `
   -FailOnGate `
   -OutputFile ../reports/ai-replay-result.json
 ```
-
-若后端未启用鉴权，可省略 `-Token` 参数。
 
 退出码约定：
 - `0`：回放完成（门禁通过，或未启用 `-FailOnGate`）
@@ -56,7 +53,6 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 `
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 `
   -BaseUrl http://localhost:8082 `
-  -Token $env:API_AUTH_TOKEN `
   -PathsFile ../docs/03-告警与AI/AI回放路径清单.txt `
   -SummaryPassRatioTarget 1.00 `
   -SeverityPassRatioTarget 1.00 `
@@ -128,7 +124,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 `
 
 不达标时排查顺序：
 1. 看 `gates` 与 `structure.issues`，先定位是结构问题还是请求问题
-2. 看 `errorClass` Top1，区分超时/网络/鉴权/上游错误
+2. 看 `errorClass` Top1，区分超时/网络/请求异常/上游错误
 3. 再检查 AI 配置（`AI_TIMEOUT`、`AI_BASE_URL`、模型限流）与样本路径可达性
 
 ## 6. 与阶段复盘联动
@@ -139,7 +135,6 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 `
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 `
   -BaseUrl http://localhost:8082 `
-  -Token $env:API_AUTH_TOKEN `
   -AIPathsFile ../docs/03-告警与AI/AI回放路径清单.txt `
   -AIDegradedRatioTarget 0.20 `
   -AIStructurePassRatioTarget 1.00 `
@@ -167,7 +162,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/check-metrics.ps1 -BaseUrl 
 
 ```powershell
 cd go-watch-file
-go run ./cmd/kb-eval citation -base http://localhost:8082 -token "$env:API_AUTH_TOKEN" -samples ../docs/04-知识库/知识库命中率样本.json -limit 3 -target 1.0
+go run ./cmd/kb-eval citation -base http://localhost:8082 -samples ../docs/04-知识库/知识库命中率样本.json -limit 3 -target 1.0
 ```
 
-若后端未启用鉴权，`-token` 参数可省略。该命令会调用 `/api/kb/ask`，低于目标时返回非零退出码。
+该命令会调用 `/api/kb/ask`，低于目标时返回非零退出码。

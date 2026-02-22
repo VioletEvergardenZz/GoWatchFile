@@ -3,7 +3,6 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = "",
   [int]$AgentCount = 3,
   [int]$TaskCount = 30,
   [string]$AIPathsFile = "../docs/03-告警与AI/AI回放路径清单.txt",
@@ -148,10 +147,6 @@ function Mark-AIStageFailed {
 
 $opsDir = $PSScriptRoot
 $base = $BaseUrl.TrimEnd("/")
-$tokenArgs = @()
-if (-not [string]::IsNullOrWhiteSpace($Token)) {
-  $tokenArgs = @("-Token", $Token.Trim())
-}
 
 $stagePrimeScript = Join-Path $opsDir "stage-prime.ps1"
 $checkMetricsScript = Join-Path $opsDir "check-metrics.ps1"
@@ -201,9 +196,6 @@ if ($AutoPrime) {
     "-UpdateAlertLogPaths", ([string]$PrimeUpdateAlertLogPaths),
     "-OutputFile", $primeOutput
   )
-  if ($tokenArgs.Count -gt 0) {
-    $primeArgs += $tokenArgs
-  }
   $primeStage = Invoke-Stage -Name "stage-prime" -ScriptPath $stagePrimeScript -Arguments $primeArgs
   $stages += $primeStage
 }
@@ -224,9 +216,6 @@ if (-not $SkipAIReplay) {
     "-ErrorClassCoverageTarget", ([string]$AIErrorClassCoverageTarget),
     "-OutputFile", $aiOutput
   )
-  if ($tokenArgs.Count -gt 0) {
-    $aiArgs += $tokenArgs
-  }
   $aiStage = Invoke-Stage -Name "ai-replay" -ScriptPath $aiReplayScript -Arguments $aiArgs
   $stages += $aiStage
 }
@@ -239,9 +228,6 @@ if (-not $SkipControlReplay) {
     "-OutputFile", $controlOutput,
     "-MetricsFile", $controlMetricsOutput
   )
-  if ($tokenArgs.Count -gt 0) {
-    $controlArgs += $tokenArgs
-  }
   $controlStage = Invoke-Stage -Name "control-replay" -ScriptPath $controlReplayScript -Arguments $controlArgs
   $stages += $controlStage
 }
@@ -256,9 +242,6 @@ if (-not $SkipKBRecap) {
     "-MttdDropTarget", ([string]$KBMttdDropTarget),
     "-OutputFile", $kbOutput
   )
-  if ($tokenArgs.Count -gt 0) {
-    $kbArgs += $tokenArgs
-  }
   $kbStage = Invoke-Stage -Name "kb-recap" -ScriptPath $kbRecapScript -Arguments $kbArgs
   $stages += $kbStage
 }
@@ -389,4 +372,3 @@ if (-not $allPassed) {
   exit 3
 }
 exit 0
-

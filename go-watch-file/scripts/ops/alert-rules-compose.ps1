@@ -9,8 +9,7 @@ param(
   [switch]$IncludeAllScenarios = $false,
   [string]$OutputFile = "../reports/alert-rules-composed.json",
   [switch]$Apply = $false,
-  [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = ""
+  [string]$BaseUrl = "http://localhost:8082"
 )
 
 function Ensure-Dir {
@@ -264,9 +263,6 @@ if ($Apply) {
   $headers = @{
     "Content-Type" = "application/json"
   }
-  if (-not [string]::IsNullOrWhiteSpace($Token)) {
-    $headers["X-API-Token"] = $Token.Trim()
-  }
   $body = @{
     rules = $ruleset
   } | ConvertTo-Json -Depth 20
@@ -290,5 +286,4 @@ if ($Apply) {
 # 3 = unknown scenario id
 # 4 = apply API failed
 exit 0
-
 

@@ -6,7 +6,6 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = "",
   [string]$WatchDir = "",
   [string]$FileExt = "",
   [int]$WaitTimeoutSec = 90,
@@ -190,9 +189,6 @@ $result.baseUrl = $base
 $result.notification.required = [bool]$RequireNotification
 
 $headers = @{}
-if (-not [string]::IsNullOrWhiteSpace($Token)) {
-  $headers["X-API-Token"] = $Token.Trim()
-}
 
 # 1) go test gate
 if ($SkipGoTest) {

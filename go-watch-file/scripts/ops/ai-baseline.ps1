@@ -5,7 +5,6 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = "",
   [string]$PathsFile = "../docs/03-告警与AI/AI回放路径清单.txt",
   [int]$Limit = 200,
   [double]$DegradedRatioTarget = 0.2,
@@ -385,7 +384,7 @@ if ($mode -eq "offline") {
       "-AISamplesDir", $PrimeAISamplesDir,
       "-UpdateAlertLogPaths", ([string]$PrimeUpdateAlertLogPaths),
       "-OutputFile", $primeOutputPath
-    ) + $(if (-not [string]::IsNullOrWhiteSpace($Token)) { @("-Token", $Token.Trim()) } else { @() })
+    )
 
     $primeExitCode = $primeRun.exitCode
     $primeOutput = $primeRun.output
@@ -417,9 +416,6 @@ if ($mode -eq "offline") {
     "-ErrorClassCoverageTarget", ([string]$ErrorClassCoverageTarget),
     "-OutputFile", $aiReplayResultPath
   )
-  if (-not [string]::IsNullOrWhiteSpace($Token)) {
-    $aiRunArgs += @("-Token", $Token.Trim())
-  }
   $aiRun = Invoke-PowerShellScript -ScriptPath $aiReplayScript -Arguments $aiRunArgs
   $replayExitCode = $aiRun.exitCode
   $replayOutput = $aiRun.output
@@ -612,4 +608,3 @@ if (-not $allPassed) {
   exit 3
 }
 exit 0
-

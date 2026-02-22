@@ -307,7 +307,7 @@ export function ControlConsole() {
               {loading ? "刷新中..." : "刷新"}
             </button>
           </div>
-          <div className="row-sub">{error ? `错误：${error}` : "提示：Token 复用主控制台输入的 X-API-Token"}</div>
+          <div className="row-sub">{error ? `错误：${error}` : "提示：当前接口为直连模式，无需额外鉴权参数"}</div>
         </div>
       </div>
 
@@ -620,4 +620,3 @@ export function ControlConsole() {
     </div>
   );
 }
-

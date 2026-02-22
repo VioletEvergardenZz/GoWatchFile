@@ -492,7 +492,7 @@ if ($null -ne $recap.stages) {
       if ([string]::IsNullOrWhiteSpace($firstLine)) {
         $firstLine = "详见复盘输出"
       }
-      $failureRows += "| $($stage.name) | 阶段执行失败 | exitCode=$($stage.exitCode)，$firstLine | 检查依赖服务、鉴权 Token 与脚本参数后重跑 | 平台 | 待定 |"
+      $failureRows += "| $($stage.name) | 阶段执行失败 | exitCode=$($stage.exitCode)，$firstLine | 检查依赖服务与脚本参数后重跑 | 平台 | 待定 |"
     }
   }
 }
@@ -589,5 +589,4 @@ Set-Content -Path $OutputFile -Encoding UTF8 -Value $markdownText
 
 Write-Host ("报告生成完成: {0}" -f $OutputFile)
 exit 0
-
 

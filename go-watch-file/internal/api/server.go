@@ -12,9 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"runtime/debug"
@@ -74,7 +72,7 @@ const (
 
 // NewServer 创建接口服务并注册路由
 // 路由层只做编排 不在这里写业务细节 便于后续按域拆分 handler
-// 中间件顺序固定为 recovery -> cors -> auth 保证异常与鉴权行为可预期
+// 中间件顺序固定为 recovery -> cors，保证异常与跨域行为可预期
 func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	kbService, err := kb.NewService("")
 	if err != nil {
@@ -134,7 +132,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 
 	srv := &http.Server{
 		Addr:         cfg.APIBind,
-		Handler:      withRecovery(withCORS(cfg, withAPIAuth(cfg, mux))),
+		Handler:      withRecovery(withCORS(cfg, mux)),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: resolveWriteTimeout(cfg),
 	}
@@ -837,9 +835,7 @@ func writeJSON(w http.ResponseWriter, status int, payload any) {
 func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 	allowAll := false
 	allowedOrigins := make(map[string]struct{})
-	authDisabled := true
 	if cfg != nil {
-		authDisabled = isAPIAuthDisabled(strings.TrimSpace(cfg.APIAuthToken))
 		for _, origin := range strings.FieldsFunc(strings.TrimSpace(cfg.APICORSOrigins), func(r rune) bool {
 			return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
 		}) {
@@ -855,13 +851,10 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 			allowedOrigins[normalized] = struct{}{}
 		}
 	}
-	// 当 API 鉴权关闭且未配置 CORS 来源时，默认放开跨域，降低本地/内网使用门槛
-	if authDisabled && !allowAll && len(allowedOrigins) == 0 {
+	// 未配置白名单时默认放开跨域，降低内网和本地接入门槛
+	if !allowAll && len(allowedOrigins) == 0 {
 		allowAll = true
 	}
-	// 未配置白名单时启用本地开发兜底策略：
-	// 允许 localhost/127.0.0.1/::1 以及“与 API 相同主机名”的来源
-	useDefaultOrigins := !allowAll && len(allowedOrigins) == 0
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requestOrigin := strings.TrimSpace(r.Header.Get("Origin"))
@@ -871,8 +864,6 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 				originAllowed = true
 			} else if _, ok := allowedOrigins[requestOrigin]; ok {
 				originAllowed = true
-			} else if useDefaultOrigins && isDefaultCORSOriginAllowed(requestOrigin, r.Host) {
-				originAllowed = true
 			}
 		}
 
@@ -880,7 +871,7 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", requestOrigin)
 			w.Header().Set("Vary", "Origin")
 		}
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization,X-API-Token")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type,Authorization")
 		w.Header().Set("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
 		if r.Method == http.MethodOptions {
 			if !originAllowed {
@@ -896,139 +887,6 @@ func withCORS(cfg *models.Config, next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// isDefaultCORSOriginAllowed 在未配置白名单时兜底允许本机来源
-// 仅放开 loopback 与“同主机”来源，避免默认放开任意跨域
-func isDefaultCORSOriginAllowed(requestOrigin, requestHost string) bool {
-	originURL, err := url.Parse(strings.TrimSpace(requestOrigin))
-	if err != nil {
-		return false
-	}
-	originHost := normalizeHost(originURL.Host)
-	if originHost == "" {
-		return false
-	}
-	if isLoopbackHost(originHost) {
-		return true
-	}
-	apiHost := normalizeHost(requestHost)
-	if apiHost == "" {
-		return false
-	}
-	return originHost == apiHost
-}
-
-func isLoopbackHost(host string) bool {
-	switch strings.ToLower(strings.TrimSpace(host)) {
-	case "localhost", "127.0.0.1", "::1":
-		return true
-	default:
-		return false
-	}
-}
-
-func normalizeHost(raw string) string {
-	trimmed := strings.TrimSpace(strings.ToLower(raw))
-	if trimmed == "" {
-		return ""
-	}
-	// 兼容传入完整 origin 场景
-	if strings.Contains(trimmed, "://") {
-		parsed, err := url.Parse(trimmed)
-		if err != nil {
-			return ""
-		}
-		trimmed = strings.ToLower(strings.TrimSpace(parsed.Host))
-	}
-	if host, _, err := net.SplitHostPort(trimmed); err == nil {
-		return strings.Trim(strings.ToLower(host), "[]")
-	}
-	// 主机:端口（非 IPv6）场景兜底
-	if strings.Count(trimmed, ":") == 1 && !strings.Contains(trimmed, "]") {
-		parts := strings.SplitN(trimmed, ":", 2)
-		return strings.Trim(strings.ToLower(strings.TrimSpace(parts[0])), "[]")
-	}
-	return strings.Trim(trimmed, "[]")
-}
-
-// withAPIAuth 用于统一校验接口访问令牌
-// withAPIAuth 是管理接口鉴权总入口
-// 明确保留 /api/health 匿名访问 便于外部探针做存活检查
-func withAPIAuth(cfg *models.Config, next http.Handler) http.Handler {
-	token := ""
-	if cfg != nil {
-		token = strings.TrimSpace(cfg.APIAuthToken)
-	}
-	authDisabled := isAPIAuthDisabled(token)
-
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/api/") {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if r.URL.Path == "/api/health" || r.Method == http.MethodOptions {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if authDisabled {
-			next.ServeHTTP(w, r)
-			return
-		}
-		if token == "" {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-			return
-		}
-		requestToken := extractAuthToken(r)
-		if requestToken == "" || requestToken != token {
-			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
-}
-
-// isAPIAuthDisabled 判断是否关闭 API 鉴权
-// 规则：
-// 1) 显式设置 API_AUTH_DISABLED=true
-// 2) 配置令牌为空
-// 3) 配置仍是占位符 ${API_AUTH_TOKEN}
-func isAPIAuthDisabled(token string) bool {
-	if parseBoolEnv("API_AUTH_DISABLED") {
-		return true
-	}
-	clean := strings.TrimSpace(token)
-	if clean == "" {
-		return true
-	}
-	upper := strings.ToUpper(clean)
-	if strings.Contains(upper, "${API_AUTH_TOKEN}") {
-		return true
-	}
-	return false
-}
-
-func parseBoolEnv(key string) bool {
-	raw := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
-	switch raw {
-	case "1", "true", "yes", "y", "on":
-		return true
-	default:
-		return false
-	}
-}
-
-// extractAuthToken 用于提取有效片段供后续处理
-func extractAuthToken(r *http.Request) string {
-	if r == nil {
-		return ""
-	}
-	if bearer := strings.TrimSpace(r.Header.Get("Authorization")); bearer != "" {
-		if strings.HasPrefix(strings.ToLower(bearer), "bearer ") {
-			return strings.TrimSpace(bearer[len("Bearer "):])
-		}
-	}
-	return strings.TrimSpace(r.Header.Get("X-API-Token"))
 }
 
 // withRecovery 用于兜底捕获 panic 防止服务崩溃

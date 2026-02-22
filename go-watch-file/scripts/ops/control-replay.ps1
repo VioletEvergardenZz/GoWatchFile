@@ -3,20 +3,16 @@
 
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = "",
   [int]$AgentCount = 3,
   [int]$TaskCount = 30,
   [string]$OutputFile = "reports/control-replay-result.json",
   [string]$MetricsFile = "reports/metrics-control-replay.prom"
 )
 
-# 统一 endpoint 拼接和鉴权头，避免每次请求重复构造
+# 统一 endpoint 拼接和请求头，避免每次请求重复构造
 $base = $BaseUrl.TrimEnd("/")
 $headers = @{
   "Content-Type" = "application/json"
-}
-if (-not [string]::IsNullOrWhiteSpace($Token)) {
-  $headers["X-API-Token"] = $Token.Trim()
 }
 
 $agentsEndpoint = "{0}/api/control/agents" -f $base
@@ -203,4 +199,3 @@ if ($done.Count -lt $TaskCount) {
   exit 3
 }
 exit 0
-

@@ -51,7 +51,6 @@
 cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/control-agent-check.ps1 `
   -BaseUrl http://localhost:8082 `
-  -Token $env:API_AUTH_TOKEN `
   -OfflineAfterSec 45 `
   -FailOnOffline `
   -MaxOfflineAgents 0 `
@@ -61,7 +60,6 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/control-agent-check.ps1 `
 
 说明：
 
-- 后端未启用鉴权时可省略 `-Token`
 - `-FailOnOffline` 开启门禁时：
   - 当离线数 `> MaxOfflineAgents` 返回退出码 `4`
 - 输出：

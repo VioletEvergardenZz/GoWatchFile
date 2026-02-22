@@ -1,7 +1,6 @@
 ﻿# 鏈剼鏈敤浜庨樁娈靛鐩樺墠缃噯澶囥€?# 鑷姩瀹屾垚鐭ヨ瘑搴撳鍏ュ彂甯冧笌 AI 鍥炴斁鏍锋湰鍑嗗锛屽噺灏戞墜宸ョ幆澧冨亸宸€?
 param(
   [string]$BaseUrl = "http://localhost:8082",
-  [string]$Token = "",
   [string]$DocsPath = "../docs",
   [string]$Operator = "stage-prime",
   [string]$ApproveImported = "true",
@@ -88,9 +87,6 @@ function Invoke-JsonApi {
   )
   $headers = @{
     "Content-Type" = "application/json"
-  }
-  if (-not [string]::IsNullOrWhiteSpace($Token)) {
-    $headers["X-API-Token"] = $Token.Trim()
   }
   if ($null -eq $Body) {
     return Invoke-RestMethod -Uri $Url -Method $Method -Headers $headers -TimeoutSec 20
