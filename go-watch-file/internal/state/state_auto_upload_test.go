@@ -1,7 +1,10 @@
 package state
 
 import (
+	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,5 +55,32 @@ func TestAutoEnabledFromCopyWindowsPath(t *testing.T) {
 	})
 	if got {
 		t.Fatalf("expected child path to inherit parent auto-upload=false")
+	}
+}
+
+func TestSetAutoUploadAcceptsHostPrefixedPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("host-prefixed unix-style path case")
+	}
+	host, _ := os.Hostname()
+	if strings.TrimSpace(host) == "" {
+		t.Skip("hostname is empty")
+	}
+	watchDir := t.TempDir()
+	target := filepath.Join(watchDir, "file-monitor.log")
+	if err := os.WriteFile(target, []byte("probe"), 0o644); err != nil {
+		t.Fatalf("write target file: %v", err)
+	}
+	cfg := &models.Config{
+		WatchDir: watchDir,
+	}
+	s := NewRuntimeState(cfg)
+
+	trimmed := strings.TrimPrefix(filepath.ToSlash(target), "/")
+	hostPath := host + "/" + trimmed
+	s.SetAutoUpload(hostPath, false)
+
+	if enabled := s.AutoUploadEnabled(target); enabled {
+		t.Fatalf("expected auto upload disabled after host-prefixed toggle, got enabled")
 	}
 }

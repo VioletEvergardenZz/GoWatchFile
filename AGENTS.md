@@ -69,6 +69,8 @@
 ## 9. 验收门禁（DoD）
 - 后端：`cd go-watch-file && go test ./... -count=1`
 - 前端：`cd console-frontend && npm run build`
+- macOS + nvm 场景：若 `node`/`npm` 命令不存在，先执行 `source /etc/profile` 再运行前端命令
+- 执行前端门禁前建议先确认：`node -v && npm -v`
 - 文档：与接口/配置实际行为一致
 - 若改动涉及可观测与降级：需可通过 `/metrics`、`/api/health`、`/api/dashboard` 进行验证
 
@@ -107,6 +109,7 @@
 ## 15. 常用命令速查
 - 后端测试：`cd go-watch-file && go test ./... -count=1`
 - 前端构建：`cd console-frontend && npm run build`
+- macOS（nvm）前置：`source /etc/profile && node -v && npm -v`
 - 指标检查：`cd go-watch-file && powershell -ExecutionPolicy Bypass -File scripts/ops/check-metrics.ps1 -BaseUrl http://localhost:8082`
 - 阶段复盘：`cd go-watch-file && powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 -BaseUrl http://localhost:8082 -AutoPrime -AIPathsFile ../reports/ai-replay-paths-prime.txt -OutputFile ../reports/stage-recap-result.json`
 

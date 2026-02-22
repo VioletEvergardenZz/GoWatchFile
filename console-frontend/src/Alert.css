@@ -518,6 +518,13 @@ body[data-theme="light"] .alert-shell .alert-banner {
   margin-top: 6px;
 }
 
+.alert-shell .status-explain {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
 .alert-shell .decisions-footer {
   display: flex;
   justify-content: space-between;
@@ -1291,4 +1298,3 @@ body[data-theme="light"] .alert-shell .alert-rules-card .summary-item.level-igno
     gap: 12px;
   }
 }
-

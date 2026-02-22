@@ -576,6 +576,14 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	}
 	metrics.Global().ObserveUploadSuccess(time.Since(start))
 
+	// 自动上传开关与上传执行并发发生时，可能出现“上传已完成但开关已关闭”的窗口。
+	// 这里做二次检查，确保关闭后不会继续向外发送“File uploaded”通知。
+	if fs.state != nil && !manual && !fs.state.AutoUploadEnabled(filePath) {
+		logger.Info("文件在上传期间关闭自动上传，已跳过通知: %s", filePath)
+		logger.Info("文件处理完成: %s", filePath)
+		return nil
+	}
+
 	fullPath := filepath.Clean(filePath)
 	fs.sendDingTalk(ctx, downloadURL, fullPath)
 	fs.sendEmailNotification(ctx, downloadURL, fullPath)
@@ -1095,6 +1103,7 @@ func (fs *FileService) enqueueFile(filePath string, manual bool) error {
 				fs.mu.Unlock()
 			}
 		} else if !fs.state.AutoUploadEnabled(filePath) {
+			logger.Debug("自动上传关闭，跳过入队: %s", filePath)
 			fs.state.MarkSkipped(filePath)
 			return nil
 		} else {

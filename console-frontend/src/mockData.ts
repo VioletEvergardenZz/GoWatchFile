@@ -335,6 +335,15 @@ export const alertDashboard: AlertDashboard = {
       message: "系统异常在5分钟内达到20次",
       file: "-",
       status: "sent",
+      explain: {
+        decisionKind: "escalation",
+        notify: true,
+        suppressionEnabled: true,
+        suppressWindow: "5分钟",
+        escalationThreshold: 20,
+        escalationWindow: "5分钟",
+        escalationCount: 20,
+      },
     },
     {
       id: "2",
@@ -344,6 +353,12 @@ export const alertDashboard: AlertDashboard = {
       message: "HikariPool-1 - Connection is not available",
       file: "/var/log/app/error.log",
       status: "sent",
+      explain: {
+        decisionKind: "rule_match",
+        notify: true,
+        suppressionEnabled: true,
+        suppressWindow: "5分钟",
+      },
     },
     {
       id: "3",
@@ -354,6 +369,13 @@ export const alertDashboard: AlertDashboard = {
       file: "/var/log/app/error.log",
       status: "suppressed",
       reason: "5分钟内已告警",
+      explain: {
+        decisionKind: "rule_match",
+        notify: true,
+        suppressionEnabled: true,
+        suppressWindow: "5分钟",
+        suppressedBy: "rule_window",
+      },
     },
     {
       id: "4",
@@ -363,6 +385,12 @@ export const alertDashboard: AlertDashboard = {
       message: "order write failed: duplicate key",
       file: "/var/log/app/error.log",
       status: "recorded",
+      explain: {
+        decisionKind: "rule_match",
+        notify: false,
+        suppressionEnabled: true,
+        suppressWindow: "5分钟",
+      },
     },
     {
       id: "5",
@@ -373,6 +401,13 @@ export const alertDashboard: AlertDashboard = {
       file: "/var/log/app/error.log",
       status: "suppressed",
       reason: "5分钟内已告警",
+      explain: {
+        decisionKind: "rule_match",
+        notify: true,
+        suppressionEnabled: true,
+        suppressWindow: "5分钟",
+        suppressedBy: "rule_window",
+      },
     },
   ],
   stats: {
@@ -710,4 +745,3 @@ export const systemProcesses: SystemProcess[] = [
     env: ["CONTAINERD_LOG_LEVEL=info"],
   },
 ];
-

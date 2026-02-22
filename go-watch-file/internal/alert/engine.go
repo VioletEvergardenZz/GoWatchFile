@@ -49,6 +49,7 @@ type decisionResult struct {
 	at      time.Time
 	status  DecisionStatus
 	reason  string
+	explain DecisionExplain
 }
 
 // Engine 负责规则匹配与抑制升级判定
@@ -136,9 +137,15 @@ func (e *Engine) Evaluate(line, filePath string, now time.Time) []decisionResult
 		file:    filePath,
 		message: truncateMessage(cleaned, maxDecisionMessage),
 		at:      now,
+		explain: DecisionExplain{
+			DecisionKind:       DecisionKindRuleMatch,
+			Notify:             rule.notify,
+			SuppressionEnabled: e.suppressionEnabled,
+			SuppressWindow:     formatSuppressWindow(rule.suppressWindow),
+		},
 	}
 	// 应用抑制窗口与通知策略
-	result.status, result.reason = e.applySuppressionLocked(rule, now)
+	result.status, result.reason, result.explain.SuppressedBy = e.applySuppressionLocked(rule, now)
 
 	if rule.level == LevelSystem {
 		// system 级别用于异常升级统计
@@ -172,23 +179,23 @@ func (e *Engine) matchRuleLocked(line string) *compiledRule {
 }
 
 // applySuppressionLocked 用于应用配置并保持运行态一致
-func (e *Engine) applySuppressionLocked(rule *compiledRule, now time.Time) (DecisionStatus, string) {
+func (e *Engine) applySuppressionLocked(rule *compiledRule, now time.Time) (DecisionStatus, string, SuppressedBy) {
 	if !rule.notify {
-		return StatusRecorded, ""
+		return StatusRecorded, "", ""
 	}
 	if !e.suppressionEnabled {
-		return StatusSent, ""
+		return StatusSent, "", ""
 	}
 	if rule.suppressWindow <= 0 {
 		e.lastAlert[rule.id] = now
-		return StatusSent, ""
+		return StatusSent, "", ""
 	}
 	last, ok := e.lastAlert[rule.id]
 	if ok && now.Sub(last) < rule.suppressWindow {
-		return StatusSuppressed, fmt.Sprintf("%s内已告警", formatDuration(rule.suppressWindow))
+		return StatusSuppressed, fmt.Sprintf("%s内已告警", formatDuration(rule.suppressWindow)), SuppressedByRuleWindow
 	}
 	e.lastAlert[rule.id] = now
-	return StatusSent, ""
+	return StatusSent, "", ""
 }
 
 // appendSystemEventLocked 用于添加数据到目标集合
@@ -234,9 +241,11 @@ func (e *Engine) maybeEscalateLocked(now time.Time) *decisionResult {
 
 	status := StatusSent
 	reason := ""
+	suppressedBy := SuppressedBy("")
 	if e.suppressionEnabled && e.escalation.suppressWindow > 0 && !e.lastEscalationAt.IsZero() && now.Sub(e.lastEscalationAt) < e.escalation.suppressWindow {
 		status = StatusSuppressed
 		reason = fmt.Sprintf("%s内已升级", formatDuration(e.escalation.suppressWindow))
+		suppressedBy = SuppressedByEscalationWindow
 	} else if e.suppressionEnabled {
 		e.lastEscalationAt = now
 	}
@@ -255,7 +264,25 @@ func (e *Engine) maybeEscalateLocked(now time.Time) *decisionResult {
 		at:      now,
 		status:  status,
 		reason:  reason,
+		explain: DecisionExplain{
+			DecisionKind:        DecisionKindEscalation,
+			Notify:              true,
+			SuppressionEnabled:  e.suppressionEnabled,
+			SuppressWindow:      formatSuppressWindow(e.escalation.suppressWindow),
+			SuppressedBy:        suppressedBy,
+			EscalationThreshold: e.escalation.threshold,
+			EscalationWindow:    formatSuppressWindow(e.escalation.window),
+			EscalationCount:     len(e.systemEvents),
+		},
 	}
+}
+
+// formatSuppressWindow 用于统一空窗口展示，避免输出无意义的“0秒”
+func formatSuppressWindow(window time.Duration) string {
+	if window <= 0 {
+		return ""
+	}
+	return formatDuration(window)
 }
 
 // nextID 用于生成递增标识保证事件可追踪

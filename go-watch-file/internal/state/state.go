@@ -194,7 +194,7 @@ func (s *RuntimeState) AutoUploadEnabled(path string) bool {
 
 // SetAutoUpload 为路径（文件或目录）切换自动上传，并联动更新已有状态
 func (s *RuntimeState) SetAutoUpload(path string, enabled bool) {
-	normPath := normalizePath(path)
+	normPath := normalizeControlPath(path, s.host)
 	if normPath == "" {
 		return
 	}
@@ -833,7 +833,7 @@ func (s *RuntimeState) appendUploadLocked(record uploadHistory) {
 
 // 判断某个路径是否“自动上传开启”
 func (s *RuntimeState) autoUploadLocked(path string) bool {
-	norm := normalizeKeyPath(path)
+	norm := normalizeKeyPath(normalizeControlPath(path, s.host))
 	if norm == "" {
 		return true
 	}
@@ -893,6 +893,49 @@ func normalizePath(path string) string {
 		return ""
 	}
 	return filepath.ToSlash(filepath.Clean(path))
+}
+
+// normalizeControlPath 把控制面输入路径统一为运行态内部使用的规范路径。
+// 兼容通知消息里的 "hostname/absolute/path" 展示格式，避免开关路径不命中。
+func normalizeControlPath(path, host string) string {
+	norm := normalizePath(path)
+	if norm == "" {
+		return ""
+	}
+	trimmedHost := strings.TrimSpace(normalizePath(host))
+	if trimmedHost == "" {
+		return norm
+	}
+	trimmedHost = strings.TrimSuffix(trimmedHost, "/")
+	prefix := trimmedHost + "/"
+	lowerNorm := strings.ToLower(norm)
+	lowerPrefix := strings.ToLower(prefix)
+	if !strings.HasPrefix(lowerNorm, lowerPrefix) {
+		return norm
+	}
+	rest := strings.TrimPrefix(norm[len(prefix):], "/")
+	if rest == "" {
+		return norm
+	}
+	// Windows 盘符路径不补前导斜杠，避免误变成 "/C:/..."
+	if isWindowsDrivePath(rest) {
+		return normalizePath(rest)
+	}
+	return normalizePath("/" + rest)
+}
+
+func isWindowsDrivePath(path string) bool {
+	if len(path) < 3 {
+		return false
+	}
+	drive := path[0]
+	if !((drive >= 'a' && drive <= 'z') || (drive >= 'A' && drive <= 'Z')) {
+		return false
+	}
+	if path[1] != ':' {
+		return false
+	}
+	return path[2] == '/' || path[2] == '\\'
 }
 
 // normalizeKeyPath 用于统一数据格式便于比较与存储

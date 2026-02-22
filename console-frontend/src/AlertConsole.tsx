@@ -13,6 +13,7 @@ import type {
   AiLogSummary,
   AlertConfigResponse,
   AlertConfigSnapshot,
+  AlertDecision,
   AlertDashboard,
   AlertDecisionStatus,
   AlertLevel,
@@ -110,6 +111,51 @@ const resolveStatusTone = (status: AlertDecisionStatus) => {
   if (status === "sent") return "status-sent";
   if (status === "suppressed") return "status-suppressed";
   return "status-recorded";
+};
+
+const resolveSuppressedByLabel = (suppressedBy?: string) => {
+  if (suppressedBy === "rule_window") return "规则抑制窗口";
+  if (suppressedBy === "escalation_window") return "升级抑制窗口";
+  return "";
+};
+
+const buildDecisionExplainText = (decision: AlertDecision) => {
+  const explain = decision.explain;
+  if (!explain) return "";
+
+  const parts: string[] = [];
+  if (explain.decisionKind === "escalation") {
+    const threshold = typeof explain.escalationThreshold === "number" ? explain.escalationThreshold : 0;
+    const count = typeof explain.escalationCount === "number" ? explain.escalationCount : 0;
+    const window = explain.escalationWindow?.trim();
+    let escalationText = "来源: 异常升级";
+    if (threshold > 0 && count > 0) {
+      escalationText += `(${count}/${threshold})`;
+    }
+    if (window) {
+      escalationText += ` ${window}`;
+    }
+    parts.push(escalationText);
+  } else {
+    parts.push("来源: 规则匹配");
+  }
+
+  parts.push(explain.notify ? "通知: 发送" : "通知: 仅记录");
+  if (explain.suppressionEnabled) {
+    const suppressWindow = explain.suppressWindow?.trim();
+    parts.push(suppressWindow ? `抑制: 开启(${suppressWindow})` : "抑制: 开启");
+  } else {
+    parts.push("抑制: 关闭");
+  }
+
+  if (decision.status === "suppressed") {
+    const suppressedBy = resolveSuppressedByLabel(explain.suppressedBy);
+    if (suppressedBy) {
+      parts.push(`抑制来源: ${suppressedBy}`);
+    }
+  }
+
+  return parts.join(" · ");
 };
 
 const formatTime = (value: string) => (value && value !== "--" ? value : "--");
@@ -1746,34 +1792,38 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
                 </tr>
               </thead>
               <tbody>
-                {pagedDecisions.map((decision) => (
-                  <tr
-                    key={decision.id}
-                    className={decision.id === selectedDecisionID ? "row-selected" : ""}
-                    onClick={() => setSelectedDecisionID(decision.id)}
-                  >
-                    <td className="mono">{decision.time}</td>
-                    <td>
-                      <span className={`badge ${resolveLevelTone(decision.level)}`}>
-                        {LEVEL_LABELS[decision.level]}
-                      </span>
-                    </td>
-                    <td>{decision.rule}</td>
-                    <td>
-                      <div className="message-cell">
-                        <span className="message-main">{decision.message}</span>
-                        <span className="message-sub">{decision.file || "--"}</span>
-                        {decision.analysis ? <span className="message-ai">AI：{decision.analysis}</span> : null}
-                      </div>
-                    </td>
-                    <td>
-                      <div className={`badge ${resolveStatusTone(decision.status)}`}>
-                        {STATUS_LABELS[decision.status]}
-                      </div>
-                      {decision.reason ? <div className="status-reason">{decision.reason}</div> : null}
-                    </td>
-                  </tr>
-                ))}
+                {pagedDecisions.map((decision) => {
+                  const explainText = buildDecisionExplainText(decision);
+                  return (
+                    <tr
+                      key={decision.id}
+                      className={decision.id === selectedDecisionID ? "row-selected" : ""}
+                      onClick={() => setSelectedDecisionID(decision.id)}
+                    >
+                      <td className="mono">{decision.time}</td>
+                      <td>
+                        <span className={`badge ${resolveLevelTone(decision.level)}`}>
+                          {LEVEL_LABELS[decision.level]}
+                        </span>
+                      </td>
+                      <td>{decision.rule}</td>
+                      <td>
+                        <div className="message-cell">
+                          <span className="message-main">{decision.message}</span>
+                          <span className="message-sub">{decision.file || "--"}</span>
+                          {decision.analysis ? <span className="message-ai">AI：{decision.analysis}</span> : null}
+                        </div>
+                      </td>
+                      <td>
+                        <div className={`badge ${resolveStatusTone(decision.status)}`}>
+                          {STATUS_LABELS[decision.status]}
+                        </div>
+                        {decision.reason ? <div className="status-reason">{decision.reason}</div> : null}
+                        {explainText ? <div className="status-explain">{explainText}</div> : null}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1934,4 +1984,3 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     </div>
   );
 }
-

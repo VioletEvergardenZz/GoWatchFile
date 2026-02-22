@@ -190,6 +190,8 @@ ai_max_lines: 200
 - `POST /api/auto-upload`
 - Body：`{ "path": "/path/to/dir-or-file", "enabled": true }`
 - 说明：目录开关会联动子目录与文件。
+- 路径兼容：`path` 支持控制台目录树中的绝对路径，也兼容通知文本中的 `hostname/absolute/path` 形式。
+- 关闭语义：关闭后新事件会立即停止自动入队；若关闭瞬间存在在途上传，任务可完成但不会继续发送上传通知。
 
 ### 3) 手动上传
 - `POST /api/manual-upload`

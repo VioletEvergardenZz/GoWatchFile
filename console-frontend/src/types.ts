@@ -122,6 +122,10 @@ export type AlertLevel = "ignore" | "business" | "system" | "fatal";
 
 export type AlertDecisionStatus = "sent" | "suppressed" | "recorded";
 
+export type AlertDecisionKind = "rule_match" | "escalation";
+
+export type AlertDecisionSuppressedBy = "rule_window" | "escalation_window";
+
 export type AlertOverview = {
   window: string;
   risk: string;
@@ -142,6 +146,16 @@ export type AlertDecision = {
   file: string;
   status: AlertDecisionStatus;
   reason?: string;
+  explain?: {
+    decisionKind: AlertDecisionKind;
+    notify: boolean;
+    suppressionEnabled: boolean;
+    suppressWindow?: string;
+    suppressedBy?: AlertDecisionSuppressedBy;
+    escalationThreshold?: number;
+    escalationWindow?: string;
+    escalationCount?: number;
+  };
   analysis?: string;
 };
 
@@ -510,4 +524,3 @@ export type ControlTaskFailureReasonsResponse = {
     limit?: number;
   };
 };
-

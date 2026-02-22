@@ -39,15 +39,16 @@ type Overview struct {
 
 // Decision 表示告警列表项
 type Decision struct {
-	ID       string `json:"id"`
-	Time     string `json:"time"`
-	Level    string `json:"level"`
-	Rule     string `json:"rule"`
-	Message  string `json:"message"`
-	File     string `json:"file"`
-	Status   string `json:"status"`
-	Reason   string `json:"reason,omitempty"`
-	Analysis string `json:"analysis,omitempty"`
+	ID       string           `json:"id"`
+	Time     string           `json:"time"`
+	Level    string           `json:"level"`
+	Rule     string           `json:"rule"`
+	Message  string           `json:"message"`
+	File     string           `json:"file"`
+	Status   string           `json:"status"`
+	Reason   string           `json:"reason,omitempty"`
+	Explain  *DecisionExplain `json:"explain,omitempty"`
+	Analysis string           `json:"analysis,omitempty"`
 }
 
 // Stats 表示告警统计
@@ -94,6 +95,7 @@ type alertRecord struct {
 	file     string
 	status   DecisionStatus
 	reason   string
+	explain  *DecisionExplain
 	analysis string
 }
 
@@ -127,6 +129,7 @@ func (s *State) Record(result decisionResult) {
 		file:    result.file,
 		status:  result.status,
 		reason:  result.reason,
+		explain: copyDecisionExplain(result.explain),
 	}
 	s.records = append(s.records, record)
 	if len(s.records) > maxDecisionRecords {
@@ -141,6 +144,22 @@ func (s *State) Record(result decisionResult) {
 	case StatusRecorded:
 		s.stats.Recorded++
 	}
+}
+
+// copyDecisionExplain 用于拷贝 explain 避免后续修改影响已落盘记录
+func copyDecisionExplain(raw DecisionExplain) *DecisionExplain {
+	if raw.DecisionKind == "" &&
+		!raw.Notify &&
+		!raw.SuppressionEnabled &&
+		raw.SuppressWindow == "" &&
+		raw.SuppressedBy == "" &&
+		raw.EscalationThreshold == 0 &&
+		raw.EscalationWindow == "" &&
+		raw.EscalationCount == 0 {
+		return nil
+	}
+	val := raw
+	return &val
 }
 
 // AttachAnalysis 为指定告警记录追加AI分析
@@ -198,6 +217,7 @@ func (s *State) Dashboard() Dashboard {
 			File:     file,
 			Status:   string(rec.status),
 			Reason:   rec.reason,
+			Explain:  rec.explain,
 			Analysis: rec.analysis,
 		})
 	}
