@@ -301,6 +301,24 @@ ai_max_lines: 200
 - 返回：`{ systemOverview, systemGauges, systemVolumes, systemProcesses }`
 - 说明：需开启 `systemResourceEnabled`，否则返回 403；默认不返回进程环境变量，避免敏感信息暴露。
 
+### 14) 知识推荐联动追溯
+- `GET /api/kb/recommendations`
+- 查询参数：`query` / `rule` / `message` / `alertId` / `limit`
+- 返回：`{ ok, items, trace }`
+- 知识条目生命周期状态：
+  - `draft`：草稿（可编辑）
+  - `reviewing`：待审核（由 `submit` 进入）
+  - `published`：已发布（由 `approve` 进入）
+  - `archived`：已归档（由 `archive` 进入）
+- 状态迁移约束：
+  - `submit`：仅允许 `draft -> reviewing`
+  - `approve` / `reject`：仅允许在 `reviewing` 执行（`reject -> draft`）
+  - `archive`：允许 `draft/reviewing/published -> archived`
+- 追溯行为：
+  - 传入 `alertId` 且命中告警决策时，后端会优先复用该决策的 `rule/message` 参与检索；
+  - 响应中的 `trace` 会携带 `decisionStatus/decisionReason/hitCount/articles`；
+  - 同时把本次推荐关联回写到 `/api/alerts` 的 `data.decisions[].knowledgeTrace`，用于后续复盘追溯。
+
 ### 13) 控制面 MVP（SQLite 持久化）
 - Agent：
   - `POST /api/control/agents`（注册）

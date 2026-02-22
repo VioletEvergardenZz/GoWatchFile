@@ -8,10 +8,12 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import "./KnowledgeConsole.css";
-import type { KnowledgeArticle, KnowledgeAskResponse } from "./types";
+import type { KnowledgeArticle, KnowledgeAskResponse, KnowledgeQualityGates } from "./types";
 import {
+  DEFAULT_KNOWLEDGE_QUALITY_GATES,
   fetchKBArticle,
   fetchKBArticles,
+  fetchKBGates,
   fetchKBMetrics,
   fetchKBPendingReviews,
   postKBArticle,
@@ -25,7 +27,7 @@ import {
 } from "./console/dashboardApi";
 
 type Severity = "low" | "medium" | "high";
-type ArticleStatusFilter = "all" | "draft" | "published" | "archived";
+type ArticleStatusFilter = "all" | "draft" | "reviewing" | "published" | "archived";
 
 type ArticleForm = {
   title: string;
@@ -183,6 +185,15 @@ const formatLatencyMs = (value: number | null) => {
   return `${Math.round(value)} ms`;
 };
 
+const KNOWLEDGE_STATUS_LABELS: Record<KnowledgeArticle["status"], string> = {
+  draft: "草稿",
+  reviewing: "待审核",
+  published: "已发布",
+  archived: "已归档",
+};
+
+const formatKnowledgeStatus = (status: KnowledgeArticle["status"]) => KNOWLEDGE_STATUS_LABELS[status] ?? status;
+
 type EditorMode = "edit" | "preview" | "diff";
 
 type DiffLine = {
@@ -327,6 +338,7 @@ export function KnowledgeConsole() {
   const [pendingReviews, setPendingReviews] = useState<KnowledgeArticle[]>([]);
   const [pendingLoading, setPendingLoading] = useState(false);
   const [kbMetrics, setKBMetrics] = useState<KnowledgeMetricsSnapshot | null>(null);
+  const [kbGates, setKBGates] = useState<KnowledgeQualityGates>(DEFAULT_KNOWLEDGE_QUALITY_GATES);
   const [metricsLoading, setMetricsLoading] = useState(false);
 
   const selectedArticle = useMemo(
@@ -347,6 +359,13 @@ export function KnowledgeConsole() {
   const searchHitRatio = kbMetrics?.searchHitRatio ?? null;
   const askCitationRatio = kbMetrics?.askCitationRatio ?? null;
   const reviewLatencyP95 = kbMetrics?.reviewLatencyP95Ms ?? null;
+  const searchHitRatioGate = kbGates.searchHitRatioMin;
+  const askCitationRatioGate = kbGates.askCitationRatioMin;
+  const reviewLatencyP95Gate = kbGates.reviewLatencyP95MsMax;
+  const canSubmit = selectedDetail?.status === "draft";
+  const canApprove = selectedDetail?.status === "reviewing";
+  const canReject = selectedDetail?.status === "reviewing";
+  const canArchive = !!selectedDetail && selectedDetail.status !== "archived";
 
   // loadArticles 是列表主刷新函数
   // 所有筛选条件最终都汇聚到这里 便于统一维护请求参数口径
@@ -426,6 +445,12 @@ export function KnowledgeConsole() {
     try {
       const snapshot = await fetchKBMetrics();
       setKBMetrics(snapshot);
+      try {
+        const gatesResp = await fetchKBGates();
+        setKBGates(gatesResp.gates);
+      } catch {
+        setKBGates(DEFAULT_KNOWLEDGE_QUALITY_GATES);
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -677,6 +702,7 @@ export function KnowledgeConsole() {
           >
             <option value="all">全部状态</option>
             <option value="draft">草稿</option>
+            <option value="reviewing">待审核</option>
             <option value="published">已发布</option>
             <option value="archived">已归档</option>
           </select>
@@ -707,23 +733,23 @@ export function KnowledgeConsole() {
       <section className="panel knowledge-metrics">
         <div className="section-title">
           <h2>知识库运营指标</h2>
-          <span>{metricsLoading ? "刷新中..." : "来源 /metrics"}</span>
+          <span>{metricsLoading ? "刷新中..." : "来源 /metrics + /api/kb/gates"}</span>
         </div>
         <div className="knowledge-metrics-grid">
-          <div className={`knowledge-metric-card ${searchHitRatio !== null && searchHitRatio < 0.7 ? "warn" : ""}`}>
+          <div className={`knowledge-metric-card ${searchHitRatio !== null && searchHitRatio < searchHitRatioGate ? "warn" : ""}`}>
             <div className="knowledge-metric-label">检索命中率</div>
             <div className="knowledge-metric-value">{formatRatio(searchHitRatio)}</div>
-            <div className="knowledge-metric-desc">阈值建议 ≥ 70%</div>
+            <div className="knowledge-metric-desc">阈值建议 ≥ {formatRatio(searchHitRatioGate)}</div>
           </div>
-          <div className={`knowledge-metric-card ${askCitationRatio !== null && askCitationRatio < 0.95 ? "warn" : ""}`}>
+          <div className={`knowledge-metric-card ${askCitationRatio !== null && askCitationRatio < askCitationRatioGate ? "warn" : ""}`}>
             <div className="knowledge-metric-label">问答引用率</div>
             <div className="knowledge-metric-value">{formatRatio(askCitationRatio)}</div>
-            <div className="knowledge-metric-desc">阈值建议 ≥ 95%</div>
+            <div className="knowledge-metric-desc">阈值建议 ≥ {formatRatio(askCitationRatioGate)}</div>
           </div>
-          <div className={`knowledge-metric-card ${reviewLatencyP95 !== null && reviewLatencyP95 > 800 ? "warn" : ""}`}>
+          <div className={`knowledge-metric-card ${reviewLatencyP95 !== null && reviewLatencyP95 > reviewLatencyP95Gate ? "warn" : ""}`}>
             <div className="knowledge-metric-label">评审延迟 P95</div>
             <div className="knowledge-metric-value">{formatLatencyMs(reviewLatencyP95)}</div>
-            <div className="knowledge-metric-desc">阈值建议 ≤ 800ms</div>
+            <div className="knowledge-metric-desc">阈值建议 ≤ {formatLatencyMs(reviewLatencyP95Gate)}</div>
           </div>
         </div>
         <div className="knowledge-metrics-actions">
@@ -752,7 +778,7 @@ export function KnowledgeConsole() {
                 <div>
                   <strong>{item.title}</strong>
                   <div className="muted small">
-                    {item.status === "draft" ? "待审核草稿" : item.needsReview ? "已到期待复审" : item.status}
+                    {item.status === "reviewing" ? "待审核中" : item.needsReview ? "已到期待复审" : formatKnowledgeStatus(item.status)}
                   </div>
                 </div>
                 <div className="knowledge-item-meta">
@@ -784,7 +810,7 @@ export function KnowledgeConsole() {
                   <span>{item.summary || "无摘要"}</span>
                 </div>
                 <div className="knowledge-item-meta">
-                  <span className="badge ghost">{item.status}</span>
+                  <span className="badge ghost">{formatKnowledgeStatus(item.status)}</span>
                   <span className="badge ghost">v{item.currentVersion}</span>
                   <span className="badge ghost">{item.severity}</span>
                 </div>
@@ -798,7 +824,7 @@ export function KnowledgeConsole() {
             <h2>{selectedArticle ? `编辑条目 ${selectedArticle.id}` : "创建新条目"}</h2>
             {selectedDetail ? (
               <span>
-                状态 {selectedDetail.status} · 当前版本 v{selectedDetail.currentVersion}
+                状态 {formatKnowledgeStatus(selectedDetail.status)} · 当前版本 v{selectedDetail.currentVersion}
                 {latestSource?.sourceType ? ` · 来源 ${latestSource.sourceType}` : ""}
                 {latestSource?.sourceRef ? `/${latestSource.sourceRef}` : ""}
                 {selectedDetail.needsReview ? " · 已到期待复审" : ""}
@@ -979,16 +1005,16 @@ export function KnowledgeConsole() {
             <button className="btn secondary" type="button" onClick={() => void handleSave()} disabled={saving || !selectedID}>
               保存
             </button>
-            <button className="btn secondary" type="button" onClick={() => void handleAction("submit")} disabled={saving || !selectedID}>
+            <button className="btn secondary" type="button" onClick={() => void handleAction("submit")} disabled={saving || !canSubmit}>
               提交审核
             </button>
-            <button className="btn secondary" type="button" onClick={() => void handleAction("approve")} disabled={saving || !selectedID}>
+            <button className="btn secondary" type="button" onClick={() => void handleAction("approve")} disabled={saving || !canApprove}>
               发布
             </button>
-            <button className="btn secondary" type="button" onClick={() => void handleAction("reject")} disabled={saving || !selectedID}>
+            <button className="btn secondary" type="button" onClick={() => void handleAction("reject")} disabled={saving || !canReject}>
               驳回
             </button>
-            <button className="btn secondary" type="button" onClick={() => void handleAction("archive")} disabled={saving || !selectedID}>
+            <button className="btn secondary" type="button" onClick={() => void handleAction("archive")} disabled={saving || !canArchive}>
               归档
             </button>
           </div>
@@ -1052,4 +1078,3 @@ export function KnowledgeConsole() {
     </div>
   );
 }
-

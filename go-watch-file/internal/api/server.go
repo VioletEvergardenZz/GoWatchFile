@@ -46,6 +46,8 @@ type handler struct {
 	fs  *service.FileService
 	sys *sysinfo.Collector
 	kb  *kb.Service
+	// alertStateOverride 仅用于测试注入，运行态统一通过 fs.AlertState() 读取
+	alertStateOverride *alert.State
 
 	controlMu           sync.RWMutex
 	controlAgents       map[string]controlAgentState
@@ -121,6 +123,7 @@ func NewServer(cfg *models.Config, fs *service.FileService) *Server {
 	mux.HandleFunc("/api/kb/import/docs", h.kbImportDocs)
 	mux.HandleFunc("/api/kb/recommendations", h.kbRecommendations)
 	mux.HandleFunc("/api/kb/reviews/pending", h.kbPendingReviews)
+	mux.HandleFunc("/api/kb/gates", h.kbGates)
 	mux.HandleFunc("/api/control/agents", h.controlAgentsHandler)
 	mux.HandleFunc("/api/control/agents/", h.controlAgentByIDHandler)
 	mux.HandleFunc("/api/control/tasks", h.controlTasksHandler)
@@ -544,7 +547,7 @@ func (h *handler) alertDashboard(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 		return
 	}
-	alertState := h.fs.AlertState()
+	alertState := h.currentAlertState()
 	if alertState == nil {
 		// 告警未启用时返回空结果
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -553,9 +556,13 @@ func (h *handler) alertDashboard(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
+	enabled := false
+	if h != nil && h.fs != nil {
+		enabled = h.fs.AlertEnabled()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"ok":      true,
-		"enabled": h.fs.AlertEnabled(),
+		"enabled": enabled,
 		"data":    alertState.Dashboard(),
 	})
 }

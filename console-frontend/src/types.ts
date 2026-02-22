@@ -157,6 +157,7 @@ export type AlertDecision = {
     escalationCount?: number;
   };
   analysis?: string;
+  knowledgeTrace?: AlertKnowledgeTrace;
 };
 
 export type AlertStats = {
@@ -339,7 +340,7 @@ export type KnowledgeArticle = {
   summary: string;
   category: string;
   severity: "low" | "medium" | "high";
-  status: "draft" | "published" | "archived";
+  status: "draft" | "reviewing" | "published" | "archived";
   needsReview?: boolean;
   currentVersion: number;
   content?: string;
@@ -420,9 +421,42 @@ export type KnowledgePendingReviewsResponse = {
   items: KnowledgeArticle[];
 };
 
+export type KnowledgeQualityGates = {
+  searchHitRatioMin: number;
+  askCitationRatioMin: number;
+  reviewLatencyP95MsMax: number;
+};
+
+export type KnowledgeGatesResponse = {
+  ok: boolean;
+  gates: KnowledgeQualityGates;
+};
+
 export type KnowledgeRecommendationsResponse = {
   ok: boolean;
   items: KnowledgeArticle[];
+  trace?: AlertKnowledgeTrace | null;
+};
+
+export type AlertKnowledgeTrace = {
+  alertId: string;
+  linkId: string;
+  linkedAt: string;
+  query: string;
+  rule?: string;
+  message?: string;
+  decisionStatus?: string;
+  decisionReason?: string;
+  hitCount: number;
+  articles?: AlertKnowledgeTraceArticle[];
+};
+
+export type AlertKnowledgeTraceArticle = {
+  articleId: string;
+  title: string;
+  version: number;
+  status?: string;
+  severity?: string;
 };
 
 export type ControlAgentStatus = "online" | "offline" | "draining";

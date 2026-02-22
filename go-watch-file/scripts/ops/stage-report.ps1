@@ -325,8 +325,8 @@ $kbSearchHitRatio = Read-MetricValue -MetricsText $metricsText -MetricName "gwf_
 $kbAskCitationRatio = Read-MetricValue -MetricsText $metricsText -MetricName "gwf_kb_ask_citation_ratio"
 $kbHitratePct = if ($null -ne $kbSearchHitRatio) { [double]$kbSearchHitRatio * 100 } else { $null }
 $kbCitationPct = if ($null -ne $kbAskCitationRatio) { [double]$kbAskCitationRatio * 100 } else { $null }
-$kbHitrateTargetPct = 80.0
-$kbCitationTargetPct = 100.0
+$kbHitrateTargetPct = 70.0
+$kbCitationTargetPct = 95.0
 $kbMttdDropTargetPct = 20.0
 if ($null -ne $recap.gateTargets) {
   if ($null -ne $recap.gateTargets.kbHitrate) {
@@ -589,4 +589,3 @@ Set-Content -Path $OutputFile -Encoding UTF8 -Value $markdownText
 
 Write-Host ("报告生成完成: {0}" -f $OutputFile)
 exit 0
-

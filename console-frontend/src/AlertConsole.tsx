@@ -16,6 +16,7 @@ import type {
   AlertDecision,
   AlertDashboard,
   AlertDecisionStatus,
+  AlertKnowledgeTrace,
   AlertLevel,
   AlertRulesResponse,
   AlertRulesSaveResponse,
@@ -372,6 +373,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
   const [recommendationLoading, setRecommendationLoading] = useState(false);
   const [recommendationError, setRecommendationError] = useState<string | null>(null);
   const [recommendations, setRecommendations] = useState<KnowledgeArticle[]>([]);
+  const [recommendationTrace, setRecommendationTrace] = useState<AlertKnowledgeTrace | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Record<AlertLevel, boolean>>(() => ({
     fatal: false,
     system: false,
@@ -719,25 +721,28 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     [decisions, selectedDecisionID]
   );
 
-  const loadRecommendations = async (decisionRule: string, decisionMessage: string, decisionID: string) => {
+  const loadRecommendations = async (decision: AlertDecision) => {
     setRecommendationLoading(true);
     setRecommendationError(null);
     try {
       if (USE_MOCK) {
         setRecommendations([]);
+        setRecommendationTrace(decision.knowledgeTrace ?? null);
         return;
       }
       const payload = await fetchKBRecommendations({
-        rule: decisionRule,
-        message: decisionMessage,
-        alertId: decisionID,
+        rule: decision.rule,
+        message: decision.message,
+        alertId: decision.id,
         limit: 3,
       });
       setRecommendations(payload.items ?? []);
+      setRecommendationTrace(payload.trace ?? decision.knowledgeTrace ?? null);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "知识推荐加载失败";
       setRecommendationError(msg);
       setRecommendations([]);
+      setRecommendationTrace(decision.knowledgeTrace ?? null);
     } finally {
       setRecommendationLoading(false);
     }
@@ -860,6 +865,7 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     if (decisions.length === 0) {
       setSelectedDecisionID("");
       setRecommendations([]);
+      setRecommendationTrace(null);
       return;
     }
     const exists = decisions.some((decision) => decision.id === selectedDecisionID);
@@ -872,9 +878,10 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
     if (activePanel !== "alerts") return;
     if (!selectedDecision) {
       setRecommendations([]);
+      setRecommendationTrace(null);
       return;
     }
-    void loadRecommendations(selectedDecision.rule, selectedDecision.message, selectedDecision.id);
+    void loadRecommendations(selectedDecision);
   }, [activePanel, selectedDecision?.id, selectedDecision?.rule, selectedDecision?.message]);
 
   return (
@@ -1875,6 +1882,19 @@ export function AlertConsole({ embedded = false }: AlertConsoleProps) {
                 <div className="muted small">规则：{selectedDecision.rule}</div>
                 <div className="muted small">内容：{selectedDecision.message}</div>
                 <div className="muted small">文件：{selectedDecision.file || "--"}</div>
+                {recommendationTrace ? (
+                  <>
+                    <div className="muted small">关联ID：{recommendationTrace.linkId || "--"}</div>
+                    <div className="muted small">关联时间：{recommendationTrace.linkedAt || "--"}</div>
+                    <div className="muted small">
+                      处置结果：
+                      {recommendationTrace.decisionStatus
+                        ? `${recommendationTrace.decisionStatus}${recommendationTrace.decisionReason ? `(${recommendationTrace.decisionReason})` : ""}`
+                        : "--"}
+                    </div>
+                    <div className="muted small">推荐检索词：{recommendationTrace.query || "--"}</div>
+                  </>
+                ) : null}
               </div>
               {recommendationLoading ? <div className="empty-state">知识推荐加载中...</div> : null}
               {recommendationError ? <div className="warn-text">{recommendationError}</div> : null}

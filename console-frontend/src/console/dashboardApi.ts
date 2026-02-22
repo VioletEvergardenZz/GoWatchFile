@@ -17,9 +17,11 @@ import type {
   DashboardPayload,
   KnowledgeArticleResponse,
   KnowledgeAskResponse,
+  KnowledgeGatesResponse,
   KnowledgeImportResponse,
   KnowledgeListResponse,
   KnowledgePendingReviewsResponse,
+  KnowledgeQualityGates,
   KnowledgeRecommendationsResponse,
   KnowledgeSearchResponse,
 } from "../types";
@@ -344,6 +346,12 @@ export type KnowledgeMetricsSnapshot = {
   reviewLatencyP95Ms: number | null;
 };
 
+export const DEFAULT_KNOWLEDGE_QUALITY_GATES: KnowledgeQualityGates = {
+  searchHitRatioMin: 0.7,
+  askCitationRatioMin: 0.95,
+  reviewLatencyP95MsMax: 800,
+};
+
 const parseMetricValue = (text: string, metricName: string): number | null => {
   const pattern = new RegExp(`^${metricName}(?:\\{[^\\n]*\\})?\\s+([0-9.eE+-]+)$`, "m");
   const match = text.match(pattern);
@@ -395,6 +403,35 @@ export const fetchKBMetrics = async (): Promise<KnowledgeMetricsSnapshot> => {
     searchHitRatio: parseMetricValue(text, "gwf_kb_search_hit_ratio"),
     askCitationRatio: parseMetricValue(text, "gwf_kb_ask_citation_ratio"),
     reviewLatencyP95Ms: parseReviewLatencyP95(text),
+  };
+};
+
+const normalizeKnowledgeGates = (input: Partial<KnowledgeQualityGates> | undefined): KnowledgeQualityGates => {
+  const searchHitRatioMin = Number(input?.searchHitRatioMin);
+  const askCitationRatioMin = Number(input?.askCitationRatioMin);
+  const reviewLatencyP95MsMax = Number(input?.reviewLatencyP95MsMax);
+  return {
+    searchHitRatioMin: Number.isFinite(searchHitRatioMin)
+      ? searchHitRatioMin
+      : DEFAULT_KNOWLEDGE_QUALITY_GATES.searchHitRatioMin,
+    askCitationRatioMin: Number.isFinite(askCitationRatioMin)
+      ? askCitationRatioMin
+      : DEFAULT_KNOWLEDGE_QUALITY_GATES.askCitationRatioMin,
+    reviewLatencyP95MsMax: Number.isFinite(reviewLatencyP95MsMax)
+      ? reviewLatencyP95MsMax
+      : DEFAULT_KNOWLEDGE_QUALITY_GATES.reviewLatencyP95MsMax,
+  };
+};
+
+export const fetchKBGates = async (): Promise<KnowledgeGatesResponse> => {
+  const res = await fetch(`${API_BASE}/api/kb/gates`, {
+    headers: buildApiHeaders(),
+  });
+  await ensureOk(res, "知识库门禁阈值加载");
+  const payload = (await res.json()) as Partial<KnowledgeGatesResponse>;
+  return {
+    ok: payload.ok ?? true,
+    gates: normalizeKnowledgeGates(payload.gates),
   };
 };
 
@@ -494,4 +531,3 @@ export const fetchControlAuditLogs = async (params?: {
   await ensureOk(res, "控制面审计日志加载");
   return (await res.json()) as ControlAuditLogsResponse;
 };
-

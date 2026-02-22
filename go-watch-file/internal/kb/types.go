@@ -10,6 +10,7 @@ import "errors"
 
 const (
 	StatusDraft     = "draft"
+	StatusReviewing = "reviewing"
 	StatusPublished = "published"
 	StatusArchived  = "archived"
 )

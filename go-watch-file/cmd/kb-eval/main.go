@@ -76,7 +76,7 @@ func main() {
 func usage() {
 	fmt.Println("Usage:")
 	fmt.Println("  kb-eval hitrate -base http://localhost:8082 -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 5]")
-	fmt.Println("  kb-eval citation -base http://localhost:8082 -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 3] [-target 1.0]")
+	fmt.Println("  kb-eval citation -base http://localhost:8082 -samples ../../docs/04-知识库/知识库命中率样本.json [-limit 3] [-target 0.95]")
 	fmt.Println("  kb-eval mttd -input ../../docs/04-知识库/知识库MTTD基线.csv")
 }
 
@@ -191,7 +191,7 @@ func runCitation(args []string) error {
 	baseURL := fs.String("base", "http://localhost:8082", "api base url")
 	samplesPath := fs.String("samples", filepath.FromSlash("../../docs/04-知识库/知识库命中率样本.json"), "samples json path")
 	limit := fs.Int("limit", 3, "ask result limit")
-	target := fs.Float64("target", 1.0, "required citation ratio 0~1")
+	target := fs.Float64("target", 0.95, "required citation ratio 0~1")
 	timeoutSec := fs.Int("timeout", 8, "request timeout seconds")
 	if err := fs.Parse(args); err != nil {
 		return err

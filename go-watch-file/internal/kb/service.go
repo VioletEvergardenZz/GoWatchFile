@@ -353,6 +353,7 @@ func (s *Service) ListArticles(query ListQuery) ([]Article, int, error) {
 		); err != nil {
 			return nil, 0, err
 		}
+		item.Status = normalizeArticleStatusOrDraft(item.Status)
 		item.NeedsReview = s.isNeedsReview(item.Status, item.UpdatedAt)
 		out = append(out, item)
 	}
@@ -380,18 +381,18 @@ func (s *Service) PendingReviews(limit int) ([]Article, error) {
 	if limit > maxPageSize {
 		limit = maxPageSize
 	}
-	drafts, _, err := s.ListArticles(ListQuery{
-		Status:   StatusDraft,
+	reviewing, _, err := s.ListArticles(ListQuery{
+		Status:   StatusReviewing,
 		Page:     1,
 		PageSize: limit,
 	})
 	if err != nil {
 		return nil, err
 	}
-	if len(drafts) >= limit {
-		return drafts[:limit], nil
+	if len(reviewing) >= limit {
+		return reviewing[:limit], nil
 	}
-	remain := limit - len(drafts)
+	remain := limit - len(reviewing)
 	published, _, err := s.ListArticles(ListQuery{
 		Status:   StatusPublished,
 		Page:     1,
@@ -401,13 +402,13 @@ func (s *Service) PendingReviews(limit int) ([]Article, error) {
 		return nil, err
 	}
 	out := make([]Article, 0, limit)
-	out = append(out, drafts...)
+	out = append(out, reviewing...)
 	for _, item := range published {
 		if !item.NeedsReview {
 			continue
 		}
 		out = append(out, item)
-		if len(out) >= limit || len(out)-len(drafts) >= remain {
+		if len(out) >= limit || len(out)-len(reviewing) >= remain {
 			break
 		}
 	}
@@ -444,18 +445,22 @@ func (s *Service) ApplyAction(id, action, operator, comment string) (*Article, e
 	if err != nil {
 		return nil, err
 	}
-	nextStatus := current.Status
+	currentStatus := normalizeArticleStatusOrDraft(current.Status)
+	if !isKBActionAllowed(currentStatus, normalizedAction) {
+		return nil, fmt.Errorf("%w: action %s is not allowed when status is %s", ErrInvalidInput, normalizedAction, currentStatus)
+	}
+	nextStatus := currentStatus
 	switch normalizedAction {
+	case "submit":
+		nextStatus = StatusReviewing
 	case "approve":
 		nextStatus = StatusPublished
 	case "reject":
 		nextStatus = StatusDraft
 	case "archive":
 		nextStatus = StatusArchived
-	case "submit":
-		// submit 只写评审记录，不改变状态
 	}
-	if nextStatus != current.Status {
+	if nextStatus != currentStatus {
 		if _, err := tx.Exec(`
 			UPDATE kb_articles
 			SET status = ?, updated_by = ?, updated_at = ?
@@ -1003,7 +1008,7 @@ func buildListWhere(query ListQuery) (string, []any) {
 		)`)
 		args = append(args, pattern, pattern, pattern, pattern)
 	}
-	status := strings.ToLower(strings.TrimSpace(query.Status))
+	status := normalizeArticleStatus(query.Status)
 	if status != "" {
 		parts = append(parts, "a.status = ?")
 		args = append(args, status)
@@ -1079,6 +1084,7 @@ func queryArticleCoreTx(q queryer, id string) (*Article, error) {
 		}
 		return nil, err
 	}
+	item.Status = normalizeArticleStatusOrDraft(item.Status)
 	item.NeedsReview = needsReviewByDays(item.Status, item.UpdatedAt, resolveReviewDays())
 	return &item, nil
 }
@@ -1459,6 +1465,49 @@ func tagsFromPath(path string) []string {
 type queryer interface {
 	Query(query string, args ...any) (*sql.Rows, error)
 	QueryRow(query string, args ...any) *sql.Row
+}
+
+func normalizeArticleStatus(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "":
+		return ""
+	case StatusDraft:
+		return StatusDraft
+	case StatusReviewing, "pending_review":
+		return StatusReviewing
+	case StatusPublished:
+		return StatusPublished
+	case StatusArchived:
+		return StatusArchived
+	default:
+		return strings.ToLower(strings.TrimSpace(raw))
+	}
+}
+
+func normalizeArticleStatusOrDraft(raw string) string {
+	normalized := normalizeArticleStatus(raw)
+	if normalized == "" {
+		return StatusDraft
+	}
+	return normalized
+}
+
+// isKBActionAllowed 统一约束知识条目状态迁移
+// 原因：submit/approve/reject 必须依赖明确状态，否则“草稿”和“待审核”会被混用
+// 边界：archive 允许从 draft/reviewing/published 进入 archived，方便清理历史草稿或中止审核
+func isKBActionAllowed(status, action string) bool {
+	normalizedStatus := normalizeArticleStatusOrDraft(status)
+	normalizedAction := strings.ToLower(strings.TrimSpace(action))
+	switch normalizedAction {
+	case "submit":
+		return normalizedStatus == StatusDraft
+	case "approve", "reject":
+		return normalizedStatus == StatusReviewing
+	case "archive":
+		return normalizedStatus == StatusDraft || normalizedStatus == StatusReviewing || normalizedStatus == StatusPublished
+	default:
+		return false
+	}
 }
 
 func resolveReviewDays() int {

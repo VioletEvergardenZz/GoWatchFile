@@ -235,6 +235,15 @@ try {
         break
       }
       foreach ($item in $matched) {
+        $submitUrl = "{0}/api/kb/articles/{1}/submit" -f $base, [string]$item.id
+        $submitPayload = [ordered]@{
+          operator = $Operator
+          comment  = "auto submit imported docs for stage recap"
+        }
+        $submitResp = Invoke-JsonApi -Method "Post" -Url $submitUrl -Body $submitPayload
+        if ($null -eq $submitResp -or -not $submitResp.ok) {
+          continue
+        }
         $approveUrl = "{0}/api/kb/articles/{1}/approve" -f $base, [string]$item.id
         $approvePayload = [ordered]@{
           operator = $Operator

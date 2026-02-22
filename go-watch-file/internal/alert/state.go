@@ -7,6 +7,7 @@ package alert
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 )
@@ -49,6 +50,31 @@ type Decision struct {
 	Reason   string           `json:"reason,omitempty"`
 	Explain  *DecisionExplain `json:"explain,omitempty"`
 	Analysis string           `json:"analysis,omitempty"`
+	// KnowledgeTrace 记录当前告警与知识推荐的关联结果，便于值班回溯“当时推荐了什么”
+	KnowledgeTrace *RecommendationTrace `json:"knowledgeTrace,omitempty"`
+}
+
+// RecommendationTrace 表示告警与知识推荐之间的一次关联快照
+type RecommendationTrace struct {
+	AlertID        string                  `json:"alertId"`
+	LinkID         string                  `json:"linkId"`
+	LinkedAt       string                  `json:"linkedAt"`
+	Query          string                  `json:"query"`
+	Rule           string                  `json:"rule,omitempty"`
+	Message        string                  `json:"message,omitempty"`
+	DecisionStatus string                  `json:"decisionStatus,omitempty"`
+	DecisionReason string                  `json:"decisionReason,omitempty"`
+	HitCount       int                     `json:"hitCount"`
+	Articles       []RecommendationArticle `json:"articles,omitempty"`
+}
+
+// RecommendationArticle 表示推荐命中的知识条目摘要
+type RecommendationArticle struct {
+	ArticleID string `json:"articleId"`
+	Title     string `json:"title"`
+	Version   int    `json:"version"`
+	Status    string `json:"status,omitempty"`
+	Severity  string `json:"severity,omitempty"`
 }
 
 // Stats 表示告警统计
@@ -97,6 +123,8 @@ type alertRecord struct {
 	reason   string
 	explain  *DecisionExplain
 	analysis string
+	// knowledgeTrace 是可变状态，必须通过 State 的互斥锁读写，避免并发读写竞态
+	knowledgeTrace *RecommendationTrace
 }
 
 // State 维护告警决策运行态
@@ -146,6 +174,80 @@ func (s *State) Record(result decisionResult) {
 	}
 }
 
+// RecordDecision 用于回放或测试场景下写入告警快照
+// 边界：该方法只做轻量校验，不参与规则判定；调用方需确保输入来自可信链路
+func (s *State) RecordDecision(decision Decision) bool {
+	if s == nil {
+		return false
+	}
+	trimmedID := strings.TrimSpace(decision.ID)
+	if trimmedID == "" {
+		return false
+	}
+	level, ok := parseLevel(strings.TrimSpace(decision.Level))
+	if !ok {
+		level = LevelBusiness
+	}
+	status := normalizeDecisionStatus(decision.Status)
+	at := parseDecisionTime(decision.Time)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	rec := alertRecord{
+		id:             trimmedID,
+		at:             at,
+		level:          level,
+		rule:           strings.TrimSpace(decision.Rule),
+		message:        strings.TrimSpace(decision.Message),
+		file:           strings.TrimSpace(decision.File),
+		status:         status,
+		reason:         strings.TrimSpace(decision.Reason),
+		explain:        copyDecisionExplainValue(decision.Explain),
+		analysis:       strings.TrimSpace(decision.Analysis),
+		knowledgeTrace: copyRecommendationTrace(decision.KnowledgeTrace),
+	}
+	s.records = append(s.records, rec)
+	if len(s.records) > maxDecisionRecords {
+		s.records = append([]alertRecord(nil), s.records[len(s.records)-maxDecisionRecords:]...)
+	}
+
+	switch status {
+	case StatusSent:
+		s.stats.Sent++
+	case StatusSuppressed:
+		s.stats.Suppressed++
+	default:
+		s.stats.Recorded++
+	}
+	return true
+}
+
+func normalizeDecisionStatus(raw string) DecisionStatus {
+	switch DecisionStatus(strings.TrimSpace(raw)) {
+	case StatusSent:
+		return StatusSent
+	case StatusSuppressed:
+		return StatusSuppressed
+	default:
+		return StatusRecorded
+	}
+}
+
+func parseDecisionTime(raw string) time.Time {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return time.Now()
+	}
+	if ts, err := time.Parse("2006-01-02 15:04:05", trimmed); err == nil {
+		return ts
+	}
+	if ts, err := time.Parse(time.RFC3339, trimmed); err == nil {
+		return ts
+	}
+	return time.Now()
+}
+
 // copyDecisionExplain 用于拷贝 explain 避免后续修改影响已落盘记录
 func copyDecisionExplain(raw DecisionExplain) *DecisionExplain {
 	if raw.DecisionKind == "" &&
@@ -162,6 +264,17 @@ func copyDecisionExplain(raw DecisionExplain) *DecisionExplain {
 	return &val
 }
 
+func copyRecommendationTrace(raw *RecommendationTrace) *RecommendationTrace {
+	if raw == nil {
+		return nil
+	}
+	copied := *raw
+	if len(raw.Articles) > 0 {
+		copied.Articles = append([]RecommendationArticle(nil), raw.Articles...)
+	}
+	return &copied
+}
+
 // AttachAnalysis 为指定告警记录追加AI分析
 func (s *State) AttachAnalysis(id string, analysis string) {
 	if s == nil {
@@ -175,6 +288,86 @@ func (s *State) AttachAnalysis(id string, analysis string) {
 			return
 		}
 	}
+}
+
+// GetDecision 用于按告警 ID 读取当前快照
+// 这里返回副本，避免调用方持有内部指针导致并发状态污染
+func (s *State) GetDecision(id string) (Decision, bool) {
+	if s == nil {
+		return Decision{}, false
+	}
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return Decision{}, false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for i := len(s.records) - 1; i >= 0; i-- {
+		rec := s.records[i]
+		if rec.id != trimmedID {
+			continue
+		}
+		file := rec.file
+		if file == "" {
+			file = "-"
+		}
+		return Decision{
+			ID:             rec.id,
+			Time:           formatTime(rec.at),
+			Level:          string(rec.level),
+			Rule:           rec.rule,
+			Message:        rec.message,
+			File:           file,
+			Status:         string(rec.status),
+			Reason:         rec.reason,
+			Explain:        copyDecisionExplainValue(rec.explain),
+			Analysis:       rec.analysis,
+			KnowledgeTrace: copyRecommendationTrace(rec.knowledgeTrace),
+		}, true
+	}
+	return Decision{}, false
+}
+
+func copyDecisionExplainValue(raw *DecisionExplain) *DecisionExplain {
+	if raw == nil {
+		return nil
+	}
+	val := *raw
+	return &val
+}
+
+// AttachKnowledgeTrace 把知识推荐结果关联到指定告警
+// 告警与知识推荐都属于运行态事件，这里仅覆盖“最近一次”关联，边界是内存保留窗口（maxDecisionRecords）
+func (s *State) AttachKnowledgeTrace(id string, trace RecommendationTrace) bool {
+	if s == nil {
+		return false
+	}
+	trimmedID := strings.TrimSpace(id)
+	if trimmedID == "" {
+		return false
+	}
+	if strings.TrimSpace(trace.LinkedAt) == "" {
+		trace.LinkedAt = formatTime(time.Now())
+	}
+	if strings.TrimSpace(trace.AlertID) == "" {
+		trace.AlertID = trimmedID
+	}
+	if strings.TrimSpace(trace.LinkID) == "" {
+		trace.LinkID = fmt.Sprintf("kb-link-%s-%d", trimmedID, time.Now().UnixNano())
+	}
+	if trace.HitCount <= 0 {
+		trace.HitCount = len(trace.Articles)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.records {
+		if s.records[i].id != trimmedID {
+			continue
+		}
+		s.records[i].knowledgeTrace = copyRecommendationTrace(&trace)
+		return true
+	}
+	return false
 }
 
 // UpdateRulesSummary 更新规则摘要
@@ -209,16 +402,17 @@ func (s *State) Dashboard() Dashboard {
 			file = "-"
 		}
 		decisions = append(decisions, Decision{
-			ID:       rec.id,
-			Time:     formatTime(rec.at),
-			Level:    string(rec.level),
-			Rule:     rec.rule,
-			Message:  rec.message,
-			File:     file,
-			Status:   string(rec.status),
-			Reason:   rec.reason,
-			Explain:  rec.explain,
-			Analysis: rec.analysis,
+			ID:             rec.id,
+			Time:           formatTime(rec.at),
+			Level:          string(rec.level),
+			Rule:           rec.rule,
+			Message:        rec.message,
+			File:           file,
+			Status:         string(rec.status),
+			Reason:         rec.reason,
+			Explain:        copyDecisionExplainValue(rec.explain),
+			Analysis:       rec.analysis,
+			KnowledgeTrace: copyRecommendationTrace(rec.knowledgeTrace),
 		})
 	}
 
