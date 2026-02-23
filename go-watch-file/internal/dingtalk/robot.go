@@ -51,26 +51,29 @@ func NewRobot(webhook, secret string) *Robot {
 }
 
 // SendMessage 发送钉钉机器人消息
-func (r *Robot) SendMessage(ctx context.Context, downloadURL, fileName string) error {
+func (r *Robot) SendMessage(ctx context.Context, downloadURL, fileName, aiSummary string) error {
 	if r.webhook == "" {
 		return fmt.Errorf("钉钉 webhook 为空")
 	}
 
 	fileName = defaultValue(fileName, "unknown")
 
-	msg := buildMarkdownMessage(downloadURL, fileName)
+	msg := buildMarkdownMessage(downloadURL, fileName, aiSummary)
 	return r.SendMarkdown(ctx, msg.Markdown.Title, msg.Markdown.Text)
 }
 
 // buildMarkdownMessage 用于构建后续流程所需的数据
-func buildMarkdownMessage(downloadURL, fileName string) message {
+func buildMarkdownMessage(downloadURL, fileName, aiSummary string) message {
 	nowTime := time.Now().Format("2006-01-02 15:04:05")
 	text := fmt.Sprintf(
-		"### File uploaded\n\n- file: `%s`\n- download: [download link](%s)\n- time: %s",
+		"### File uploaded\n\n- file: `%s`\n- download: [download link](%s)",
 		fileName,
 		downloadURL,
-		nowTime,
 	)
+	if analysis := strings.TrimSpace(aiSummary); analysis != "" {
+		text += fmt.Sprintf("\n- ai: %s", analysis)
+	}
+	text += fmt.Sprintf("\n- time: %s", nowTime)
 	return message{
 		MsgType: "markdown",
 		Markdown: markdown{

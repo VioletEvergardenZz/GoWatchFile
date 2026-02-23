@@ -585,8 +585,12 @@ func (fs *FileService) processFile(ctx context.Context, filePath string) error {
 	}
 
 	fullPath := filepath.Clean(filePath)
-	fs.sendDingTalk(ctx, downloadURL, fullPath)
-	fs.sendEmailNotification(ctx, downloadURL, fullPath)
+	aiSummary := ""
+	if fs.dingtalkRobot != nil || fs.emailSender != nil {
+		aiSummary = fs.buildUploadAISummary(ctx, fullPath)
+	}
+	fs.sendDingTalk(ctx, downloadURL, fullPath, aiSummary)
+	fs.sendEmailNotification(ctx, downloadURL, fullPath, aiSummary)
 
 	logger.Info("文件处理完成: %s", filePath)
 	return nil
@@ -818,12 +822,12 @@ func formatHostPath(filePath string) string {
 }
 
 // sendDingTalk 发送钉钉通知
-func (fs *FileService) sendDingTalk(ctx context.Context, downloadURL, fileName string) {
+func (fs *FileService) sendDingTalk(ctx context.Context, downloadURL, fileName, aiSummary string) {
 	if fs.dingtalkRobot == nil {
 		return
 	}
 	displayName := formatHostPath(fileName)
-	if err := fs.dingtalkRobot.SendMessage(ctx, downloadURL, displayName); err != nil {
+	if err := fs.dingtalkRobot.SendMessage(ctx, downloadURL, displayName, aiSummary); err != nil {
 		logger.Error("发送钉钉消息失败: %v", err)
 		return
 	}
@@ -833,7 +837,7 @@ func (fs *FileService) sendDingTalk(ctx context.Context, downloadURL, fileName s
 }
 
 // sendEmailNotification 发送邮件通知
-func (fs *FileService) sendEmailNotification(ctx context.Context, downloadURL, filePath string) {
+func (fs *FileService) sendEmailNotification(ctx context.Context, downloadURL, filePath, aiSummary string) {
 	// 未配置邮件发送器则跳过
 	if fs.emailSender == nil {
 		return
@@ -849,6 +853,9 @@ func (fs *FileService) sendEmailNotification(ctx context.Context, downloadURL, f
 		formatHostPath(filePath),
 		downloadURL,
 	)
+	if strings.TrimSpace(aiSummary) != "" {
+		body += fmt.Sprintf("AI Analysis: %s\n", formatNotificationAISummary(aiSummary))
+	}
 	// 发送邮件通知
 	if err := fs.emailSender.SendMessage(ctx, subject, body); err != nil {
 		// QUIT 异常视为已发送但连接结束异常

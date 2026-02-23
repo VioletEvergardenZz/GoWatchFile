@@ -26,11 +26,12 @@ type Notifier interface {
 
 // NotifyPayload 表示告警通知负载
 type NotifyPayload struct {
-	Level   Level
-	Rule    string
-	File    string
-	Message string
-	Time    time.Time
+	Level    Level
+	Rule     string
+	File     string
+	Message  string
+	Analysis string
+	Time     time.Time
 }
 
 // NotifierSet 组合钉钉与邮件通知
@@ -344,29 +345,24 @@ func (m *Manager) handleLine(path, line string) {
 		// 决策写入运行态并按需触发通知
 		m.state.Record(result)
 		if result.status == StatusSent {
-			m.sendNotification(result)
-		}
-		if m.shouldRunAlertAI(result, line) {
-			signature := buildAlertAISignature(result, line)
-			if !m.allowAlertAI(signature, now) {
-				continue
-			}
-			m.enqueueAlertAI(result, line, contextLines)
+			m.sendNotification(result, line, contextLines)
 		}
 	}
 }
 
 // sendNotification 用于发送通知并处理异常回退
-func (m *Manager) sendNotification(result decisionResult) {
+func (m *Manager) sendNotification(result decisionResult, line string, contextLines []string) {
 	if m.notifier == nil {
 		return
 	}
+	analysis := m.buildNotificationAnalysis(result, line, contextLines)
 	payload := NotifyPayload{
-		Level:   result.level,
-		Rule:    result.rule,
-		File:    result.file,
-		Message: result.message,
-		Time:    result.at,
+		Level:    result.level,
+		Rule:     result.rule,
+		File:     result.file,
+		Message:  result.message,
+		Analysis: analysis,
+		Time:     result.at,
 	}
 	if err := m.notifier.Notify(context.Background(), payload); err != nil {
 		logger.Error("发送告警通知失败: %v", err)
@@ -506,11 +502,22 @@ func buildMarkdown(payload NotifyPayload) string {
 	if strings.TrimSpace(file) == "" {
 		file = "无"
 	}
-	return fmt.Sprintf("### 告警详情\n\n- 级别: %s\n- 规则: %s\n- 文件: `%s`\n- 时间: %s\n- 内容: %s",
+	analysis := strings.TrimSpace(payload.Analysis)
+	if analysis == "" {
+		return fmt.Sprintf("### 告警详情\n\n- 级别: %s\n- 规则: %s\n- 文件: `%s`\n- 时间: %s\n- 内容: %s",
+			strings.ToLower(string(payload.Level)),
+			payload.Rule,
+			file,
+			formatTime(payload.Time),
+			payload.Message,
+		)
+	}
+	return fmt.Sprintf("### 告警详情\n\n- 级别: %s\n- 规则: %s\n- 文件: `%s`\n- 时间: %s\n- 内容: %s\n- 原文: %s",
 		strings.ToLower(string(payload.Level)),
 		payload.Rule,
 		file,
 		formatTime(payload.Time),
+		analysis,
 		payload.Message,
 	)
 }
@@ -521,11 +528,22 @@ func buildEmailBody(payload NotifyPayload) string {
 	if strings.TrimSpace(file) == "" {
 		file = "无"
 	}
-	return fmt.Sprintf("级别: %s\n规则: %s\n文件: %s\n时间: %s\n内容: %s\n",
+	analysis := strings.TrimSpace(payload.Analysis)
+	if analysis == "" {
+		return fmt.Sprintf("级别: %s\n规则: %s\n文件: %s\n时间: %s\n内容: %s\n",
+			strings.ToLower(string(payload.Level)),
+			payload.Rule,
+			file,
+			formatTime(payload.Time),
+			payload.Message,
+		)
+	}
+	return fmt.Sprintf("级别: %s\n规则: %s\n文件: %s\n时间: %s\n内容: %s\n原文: %s\n",
 		strings.ToLower(string(payload.Level)),
 		payload.Rule,
 		file,
 		formatTime(payload.Time),
+		analysis,
 		payload.Message,
 	)
 }

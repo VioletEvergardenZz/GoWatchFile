@@ -9,8 +9,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -28,6 +30,7 @@ const (
 	alertAIDedupeWindow  = 10 * time.Minute
 	alertAIWorkerLimit   = 2
 	alertAIResultMaxSize = 600
+	alertAINotifyTimeout = 8 * time.Second
 )
 
 const alertAISystemPrompt = `
@@ -219,6 +222,40 @@ func (m *Manager) runAlertAI(result decisionResult, line string, contextLines []
 	m.state.AttachAnalysis(result.id, summary)
 }
 
+// buildNotificationAnalysis 在告警通知发送前生成中文研判摘要。
+// 这里走“强降级”策略：任何异常都返回可读的中文说明，避免通知再次出现只看英文原文的情况。
+func (m *Manager) buildNotificationAnalysis(result decisionResult, line string, contextLines []string) string {
+	if m == nil || m.state == nil || !m.shouldRunAlertAI(result, line) {
+		return ""
+	}
+	signature := buildAlertAISignature(result, line)
+	if !m.allowAlertAI(signature, time.Now()) {
+		return "AI研判跳过：10分钟内相同告警已分析，保留原文供比对"
+	}
+	// 通知链路里 AI 研判只作为增强信息，超时要比通用 AI 更激进，防止阻塞告警主流程。
+	ctx, cancel := context.WithTimeout(context.Background(), alertAINotifyTimeout)
+	defer cancel()
+	if m.aiLimiter != nil {
+		select {
+		case m.aiLimiter <- struct{}{}:
+			defer func() { <-m.aiLimiter }()
+		default:
+			return "AI研判跳过：并发已满，保留原文供比对"
+		}
+	}
+	analysis, err := analyzeAlertWithAI(ctx, m.cfg, result, line, contextLines)
+	if err != nil {
+		return "AI研判降级：" + buildAlertAIFallbackReason(err)
+	}
+	summary := formatAIAlertOpsSummary(analysis)
+	if strings.TrimSpace(summary) == "" {
+		return "AI研判降级：AI返回为空，未形成有效结论"
+	}
+	// 同步回写运行态，保证 Dashboard 与通知看到的研判口径一致。
+	m.state.AttachAnalysis(result.id, summary)
+	return summary
+}
+
 // analyzeAlertWithAI 用于调用 AI 分析告警上下文
 func analyzeAlertWithAI(ctx context.Context, cfg *models.Config, result decisionResult, line string, contextLines []string) (aiAlertResult, error) {
 	if cfg == nil {
@@ -390,6 +427,40 @@ func formatAIAlertSummary(result aiAlertResult) string {
 	return strings.Join(parts, "\n")
 }
 
+// formatAIAlertOpsSummary 将 AI 结果转成“故障级别/根因判断/处置建议”的运维口径摘要。
+func formatAIAlertOpsSummary(result aiAlertResult) string {
+	summary := strings.TrimSpace(result.Summary)
+	if summary == "" {
+		summary = "未发现明显异常"
+	}
+	rootCause := summary
+	if len(result.Causes) > 0 {
+		rootCause = strings.Join(result.Causes, "；")
+	}
+	suggestion := "继续观察并结合运行态指标复核"
+	if len(result.Suggestions) > 0 {
+		suggestion = strings.Join(result.Suggestions, "；")
+	}
+	output := fmt.Sprintf(
+		"故障级别=%s；根因判断=%s；处置建议=%s",
+		formatAlertAISeverityCN(result.Severity),
+		strings.TrimSpace(rootCause),
+		strings.TrimSpace(suggestion),
+	)
+	return truncateText(strings.TrimSpace(output), alertAIResultMaxSize)
+}
+
+func formatAlertAISeverityCN(raw string) string {
+	switch normalizeSeverity(raw) {
+	case "high":
+		return "高"
+	case "low":
+		return "低"
+	default:
+		return "中"
+	}
+}
+
 // truncateText 用于截断内容以控制大小
 func truncateText(raw string, limit int) string {
 	if limit <= 0 {
@@ -494,4 +565,34 @@ func normalizeSeverity(raw string) string {
 	default:
 		return "medium"
 	}
+}
+
+func buildAlertAIFallbackReason(err error) string {
+	if err == nil {
+		return "AI服务暂不可用"
+	}
+	if isAlertAITimeoutError(err) {
+		return "AI请求超时，按降级策略保留原文"
+	}
+	msg := strings.TrimSpace(err.Error())
+	switch {
+	case strings.Contains(msg, "AI_BASE_URL"),
+		strings.Contains(msg, "AI_API_KEY"),
+		strings.Contains(msg, "AI_MODEL"),
+		strings.Contains(msg, "AI配置为空"):
+		return "AI配置不完整，未执行研判"
+	default:
+		return truncateText(msg, 120)
+	}
+}
+
+func isAlertAITimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
 }

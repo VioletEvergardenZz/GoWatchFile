@@ -29,7 +29,7 @@
 3) 文件写入完成判定：在静默窗口内无新写入才入队（默认 10s）。
 4) 入队后由 WorkerPool 并发上传至阿里云 OSS，失败按配置重试。
 5) 写入状态与上传结果写入运行态（Dashboard/时间线/上传记录）。
-6) 钉钉机器人可选通知，支持邮件通知（需配置 SMTP）。
+6) 钉钉机器人可选通知，支持邮件通知（需配置 SMTP）；上传成功通知仅在 `ai_enabled=true` 时附带 AI 摘要（AI 不可用时降级为原因说明）。
 
 ## 快速上手
 1) 环境：Go 1.24+（`go.mod` 含 `toolchain go1.24.3`）。
@@ -103,7 +103,7 @@
 - `alert_start_from_end`：是否从文件末尾开始追踪（默认 true）。
   - `true` 仅处理新写入日志，忽略历史内容。
   - `false` 启动时从头扫描，可能产生历史告警。
-- `ai_enabled`：是否启用 AI 日志分析（true/false）。
+- `ai_enabled`：是否启用 AI 日志分析（true/false）。仅在开启时，上传成功通知与告警通知才显示 AI 摘要字段（告警通知会展示“内容=AI研判、原文=命中日志”）。
 - `ai_base_url` / `ai_api_key` / `ai_model`：AI 请求地址、密钥与模型。
 - `ai_timeout`：AI 请求超时（支持 `20s` / `1m` 等）。
 - `ai_max_lines`：AI 分析最大行数（默认 200）。
