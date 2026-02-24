@@ -2,7 +2,8 @@
 
 > 文档状态：兼容保留  
 > 更新时间：2026-02-24  
-> 适用范围：`go-watch-file/scripts/ops/ai-replay.ps1`、`go-watch-file/scripts/ops/ai-baseline.ps1`
+> 适用范围：`go-watch-file/scripts/ops/ai-weekly-recap.sh`（优先）、
+> `go-watch-file/scripts/ops/ai-replay.ps1` / `go-watch-file/scripts/ops/ai-baseline.ps1`（兼容）
 
 ## 1. 目标
 
@@ -16,8 +17,8 @@
 
 建议固定每周同一天执行一次全量回放，建议节奏：
 
-1. 执行 AI 回放（`ai-replay.ps1`）
-2. 执行 AI 基线验证（`ai-baseline.ps1`）
+1. 执行 AI 回放 + 基线（`ai-weekly-recap.sh`）
+2. 如需兼容旧流程，再分别执行 `ai-replay.ps1` / `ai-baseline.ps1`
 3. 填写周度复盘模板并归档
 
 ## 3. 执行前准备
@@ -28,7 +29,23 @@
 
 ## 4. 标准执行命令
 
-### 4.1 生成本周回放结果
+### 4.1 macOS / Linux（推荐）
+
+```bash
+cd go-watch-file
+DATE_TAG="$(date +%F)"
+bash scripts/ops/ai-weekly-recap.sh \
+  --base-url http://localhost:8080 \
+  --paths-file ../docs/03-告警与AI/AI回放路径清单.txt \
+  --date "$DATE_TAG" \
+  --out-dir ../reports
+```
+
+输出产物：
+- `reports/ai-replay-YYYY-MM-DD.json`
+- `reports/ai-baseline-YYYY-MM-DD.json`
+
+### 4.2 PowerShell（兼容）
 
 ```powershell
 cd go-watch-file
@@ -40,12 +57,7 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-replay.ps1 `
   -ErrorClassCoverageTarget 1.00 `
   -FailOnGate `
   -OutputFile ../reports/ai-replay-$(Get-Date -Format yyyy-MM-dd).json
-```
 
-### 4.2 生成本周基线结果
-
-```powershell
-cd go-watch-file
 powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 `
   -FromResultFile ../reports/ai-replay-$(Get-Date -Format yyyy-MM-dd).json `
   -SummaryPassRatioTarget 1.00 `
@@ -84,14 +96,11 @@ powershell -ExecutionPolicy Bypass -File scripts/ops/ai-baseline.ps1 `
 
 周度复盘通过后，建议将最新结果纳入阶段总复盘：
 
-```powershell
+```bash
 cd go-watch-file
-powershell -ExecutionPolicy Bypass -File scripts/ops/stage-recap.ps1 `
-  -BaseUrl http://localhost:8082 `
-  -AIPathsFile ../docs/03-告警与AI/AI回放路径清单.txt `
-  -AIDegradedRatioTarget 0.20 `
-  -AIStructurePassRatioTarget 1.00 `
-  -AIErrorClassCoverageTarget 1.00 `
-  -OutputFile ../reports/stage-recap-result.json
+bash scripts/ops/stage-recap-lite.sh \
+  --ai-baseline ../reports/ai-baseline-$(date +%F).json \
+  --kb-drill ../reports/kb-failure-rollback-drill-$(date +%F).json \
+  --console-check ../reports/console-closure-check-$(date +%F).json \
+  --output-file ../reports/stage-recap-$(date +%F)-lite.json
 ```
-
