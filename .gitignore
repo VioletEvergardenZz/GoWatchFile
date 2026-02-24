@@ -47,5 +47,8 @@ dev/*
 template.md
 
 # Local runtime artifacts
-reports/
+reports/*
+!reports/README.md
 go-watch-file/data/
+
+描述-运维事件闭环平台.md

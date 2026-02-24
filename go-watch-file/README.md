@@ -1,22 +1,24 @@
 ﻿# 平台执行平面服务（go-watch-file）
 
 > 文档状态：组件文档（后端）  
-> 校准日期：2026-02-22
+> 校准日期：2026-02-24
 > 口径说明：运行行为与接口口径需与 docs/ 主线文档一致。
 `go-watch-file` 是 GWF 平台后端执行平面，统一承载以下能力：
 
-- 控制面（Agent/Task/Dispatch/Audit）
+- 文件入云（Watcher/Upload/Retry/Queue）
 - 告警监控与决策
-- 系统资源采集
+- AI 分析与降级
 - 运维知识库服务
-- 文件监控上传适配器（辅助能力）
+- 控制面（Agent/Task/Dispatch/Audit）
+- 系统资源采集
 - 统一 API、CORS、指标与运行时配置
 
 ## 在平台中的定位
 
 - 这是平台核心后端，不是单一“文件上传工具”。
-- 文件监控上传能力仍保留，但定位为输入适配器而非平台主线。
-- 平台主线能力由控制面、告警、资源采集、知识库和控制台共同构成。
+- 当前主线聚焦“文件入云 + 告警决策 + AI 分析 + 知识库复用”。
+- 通过统一 API 支撑控制台的发现、诊断、回放与追溯闭环。
+- 当前阶段优先单团队/单租户可落地能力，复杂多用户能力后置。
 
 ## 配置说明（控制台优先）
 - 运行时字段（watch_dir, file_ext, silence, upload_workers, upload_queue_size, upload_retry_enabled, upload_retry_delays, system_resource_enabled, alert_*）由控制台设置，并持久化到 `config.runtime.yaml`。
