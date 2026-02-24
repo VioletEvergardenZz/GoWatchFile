@@ -2,7 +2,7 @@
 
 > 文档状态：兼容保留
 
-- 更新时间：2026-02-19
+- 更新时间：2026-02-24
 - 目标：验证 AI 日志分析在真实样本下的降级率、结构一致性、错误分类覆盖率，以及基线结构稳定性（summary/severity/suggestions）
 - 关联脚本：`go-watch-file/scripts/ops/ai-replay.ps1`、`go-watch-file/scripts/ops/ai-baseline.ps1`
 
@@ -168,3 +168,10 @@ go run ./cmd/kb-eval citation -base http://localhost:8082 -samples ../docs/04-�
 ```
 
 该命令会调用 `/api/kb/ask`，低于目标时返回非零退出码。
+
+## 9. 周度复盘入口
+
+当 AI 回放门禁稳定后，建议按周度口径执行对比复盘：
+
+- `docs/03-告警与AI/AI周度基线复盘手册.md`
+- `docs/05-指标与评估/AI周度基线复盘模板-v1.md`
