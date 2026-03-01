@@ -143,6 +143,31 @@ func TestBuildFallbackAIResult(t *testing.T) {
 	}
 }
 
+func TestNormalizeAIResult_FillsMissingArrays(t *testing.T) {
+	result := &aiLogSummaryResult{
+		Summary:  "  ",
+		Severity: "unknown",
+	}
+
+	normalizeAIResult(result)
+
+	if result.Summary == "" {
+		t.Fatal("summary should be normalized")
+	}
+	if result.Severity != "medium" {
+		t.Fatalf("severity should fall back to medium, got=%s", result.Severity)
+	}
+	if len(result.KeyErrors) == 0 {
+		t.Fatal("keyErrors should have fallback value when missing")
+	}
+	if len(result.Causes) == 0 {
+		t.Fatal("causes should have fallback value when missing")
+	}
+	if len(result.Suggestions) == 0 {
+		t.Fatal("suggestions should have fallback value when missing")
+	}
+}
+
 type errText string
 
 func (e errText) Error() string {

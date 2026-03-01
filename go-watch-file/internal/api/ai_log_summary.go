@@ -843,9 +843,11 @@ func normalizeAIResult(result *aiLogSummaryResult) {
 		result.Summary = "未获取到有效摘要"
 	}
 	result.Severity = normalizeSeverity(result.Severity)
-	result.KeyErrors = trimItems(result.KeyErrors, aiMaxItems)
-	result.Causes = trimItems(result.Causes, 3)
-	result.Suggestions = trimItems(result.Suggestions, 3)
+	// 结构门禁要求 keyErrors/causes/suggestions 三个字段始终可用。
+	// 当模型漏字段或返回空数组时，这里补最小可执行默认值，避免前端和回放脚本因结构缺失中断。
+	result.KeyErrors = ensureNonEmptyItems(trimItems(result.KeyErrors, aiMaxItems), []string{"未提取到关键错误行，请结合原始日志排查"})
+	result.Causes = ensureNonEmptyItems(trimItems(result.Causes, 3), []string{"日志未提供明确根因，建议优先检查最近变更与依赖状态"})
+	result.Suggestions = ensureNonEmptyItems(trimItems(result.Suggestions, 3), []string{"先检查服务状态、错误日志与关键依赖连通性，再执行复测"})
 	if result.Confidence != nil {
 		if *result.Confidence < 0 || *result.Confidence > 1 {
 			result.Confidence = nil
@@ -887,4 +889,25 @@ func trimItems(items []string, limit int) []string {
 		}
 	}
 	return trimmed
+}
+
+func ensureNonEmptyItems(items []string, defaults []string) []string {
+	if len(items) > 0 {
+		return items
+	}
+	if len(defaults) == 0 {
+		return []string{"暂无"}
+	}
+	out := make([]string, 0, len(defaults))
+	for _, item := range defaults {
+		val := strings.TrimSpace(item)
+		if val == "" {
+			continue
+		}
+		out = append(out, val)
+	}
+	if len(out) == 0 {
+		return []string{"暂无"}
+	}
+	return out
 }
